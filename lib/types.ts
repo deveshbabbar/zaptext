@@ -44,6 +44,7 @@ export interface MenuItem {
   isVeg: boolean;
   isBestseller: boolean;
   imageUrl?: string;
+  foodType?: 'veg' | 'non-veg' | 'egg';
 }
 
 export interface MenuCategory {

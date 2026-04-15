@@ -20,7 +20,7 @@ LANGUAGE RULES:
 - If they write in Hinglish (mixed Hindi-English), respond in Hinglish.
 - If they write in English, respond in English.
 - Default to Hinglish if the language is unclear.
-- Supported languages: ${config.languages.join(', ')}
+- Supported languages: ${(config.languages || []).join(', ')}
 
 PERSONALITY:
 - Be friendly, helpful, and professional but NOT robotic.
@@ -53,11 +53,11 @@ function buildTypeSpecificPrompt(config: ClientConfig): string {
 }
 
 function buildClinicPrompt(config: Extract<ClientConfig, { type: 'clinic' }>): string {
-  const servicesText = config.services
+  const servicesText = (config.services || [])
     .map((s) => `- ${s.name}: ${s.price} (Duration: ${s.duration})`)
     .join('\n');
 
-  const faqText = config.commonFAQs
+  const faqText = (config.commonFAQs || [])
     .filter((f) => f.answer)
     .map((f) => `Q: ${f.question}\nA: ${f.answer}`)
     .join('\n\n');
@@ -75,7 +75,7 @@ ${servicesText}
 
 APPOINTMENT PROCESS: ${config.appointmentProcess}
 EMERGENCY NUMBER: ${config.emergencyNumber}
-INSURANCE ACCEPTED: ${config.insuranceAccepted.join(', ')}
+INSURANCE ACCEPTED: ${(config.insuranceAccepted || []).join(', ')}
 
 FREQUENTLY ASKED QUESTIONS:
 ${faqText}
@@ -89,11 +89,12 @@ STRICT RULES FOR CLINIC BOT:
 }
 
 function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant' }>): string {
-  const menuText = config.menuCategories
+  const menuText = (config.menuCategories || [])
     .map((cat) => {
-      const items = cat.items
+      const items = (cat.items || [])
         .map((item) => {
-          const tags = [item.isVeg ? '🟢 Veg' : '🔴 Non-Veg', item.isBestseller ? '⭐ Bestseller' : ''].filter(Boolean).join(' ');
+          const foodTypeLabel = item.foodType === 'egg' ? '🟡 Egg' : item.foodType === 'non-veg' || !item.isVeg ? '🔴 Non-Veg' : '🟢 Veg';
+          const tags = [foodTypeLabel, item.isBestseller ? '⭐ Bestseller' : ''].filter(Boolean).join(' ');
           return `  • ${item.name} - ${item.price} ${tags}\n    ${item.description}`;
         })
         .join('\n');
@@ -109,7 +110,7 @@ ${menuText}
 
 DELIVERY: ${config.deliveryAvailable ? `Available within ${config.deliveryRadius}` : 'Not available'}
 ${config.deliveryAvailable ? `Delivery Charges: ${config.deliveryCharges}\nMinimum Order: ${config.minimumOrder}` : ''}
-PAYMENT METHODS: ${config.paymentMethods.join(', ')}
+PAYMENT METHODS: ${(config.paymentMethods || []).join(', ')}
 ${config.specialOffers ? `CURRENT OFFERS: ${config.specialOffers}` : ''}
 ${config.zomatoSwiggyLinks ? `ORDER ONLINE: ${config.zomatoSwiggyLinks}` : ''}
 
@@ -121,7 +122,7 @@ STRICT RULES FOR RESTAURANT BOT:
 }
 
 function buildCoachingPrompt(config: Extract<ClientConfig, { type: 'coaching' }>): string {
-  const coursesText = config.coursesOffered
+  const coursesText = (config.coursesOffered || [])
     .map((c) => `- ${c.name}\n  Target: ${c.targetAudience}\n  Duration: ${c.duration}\n  Fee: ${c.fee}\n  Schedule: ${c.schedule}\n  Mode: ${c.mode}`)
     .join('\n\n');
 
@@ -146,22 +147,22 @@ STRICT RULES FOR COACHING BOT:
 }
 
 function buildRealEstatePrompt(config: Extract<ClientConfig, { type: 'realestate' }>): string {
-  const listingsText = config.currentListings
+  const listingsText = (config.currentListings || [])
     .map((l) => `- ${l.title}\n  Type: ${l.type}\n  Price: ${l.price}\n  Area: ${l.area}\n  Highlights: ${l.highlights}`)
     .join('\n\n');
 
   return `BUSINESS TYPE: Real Estate
 AGENT: ${config.agentName}
 RERA: ${config.reraNumber}
-OPERATING AREAS: ${config.operatingAreas.join(', ')}
-PROPERTY TYPES: ${config.propertyTypes.join(', ')}
-SERVICES: ${config.services.join(', ')}
+OPERATING AREAS: ${(config.operatingAreas || []).join(', ')}
+PROPERTY TYPES: ${(config.propertyTypes || []).join(', ')}
+SERVICES: ${(config.services || []).join(', ')}
 
 CURRENT LISTINGS:
 ${listingsText}
 
 SITE VISIT: ${config.siteVisitProcess}
-HOME LOAN: ${config.homeLoanAssistance ? `Available through ${config.homeLoanBanks.join(', ')}` : 'Not available'}
+HOME LOAN: ${config.homeLoanAssistance ? `Available through ${(config.homeLoanBanks || []).join(', ')}` : 'Not available'}
 
 STRICT RULES FOR REAL ESTATE BOT:
 - Always try to schedule a site visit — that's the primary goal.
@@ -172,21 +173,21 @@ STRICT RULES FOR REAL ESTATE BOT:
 }
 
 function buildSalonPrompt(config: Extract<ClientConfig, { type: 'salon' }>): string {
-  const servicesText = config.services
+  const servicesText = (config.services || [])
     .map((cat) => {
-      const items = cat.items.map((i) => `  • ${i.name} - ${i.price} (${i.duration})`).join('\n');
+      const items = (cat.items || []).map((i) => `  • ${i.name} - ${i.price} (${i.duration})`).join('\n');
       return `*${cat.category}*\n${items}`;
     })
     .join('\n\n');
 
-  const packagesText = config.packages
+  const packagesText = (config.packages || [])
     .map((p) => `- ${p.name}: ${p.price}\n  Includes: ${p.includes}`)
     .join('\n');
 
   return `BUSINESS TYPE: Salon / Spa
 SALON: ${config.salonName}
 TYPE: ${config.gender}
-BRANDS USED: ${config.brands.join(', ')}
+BRANDS USED: ${(config.brands || []).join(', ')}
 
 SERVICES:
 ${servicesText}
@@ -205,7 +206,7 @@ STRICT RULES FOR SALON BOT:
 }
 
 function buildD2CPrompt(config: Extract<ClientConfig, { type: 'd2c' }>): string {
-  const productsText = config.products
+  const productsText = (config.products || [])
     .map((p) => `- ${p.name}: ${p.price}${p.bestseller ? ' ⭐ Bestseller' : ''}\n  ${p.description}`)
     .join('\n\n');
 
@@ -219,7 +220,7 @@ ${productsText}
 SHIPPING: ${config.shippingPolicy}
 RETURNS: ${config.returnPolicy}
 COD: ${config.codAvailable ? 'Available' : 'Not available'}
-PAYMENT: ${config.paymentMethods.join(', ')}
+PAYMENT: ${(config.paymentMethods || []).join(', ')}
 WEBSITE: ${config.websiteUrl}
 INSTAGRAM: ${config.instagramHandle}
 ${config.currentOffers ? `CURRENT OFFERS: ${config.currentOffers}` : ''}
@@ -234,7 +235,7 @@ STRICT RULES FOR D2C BOT:
 }
 
 function buildGymPrompt(config: Extract<ClientConfig, { type: 'gym' }>): string {
-  const plansText = config.membershipPlans
+  const plansText = (config.membershipPlans || [])
     .map((p) => `- ${p.name} (${p.duration}): ${p.price}\n  Includes: ${p.includes}`)
     .join('\n');
 
@@ -242,13 +243,13 @@ function buildGymPrompt(config: Extract<ClientConfig, { type: 'gym' }>): string 
 GYM: ${config.gymName}
 TIMINGS: ${config.timings}
 
-FACILITIES: ${config.facilities.join(', ')}
+FACILITIES: ${(config.facilities || []).join(', ')}
 
 MEMBERSHIP PLANS:
 ${plansText}
 
 PERSONAL TRAINING: ${config.personalTraining.available ? `Available at ${config.personalTraining.pricePerSession}\n${config.personalTraining.trainerInfo}` : 'Not available'}
-GROUP CLASSES: ${config.groupClasses.join(', ')}
+GROUP CLASSES: ${(config.groupClasses || []).join(', ')}
 FREE TRIAL: ${config.trialAvailable ? config.trialDetails : 'Not available'}
 
 STRICT RULES FOR GYM BOT:

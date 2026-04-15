@@ -213,10 +213,37 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
                   <Input placeholder="https://i.imgur.com/abc.jpg" value={(item.imageUrl as string) || ''} onChange={(e) => update('imageUrl', e.target.value)} />
                   <p className="text-[10px] text-muted-foreground mt-1">Upload to imgur.com or similar, paste public URL here</p>
                 </div>
-                <div className="flex gap-6">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={(item.isVeg as boolean) ?? true} onCheckedChange={(v) => update('isVeg', v)} />
-                    <Label>Veg</Label>
+                <div className="flex gap-6 items-end flex-wrap">
+                  <div>
+                    <Label>Type</Label>
+                    <div className="flex gap-2 mt-1">
+                      {[
+                        { key: 'veg', label: '🟢 Veg' },
+                        { key: 'non-veg', label: '🔴 Non-Veg' },
+                        { key: 'egg', label: '🟡 Egg' },
+                      ].map((opt) => {
+                        const currentType = (item as Record<string, unknown>).foodType as string | undefined;
+                        const resolvedType = currentType || (item.isVeg ? 'veg' : 'non-veg');
+                        const active = resolvedType === opt.key;
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => {
+                              update('foodType', opt.key);
+                              update('isVeg', opt.key === 'veg');
+                            }}
+                            className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                              active
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-secondary border-border hover:border-primary/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={(item.isBestseller as boolean) ?? false} onCheckedChange={(v) => update('isBestseller', v)} />

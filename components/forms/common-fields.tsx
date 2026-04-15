@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,6 +11,90 @@ interface CommonFieldsProps {
 }
 
 const LANGUAGE_OPTIONS = ['Hindi', 'English', 'Hinglish', 'Punjabi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati'];
+
+interface DaySchedule {
+  enabled: boolean;
+  open: string;
+  close: string;
+}
+
+const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function parseWorkingHours(str: string): Record<string, DaySchedule> {
+  // Simple: if can't parse, default everyone to Mon-Sat 10-19
+  const result: Record<string, DaySchedule> = {};
+  DAYS_SHORT.forEach((d) => {
+    result[d] = {
+      enabled: d !== 'Sun',
+      open: '10:00',
+      close: '19:00',
+    };
+  });
+  return result;
+}
+
+function formatWorkingHours(schedule: Record<string, DaySchedule>): string {
+  const parts: string[] = [];
+  DAYS_SHORT.forEach((d) => {
+    const s = schedule[d];
+    if (s?.enabled) {
+      parts.push(`${d}: ${s.open}-${s.close}`);
+    } else {
+      parts.push(`${d}: Closed`);
+    }
+  });
+  return parts.join(', ');
+}
+
+function WorkingHoursPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(() => parseWorkingHours(value));
+
+  const updateDay = (day: string, patch: Partial<DaySchedule>) => {
+    const updated = { ...schedule, [day]: { ...schedule[day], ...patch } };
+    setSchedule(updated);
+    onChange(formatWorkingHours(updated));
+  };
+
+  return (
+    <div className="space-y-2 mt-1 border border-border rounded-lg p-3 bg-card">
+      {DAYS_SHORT.map((d) => {
+        const s = schedule[d];
+        return (
+          <div key={d} className="flex items-center gap-3">
+            <label className="flex items-center gap-2 w-24 text-sm">
+              <input
+                type="checkbox"
+                checked={s.enabled}
+                onChange={(e) => updateDay(d, { enabled: e.target.checked })}
+                className="accent-primary"
+              />
+              {d}
+            </label>
+            {s.enabled ? (
+              <>
+                <input
+                  type="time"
+                  value={s.open}
+                  onChange={(e) => updateDay(d, { open: e.target.value })}
+                  className="px-2 py-1 text-sm border border-border rounded bg-background"
+                />
+                <span className="text-muted-foreground">to</span>
+                <input
+                  type="time"
+                  value={s.close}
+                  onChange={(e) => updateDay(d, { close: e.target.value })}
+                  className="px-2 py-1 text-sm border border-border rounded bg-background"
+                />
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">Closed</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
   const languages = (data.languages as string[]) || ['Hindi', 'English', 'Hinglish'];
@@ -72,12 +157,10 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
       </div>
 
       <div>
-        <Label htmlFor="workingHours">Working Hours *</Label>
-        <Input
-          id="workingHours"
-          placeholder="e.g., Mon-Sat: 9 AM - 7 PM, Sunday: Closed"
+        <Label>Working Hours *</Label>
+        <WorkingHoursPicker
           value={(data.workingHours as string) || ''}
-          onChange={(e) => onChange('workingHours', e.target.value)}
+          onChange={(v) => onChange('workingHours', v)}
         />
       </div>
 

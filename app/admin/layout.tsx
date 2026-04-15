@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { UserButton } from '@clerk/nextjs';
 import { ThemeToggle } from '@/components/theme-toggle';
+import Image from 'next/image';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
@@ -10,7 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex h-screen">
       <aside className="w-[260px] bg-sidebar text-sidebar-foreground p-4 flex flex-col overflow-y-auto">
         <div className="flex items-center gap-2.5 px-2 pb-5 border-b border-sidebar-border mb-4">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-primary flex items-center justify-center text-base">🤖</div>
+          <Image src="/logo.png" alt="ZapText" width={36} height={36} className="rounded-xl" />
           <div>
             <div className="font-bold text-base">ZapText</div>
             <div className="text-[11px] text-sidebar-foreground/50">Admin Workspace</div>

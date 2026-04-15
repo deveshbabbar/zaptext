@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -6,7 +7,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
       <nav className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 font-bold">
-            <span className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">Z</span>
+            <Image src="/logo.png" alt="ZapText" width={32} height={32} className="rounded-lg" />
             <span>ZapText</span>
           </Link>
           <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">

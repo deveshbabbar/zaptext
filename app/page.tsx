@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { BUSINESS_TYPES } from '@/lib/constants';
 import { PLANS, type PlanKey } from '@/lib/plans';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default async function Home() {
   const user = await getUserRole();
@@ -21,9 +22,7 @@ function LandingPage() {
       <nav className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center font-bold text-lg text-primary-foreground">
-              W
-            </div>
+            <Image src="/logo.png" alt="ZapText" width={36} height={36} className="rounded-lg" />
             <span className="text-xl font-bold">ZapText</span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
@@ -248,9 +247,7 @@ function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-primary-foreground">
-                W
-              </div>
+              <Image src="/logo.png" alt="ZapText" width={32} height={32} className="rounded-lg" />
               <span className="text-lg font-bold">ZapText</span>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">

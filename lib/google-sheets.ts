@@ -1,0 +1,358 @@
+import { google } from 'googleapis';
+import { ClientRow, ConversationRow, AnalyticsRow, BusinessType } from './types';
+import { getISTTimestamp, getISTDate } from './utils';
+
+function getAuth() {
+  return new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+}
+
+function getSheets() {
+  return google.sheets({ version: 'v4', auth: getAuth() });
+}
+
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID!;
+
+// ─── Simple in-memory cache (30 second TTL) ───
+// Prevents quota exceeded errors when multiple components call getAllClients()
+// in the same request cycle. Invalidated on writes.
+interface CacheEntry<T> { data: T; expiresAt: number; }
+const cache = new Map<string, CacheEntry<unknown>>();
+const CACHE_TTL_MS = 30_000;
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCached<T>(key: string, data: T): void {
+  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+function invalidateCache(key?: string): void {
+  if (key) cache.delete(key);
+  else cache.clear();
+}
+
+// ─── Clients ───
+
+export async function getAllClients(): Promise<ClientRow[]> {
+  const cached = getCached<ClientRow[]>('clients');
+  if (cached) return cached;
+
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'clients!A2:L',
+  });
+  const rows = res.data.values || [];
+  const result = rows.map((row) => ({
+    client_id: row[0] || '',
+    business_name: row[1] || '',
+    type: (row[2] || '') as BusinessType,
+    owner_name: row[3] || '',
+    whatsapp_number: row[4] || '',
+    phone_number_id: row[5] || '',
+    city: row[6] || '',
+    system_prompt: row[7] || '',
+    knowledge_base_json: row[8] || '',
+    status: (row[9] || 'active') as ClientRow['status'],
+    created_at: row[10] || '',
+    owner_user_id: row[11] || '',
+  }));
+  setCached('clients', result);
+  return result;
+}
+
+export async function getClientById(clientId: string): Promise<ClientRow | null> {
+  const clients = await getAllClients();
+  return clients.find((c) => c.client_id === clientId) || null;
+}
+
+export async function getClientByPhoneNumberId(phoneNumberId: string): Promise<ClientRow | null> {
+  const clients = await getAllClients();
+  return clients.find((c) => c.phone_number_id === phoneNumberId) || null;
+}
+
+export async function addClient(client: ClientRow): Promise<void> {
+  const sheets = getSheets();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'clients!A:L',
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[
+        client.client_id,
+        client.business_name,
+        client.type,
+        client.owner_name,
+        client.whatsapp_number,
+        client.phone_number_id,
+        client.city,
+        client.system_prompt,
+        client.knowledge_base_json,
+        client.status,
+        client.created_at,
+        client.owner_user_id,
+      ]],
+    },
+  });
+  invalidateCache('clients');
+}
+
+export async function updateClientStatus(clientId: string, status: ClientRow['status']): Promise<void> {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'clients!A:A',
+  });
+  const rows = res.data.values || [];
+  const rowIndex = rows.findIndex((row) => row[0] === clientId);
+  if (rowIndex === -1) return;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `clients!J${rowIndex + 1}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[status]] },
+  });
+  invalidateCache('clients');
+}
+
+export async function updateClientField(clientId: string, field: string, value: string): Promise<void> {
+  const fieldToCol: Record<string, string> = {
+    system_prompt: 'H',
+    knowledge_base_json: 'I',
+    status: 'J',
+    phone_number_id: 'F',
+  };
+  const col = fieldToCol[field];
+  if (!col) return;
+
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'clients!A:A',
+  });
+  const rows = res.data.values || [];
+  const rowIndex = rows.findIndex((row) => row[0] === clientId);
+  if (rowIndex === -1) return;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `clients!${col}${rowIndex + 1}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[value]] },
+  });
+  invalidateCache('clients');
+}
+
+// ─── Conversations ───
+
+export async function getConversationHistory(
+  clientId: string,
+  customerPhone: string,
+  limit: number = 10
+): Promise<ConversationRow[]> {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'conversations!A2:F',
+  });
+  const rows = res.data.values || [];
+  const filtered = rows
+    .map((row) => ({
+      timestamp: row[0] || '',
+      client_id: row[1] || '',
+      customer_phone: row[2] || '',
+      direction: (row[3] || '') as ConversationRow['direction'],
+      message: row[4] || '',
+      message_type: row[5] || 'text',
+    }))
+    .filter((r) => r.client_id === clientId && r.customer_phone === customerPhone);
+  return filtered.slice(-limit);
+}
+
+export async function addConversationMessage(msg: ConversationRow): Promise<void> {
+  const sheets = getSheets();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'conversations!A:F',
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[
+        msg.timestamp,
+        msg.client_id,
+        msg.customer_phone,
+        msg.direction,
+        msg.message,
+        msg.message_type,
+      ]],
+    },
+  });
+  invalidateCache('conversations');
+}
+
+async function getAllConversations(): Promise<ConversationRow[]> {
+  const cached = getCached<ConversationRow[]>('conversations');
+  if (cached) return cached;
+
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'conversations!A2:F',
+  });
+  const rows = res.data.values || [];
+  const result = rows.map((row) => ({
+    timestamp: row[0] || '',
+    client_id: row[1] || '',
+    customer_phone: row[2] || '',
+    direction: (row[3] || '') as ConversationRow['direction'],
+    message: row[4] || '',
+    message_type: row[5] || 'text',
+  }));
+  setCached('conversations', result);
+  return result;
+}
+
+export async function getClientConversations(clientId: string): Promise<ConversationRow[]> {
+  const all = await getAllConversations();
+  return all.filter((r) => r.client_id === clientId);
+}
+
+// ─── Analytics ───
+
+export async function updateAnalytics(clientId: string, customerPhone: string): Promise<void> {
+  const sheets = getSheets();
+  const today = getISTDate();
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'analytics!A2:D',
+  });
+  const rows = res.data.values || [];
+  const existingIndex = rows.findIndex((r) => r[0] === today && r[1] === clientId);
+
+  if (existingIndex >= 0) {
+    const currentTotal = parseInt(rows[existingIndex][2] || '0', 10) + 1;
+    // Simple unique customer tracking: check conversations for today
+    const convRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'conversations!A2:C',
+    });
+    const convRows = convRes.data.values || [];
+    const todayCustomers = new Set(
+      convRows
+        .filter((r) => r[1] === clientId && (r[0] || '').startsWith(today.replace(/-/g, '/')))
+        .map((r) => r[2])
+    );
+    todayCustomers.add(customerPhone);
+
+    const rowNum = existingIndex + 2;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `analytics!C${rowNum}:D${rowNum}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[currentTotal, todayCustomers.size]] },
+    });
+  } else {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'analytics!A:D',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[today, clientId, 1, 1]],
+      },
+    });
+  }
+}
+
+export async function getClientAnalytics(clientId: string, days: number = 7): Promise<AnalyticsRow[]> {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'analytics!A2:D',
+  });
+  const rows = res.data.values || [];
+  return rows
+    .map((row) => ({
+      date: row[0] || '',
+      client_id: row[1] || '',
+      total_messages: parseInt(row[2] || '0', 10),
+      unique_customers: parseInt(row[3] || '0', 10),
+    }))
+    .filter((r) => r.client_id === clientId)
+    .slice(-days);
+}
+
+// ─── Init Sheets (create headers if needed) ───
+
+export async function initializeSheets(): Promise<void> {
+  const sheets = getSheets();
+
+  // Check if headers exist
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'clients!A1:L1',
+    });
+    if (!res.data.values || res.data.values.length === 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'clients!A1:L1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['client_id', 'business_name', 'type', 'owner_name', 'whatsapp_number', 'phone_number_id', 'city', 'system_prompt', 'knowledge_base_json', 'status', 'created_at', 'owner_user_id']],
+        },
+      });
+    }
+  } catch {
+    // Sheet might not exist yet
+  }
+
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'conversations!A1:F1',
+    });
+    if (!res.data.values || res.data.values.length === 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'conversations!A1:F1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['timestamp', 'client_id', 'customer_phone', 'direction', 'message', 'message_type']],
+        },
+      });
+    }
+  } catch {
+    // Sheet might not exist yet
+  }
+
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'analytics!A1:D1',
+    });
+    if (!res.data.values || res.data.values.length === 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'analytics!A1:D1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['date', 'client_id', 'total_messages', 'unique_customers']],
+        },
+      });
+    }
+  } catch {
+    // Sheet might not exist yet
+  }
+}

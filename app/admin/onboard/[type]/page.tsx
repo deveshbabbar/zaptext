@@ -32,7 +32,7 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
         <h1 className="text-2xl font-bold mb-2">Invalid business type</h1>
-        <a href="/onboard" className="text-primary hover:underline">Go back</a>
+        <a href="/admin/onboard" className="text-primary hover:underline">Go back</a>
       </div>
     );
   }
@@ -57,9 +57,9 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
       const data = await res.json();
       if (data.success) {
         toast.success('Bot created successfully!');
-        router.push(`/clients/${data.clientId}`);
+        router.push(`/admin/clients/${data.clientId}`);
       } else {
-        toast.error(data.error || 'Failed to create bot');
+        toast.error(data.message || data.error || 'Failed to create bot');
       }
     } catch {
       toast.error('Something went wrong. Please try again.');
@@ -136,7 +136,7 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <a href="/onboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">
+        <a href="/admin/onboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">
           &larr; Back to business types
         </a>
         <div className="flex items-center gap-3">

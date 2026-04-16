@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,20 @@ export default function CreateBotPage() {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [scraping, setScraping] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hasActivePlan, setHasActivePlan] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/client/subscription')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.current) {
+          setHasActivePlan(false);
+        } else {
+          setHasActivePlan(true);
+        }
+      })
+      .catch(() => setHasActivePlan(true));
+  }, []);
 
   const onChange = (field: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -79,8 +93,14 @@ export default function CreateBotPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Bot created!');
-        router.push('/client/dashboard');
+        toast.success('🎉 Bot created! It will take up to 48 hours to activate your AI bot.');
+        router.push('/client/dashboard?activated=pending');
+      } else if (data.error === 'NO_PLAN') {
+        toast.error('Please purchase a plan first!');
+        router.push('/client/subscription');
+      } else if (data.error === 'BOT_LIMIT') {
+        toast.error(data.message || 'Bot limit reached. Please upgrade your plan.');
+        router.push('/client/subscription');
       } else {
         toast.error(data.error || 'Failed');
       }
@@ -90,6 +110,36 @@ export default function CreateBotPage() {
   };
 
   const activeMeta = selectedType ? BUSINESS_TYPES.find((bt) => bt.type === selectedType) : null;
+
+  // Show blocker if no active plan
+  if (hasActivePlan === false) {
+    return (
+      <div className="p-8 max-w-lg mx-auto text-center">
+        <div className="bg-card border border-border rounded-2xl p-8">
+          <div className="text-5xl mb-4">🔒</div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Plan Required</h1>
+          <p className="text-muted-foreground mb-6">
+            You need an active subscription to create a WhatsApp bot. Choose a plan to get started!
+          </p>
+          <Button
+            onClick={() => router.push('/client/subscription')}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-3 text-base"
+          >
+            Choose a Plan →
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state while checking plan
+  if (hasActivePlan === null) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-4xl mx-auto">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ClientRow } from '@/lib/types';
 
 interface Stats {
@@ -29,9 +30,27 @@ export function ClientDashboard({
   allBotsCount: number;
   icon: string;
 }) {
+  const searchParams = useSearchParams();
   const [stats, setStats] = useState<Stats | null>(null);
   const [todayBookings, setTodayBookings] = useState<BookingItem[]>([]);
   const [copied, setCopied] = useState(false);
+  const [showActivationBanner, setShowActivationBanner] = useState(false);
+
+  // Show 48hr activation banner for newly created bots
+  useEffect(() => {
+    if (searchParams.get('activated') === 'pending') {
+      setShowActivationBanner(true);
+    }
+    // Also show if bot was created within last 48 hours
+    if (activeBot.created_at) {
+      const createdAt = new Date(activeBot.created_at);
+      const now = new Date();
+      const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceCreation < 48) {
+        setShowActivationBanner(true);
+      }
+    }
+  }, [searchParams, activeBot.created_at]);
 
   useEffect(() => {
     fetch('/api/auth/welcome', { method: 'POST' }).catch(() => {});
@@ -80,6 +99,30 @@ export function ClientDashboard({
           </a>
         </div>
       </div>
+
+      {showActivationBanner && (
+        <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl p-5 mb-5 flex items-start gap-4">
+          <div className="text-3xl">⏳</div>
+          <div className="flex-1">
+            <h3 className="font-bold text-foreground text-[15px] mb-1">Bot Activation In Progress</h3>
+            <p className="text-sm text-muted-foreground">
+              Your AI bot for <strong>{activeBot.business_name}</strong> is being set up.
+              It will take <strong>up to 48 hours</strong> to fully activate your WhatsApp AI bot.
+              We&apos;ll notify you once it&apos;s live and ready to handle customer conversations!
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              <span className="text-xs font-semibold text-amber-600">Activation pending...</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowActivationBanner(false)}
+            className="text-muted-foreground hover:text-foreground text-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {allBotsCount > 1 && (
         <div className="bg-gradient-to-br from-accent/10 to-background border border-dashed border-accent/30 rounded-xl p-3.5 flex items-center gap-3 mb-5">

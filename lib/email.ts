@@ -12,7 +12,9 @@ interface SendEmailParams {
 }
 
 export async function sendEmail({ to, toName, subject, html }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
-  if (!process.env.BREVO_API_KEY) {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey || apiKey === 'YOUR_BREVO_API_KEY_HERE') {
+    console.error('BREVO_API_KEY not configured or still placeholder. Get your key from https://app.brevo.com/settings/keys/api');
     return { success: false, error: 'BREVO_API_KEY not configured' };
   }
   if (!to) {
@@ -20,31 +22,47 @@ export async function sendEmail({ to, toName, subject, html }: SendEmailParams):
   }
 
   const senderName = process.env.BREVO_SENDER_NAME || 'ZapText';
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'no-reply@zaptext.shop';
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'zaptextofficial@gmail.com';
 
   try {
+    const payload = {
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: to, name: toName || to }],
+      subject,
+      htmlContent: html,
+    };
+
+    console.log(`[Email] Sending to ${to} | Subject: ${subject} | Sender: ${senderEmail}`);
+
     const res = await fetch(BREVO_API_URL, {
       method: 'POST',
       headers: {
-        'api-key': process.env.BREVO_API_KEY,
+        'api-key': apiKey,
         'Content-Type': 'application/json',
         accept: 'application/json',
       },
-      body: JSON.stringify({
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: to, name: toName || to }],
-        subject,
-        htmlContent: html,
-      }),
+      body: JSON.stringify(payload),
     });
+
     if (!res.ok) {
       const errorText = await res.text();
-      console.error('Brevo error:', errorText);
+      console.error(`[Email] Brevo API error (${res.status}):`, errorText);
+      // Common Brevo errors:
+      // 401 = Invalid API key
+      // 400 = Sender email not verified in Brevo
+      if (res.status === 401) {
+        console.error('[Email] Invalid BREVO_API_KEY. Check your key at https://app.brevo.com/settings/keys/api');
+      }
+      if (res.status === 400 && errorText.includes('sender')) {
+        console.error(`[Email] Sender email "${senderEmail}" may not be verified in Brevo. Go to https://app.brevo.com/senders/list to verify it.`);
+      }
       return { success: false, error: errorText };
     }
+
+    console.log(`[Email] Successfully sent to ${to}`);
     return { success: true };
   } catch (error) {
-    console.error('Email send error:', error);
+    console.error('[Email] Network/send error:', error);
     return { success: false, error: String(error) };
   }
 }

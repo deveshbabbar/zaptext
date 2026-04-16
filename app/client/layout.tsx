@@ -2,9 +2,34 @@ import { requireClientWithBots } from '@/lib/auth';
 import { UserButton } from '@clerk/nextjs';
 import { BotSwitcher } from '@/components/client/bot-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { getActiveSubscription } from '@/lib/subscription';
+import { PLANS } from '@/lib/plans';
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireClientWithBots();
+
+  // Fetch real subscription data
+  let subscriptionLabel = 'No Plan';
+  let subscriptionStatus = 'Inactive';
+  let usagePercent = 0;
+
+  try {
+    const sub = await getActiveSubscription(user.userId);
+    if (sub) {
+      const plan = PLANS[sub.plan];
+      subscriptionLabel = plan?.name || sub.plan;
+      subscriptionStatus = 'Active';
+      // Calculate days remaining as percentage
+      const start = new Date(sub.startDate).getTime();
+      const end = new Date(sub.endDate).getTime();
+      const now = Date.now();
+      const total = end - start;
+      const elapsed = now - start;
+      usagePercent = Math.min(Math.max(Math.round((elapsed / total) * 100), 0), 100);
+    }
+  } catch {
+    // Subscription fetch failed, show no plan
+  }
 
   const initials = (user.name || user.email)
     .split(/\s+/)
@@ -28,15 +53,27 @@ export default async function ClientLayout({ children }: { children: React.React
 
         <BotSwitcher bots={user.allBots} activeBotId={user.activeBot?.client_id || null} />
 
-        <div className="mx-2 mt-2 bg-primary/10 border border-primary/20 rounded-lg p-2 text-[11px]">
+        <div className={`mx-2 mt-2 border rounded-lg p-2 text-[11px] ${
+          subscriptionStatus === 'Active'
+            ? 'bg-primary/10 border-primary/20'
+            : 'bg-amber-500/10 border-amber-500/20'
+        }`}>
           <div className="flex justify-between text-sidebar-foreground">
-            <span className="font-bold">Pro Plan</span>
-            <a href="/client/subscription" className="text-accent font-semibold hover:underline">Upgrade</a>
+            <span className="font-bold">{subscriptionLabel} Plan</span>
+            <a href="/client/subscription" className="text-accent font-semibold hover:underline">
+              {subscriptionStatus === 'Active' ? 'Manage' : 'Subscribe'}
+            </a>
           </div>
-          <div className="h-[3px] bg-sidebar-foreground/10 rounded-full mt-1.5 overflow-hidden">
-            <div className="h-full w-1/4 bg-gradient-to-r from-accent to-accent/70 rounded-full" />
-          </div>
-          <div className="text-[10px] text-sidebar-foreground/50 mt-1">Active</div>
+          {subscriptionStatus === 'Active' ? (
+            <>
+              <div className="h-[3px] bg-sidebar-foreground/10 rounded-full mt-1.5 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-accent to-accent/70 rounded-full" style={{ width: `${usagePercent}%` }} />
+              </div>
+              <div className="text-[10px] text-sidebar-foreground/50 mt-1">{usagePercent}% cycle used · Active</div>
+            </>
+          ) : (
+            <div className="text-[10px] text-amber-600 mt-1 font-semibold">⚠️ No active plan — Subscribe to create bots</div>
+          )}
         </div>
 
         <div className="mt-4 mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">

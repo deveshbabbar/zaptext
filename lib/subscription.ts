@@ -40,34 +40,40 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID!;
 export async function getActiveSubscription(
   userId: string
 ): Promise<SubscriptionRecord | null> {
-  const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'subscriptions!A2:I',
-  });
-  const rows = res.data.values || [];
-  const now = new Date();
+  try {
+    const sheets = getSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'subscriptions!A2:I',
+    });
+    const rows = res.data.values || [];
+    const now = new Date();
 
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i];
-    if (row[0] === userId && row[2] === 'active') {
-      const endDate = new Date(row[7]);
-      if (endDate > now) {
-        return {
-          userId: row[0],
-          plan: row[1] as PlanKey,
-          status: 'active',
-          razorpayPaymentId: row[3],
-          razorpayOrderId: row[4],
-          amount: parseInt(row[5] || '0', 10),
-          startDate: row[6],
-          endDate: row[7],
-          createdAt: row[8],
-        };
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      if (row[0] === userId && row[2] === 'active') {
+        const endDate = new Date(row[7]);
+        if (endDate > now) {
+          return {
+            userId: row[0],
+            plan: row[1] as PlanKey,
+            status: 'active',
+            razorpayPaymentId: row[3],
+            razorpayOrderId: row[4],
+            amount: parseInt(row[5] || '0', 10),
+            startDate: row[6],
+            endDate: row[7],
+            createdAt: row[8],
+          };
+        }
       }
     }
+    return null;
+  } catch (error) {
+    // Handle case where subscriptions sheet doesn't exist yet
+    console.error('getActiveSubscription error (subscriptions sheet may not exist):', error);
+    return null;
   }
-  return null;
 }
 
 export async function createSubscription(
@@ -99,25 +105,30 @@ export async function createSubscription(
 export async function getSubscriptionHistory(
   userId: string
 ): Promise<SubscriptionRecord[]> {
-  const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'subscriptions!A2:I',
-  });
-  const rows = res.data.values || [];
+  try {
+    const sheets = getSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'subscriptions!A2:I',
+    });
+    const rows = res.data.values || [];
 
-  return rows
-    .filter((row) => row[0] === userId)
-    .map((row) => ({
-      userId: row[0],
-      plan: row[1] as PlanKey,
-      status: row[2] as SubscriptionRecord['status'],
-      razorpayPaymentId: row[3],
-      razorpayOrderId: row[4],
-      amount: parseInt(row[5] || '0', 10),
-      startDate: row[6],
-      endDate: row[7],
-      createdAt: row[8],
-    }))
-    .reverse();
+    return rows
+      .filter((row) => row[0] === userId)
+      .map((row) => ({
+        userId: row[0],
+        plan: row[1] as PlanKey,
+        status: row[2] as SubscriptionRecord['status'],
+        razorpayPaymentId: row[3],
+        razorpayOrderId: row[4],
+        amount: parseInt(row[5] || '0', 10),
+        startDate: row[6],
+        endDate: row[7],
+        createdAt: row[8],
+      }))
+      .reverse();
+  } catch (error) {
+    console.error('getSubscriptionHistory error (subscriptions sheet may not exist):', error);
+    return [];
+  }
 }

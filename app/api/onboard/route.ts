@@ -9,6 +9,8 @@ import { setActiveBotId } from '@/lib/active-bot';
 import { sendTemplate, tplAdminNewBot, tplWelcome } from '@/lib/email';
 import { clerkClient } from '@clerk/nextjs/server';
 import { getBotsByOwner } from '@/lib/owner-clients';
+import { getActiveSubscription } from '@/lib/subscription';
+import { PLANS } from '@/lib/plans';
 
 export async function POST(request: NextRequest) {
   const user = await getUserRole();
@@ -17,6 +19,30 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // ─── Check active subscription before allowing bot creation ───
+    // Admin users bypass subscription checks
+    const isAdmin = user.role === 'admin';
+    let existingBots = await getBotsByOwner(user.userId);
+
+    if (!isAdmin) {
+      const subscription = await getActiveSubscription(user.userId);
+      if (!subscription) {
+        return NextResponse.json(
+          { error: 'NO_PLAN', message: 'Please purchase a plan before creating a bot. Go to Subscription page to choose a plan.' },
+          { status: 403 }
+        );
+      }
+
+      // Check bot limit based on plan
+      const planConfig = PLANS[subscription.plan];
+      if (planConfig && existingBots.length >= planConfig.bots) {
+        return NextResponse.json(
+          { error: 'BOT_LIMIT', message: `Your ${planConfig.name} plan allows ${planConfig.bots} bot(s). Please upgrade to add more bots.` },
+          { status: 403 }
+        );
+      }
+    }
+
     const body = await request.json();
     const { config, phoneNumberId } = body as { config: ClientConfig; phoneNumberId: string };
 
@@ -41,7 +67,6 @@ export async function POST(request: NextRequest) {
       owner_user_id: user.userId,
     };
 
-    const existingBots = await getBotsByOwner(user.userId);
     const existingBotsCount = existingBots.length;
 
     await addClient(client);

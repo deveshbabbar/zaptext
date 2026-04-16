@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyWebhook, parseWebhookPayload, sendWhatsAppMessage } from '@/lib/whatsapp';
+import { verifyWebhook, parseWebhookPayload, sendWhatsAppMessage, isMessageProcessed } from '@/lib/whatsapp';
 import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics } from '@/lib/google-sheets';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
@@ -42,12 +42,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processMessages(phoneNumberId: string, messages: Array<{ from: string; text?: string; type: string }>) {
+async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
   if (!client || client.status !== 'active') return;
 
   for (const msg of messages) {
+    // Skip duplicate messages (WhatsApp may retry delivery)
+    if (msg.id && isMessageProcessed(msg.id)) {
+      console.log(`[Webhook] Skipping duplicate message: ${msg.id}`);
+      continue;
+    }
     const timestamp = getISTTimestamp();
     const customerPhone = msg.from;
 

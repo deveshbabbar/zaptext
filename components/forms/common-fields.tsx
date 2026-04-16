@@ -131,9 +131,24 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
             id="whatsappNumber"
             placeholder="+919876543210"
             value={(data.whatsappNumber as string) || ''}
-            onChange={(e) => onChange('whatsappNumber', e.target.value)}
+            onChange={(e) => {
+              // Only allow digits, +, and spaces
+              const cleaned = e.target.value.replace(/[^0-9+\s]/g, '');
+              onChange('whatsappNumber', cleaned);
+            }}
+            maxLength={15}
           />
-          <p className="text-xs text-muted-foreground mt-1">Include country code (+91)</p>
+          {(() => {
+            const num = (data.whatsappNumber as string) || '';
+            const digits = num.replace(/[^0-9]/g, '');
+            if (num && digits.length < 10) {
+              return <p className="text-xs text-red-500 mt-1">Number too short — need at least 10 digits with country code</p>;
+            }
+            if (num && digits.length > 15) {
+              return <p className="text-xs text-red-500 mt-1">Number too long</p>;
+            }
+            return <p className="text-xs text-muted-foreground mt-1">Include country code (e.g., +91 for India)</p>;
+          })()}
         </div>
         <div>
           <Label htmlFor="city">City *</Label>

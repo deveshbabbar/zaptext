@@ -86,6 +86,7 @@ export function verifyWebhook(
 }
 
 export interface WhatsAppMessage {
+  id: string;
   from: string;
   text?: string;
   type: string;
@@ -95,6 +96,21 @@ export interface WhatsAppMessage {
 export interface WhatsAppWebhookPayload {
   phoneNumberId: string;
   messages: WhatsAppMessage[];
+}
+
+// ─── Deduplication cache (prevents processing same message twice) ───
+const processedMessageIds = new Set<string>();
+const MAX_CACHE_SIZE = 5000;
+
+export function isMessageProcessed(messageId: string): boolean {
+  if (processedMessageIds.has(messageId)) return true;
+  // Prevent memory leak — clear oldest when too large
+  if (processedMessageIds.size >= MAX_CACHE_SIZE) {
+    const firstHalf = Array.from(processedMessageIds).slice(0, MAX_CACHE_SIZE / 2);
+    firstHalf.forEach((id) => processedMessageIds.delete(id));
+  }
+  processedMessageIds.add(messageId);
+  return false;
 }
 
 export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebhookPayload | null {
@@ -118,6 +134,7 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
     return {
       phoneNumberId,
       messages: messages.map((m) => ({
+        id: (m.id as string) || '',
         from: (m.from as string) || '',
         text: (m.text as Record<string, string>)?.body,
         type: (m.type as string) || 'unknown',

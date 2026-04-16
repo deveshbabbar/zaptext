@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { PLANS, type PlanKey } from '@/lib/plans';
+import { toast } from 'sonner';
 
 interface Subscription {
   plan: PlanKey;
@@ -73,17 +74,31 @@ export default function SubscriptionPage() {
     }
   }
 
+  const [razorpayReady, setRazorpayReady] = useState(false);
+
   function loadRazorpayScript() {
+    if (typeof window !== 'undefined' && window.Razorpay) {
+      setRazorpayReady(true);
+      return;
+    }
     if (document.getElementById('razorpay-script')) return;
     const script = document.createElement('script');
     script.id = 'razorpay-script';
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
+    script.onload = () => setRazorpayReady(true);
+    script.onerror = () => toast.error('Payment system failed to load. Please refresh the page.');
     document.body.appendChild(script);
   }
 
   async function handleSubscribe(plan: PlanKey) {
     if (!user) return;
+
+    if (!razorpayReady || !window.Razorpay) {
+      toast.error('Payment system is still loading. Please wait a moment and try again.');
+      return;
+    }
+
     setProcessingPlan(plan);
 
     try {
@@ -118,7 +133,7 @@ export default function SubscriptionPage() {
       rzp.open();
     } catch (err) {
       console.error('Payment error:', err);
-      alert('Failed to initiate payment. Please try again.');
+      toast.error('Failed to initiate payment. Please try again.');
     } finally {
       setProcessingPlan(null);
     }
@@ -138,14 +153,14 @@ export default function SubscriptionPage() {
       });
 
       if (verifyRes.ok) {
-        alert('Payment successful! Your subscription is now active.');
+        toast.success('🎉 Payment successful! Your subscription is now active.');
         loadSubscriptionData();
       } else {
-        alert('Payment verification failed. Please contact support.');
+        toast.error('Payment verification failed. Please contact support at zaptextofficial@gmail.com');
       }
     } catch (err) {
       console.error('Verification error:', err);
-      alert('Payment verification failed. Please contact support.');
+      toast.error('Payment verification failed. Please contact support at zaptextofficial@gmail.com');
     }
   }
 

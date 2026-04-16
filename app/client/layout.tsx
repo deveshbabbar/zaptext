@@ -12,6 +12,8 @@ export default async function ClientLayout({ children }: { children: React.React
   let subscriptionLabel = 'No Plan';
   let subscriptionStatus = 'Inactive';
   let usagePercent = 0;
+  let daysRemaining = 0;
+  let expiryWarning = false;
 
   try {
     const sub = await getActiveSubscription(user.userId);
@@ -26,6 +28,8 @@ export default async function ClientLayout({ children }: { children: React.React
       const total = end - start;
       const elapsed = now - start;
       usagePercent = Math.min(Math.max(Math.round((elapsed / total) * 100), 0), 100);
+      daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+      expiryWarning = daysRemaining <= 5;
     }
   } catch {
     // Subscription fetch failed, show no plan
@@ -66,10 +70,14 @@ export default async function ClientLayout({ children }: { children: React.React
           </div>
           {subscriptionStatus === 'Active' ? (
             <>
-              <div className="h-[3px] bg-sidebar-foreground/10 rounded-full mt-1.5 overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-accent to-accent/70 rounded-full" style={{ width: `${usagePercent}%` }} />
+              <div className={`h-[3px] rounded-full mt-1.5 overflow-hidden ${expiryWarning ? 'bg-red-500/20' : 'bg-sidebar-foreground/10'}`}>
+                <div className={`h-full rounded-full ${expiryWarning ? 'bg-red-500' : 'bg-gradient-to-r from-accent to-accent/70'}`} style={{ width: `${usagePercent}%` }} />
               </div>
-              <div className="text-[10px] text-sidebar-foreground/50 mt-1">{usagePercent}% cycle used · Active</div>
+              {expiryWarning ? (
+                <div className="text-[10px] text-red-500 mt-1 font-semibold">⚠️ {daysRemaining} day{daysRemaining !== 1 ? 's' : ''} left — Renew now!</div>
+              ) : (
+                <div className="text-[10px] text-sidebar-foreground/50 mt-1">{daysRemaining} days left · Active</div>
+              )}
             </>
           ) : (
             <div className="text-[10px] text-amber-600 mt-1 font-semibold">⚠️ No active plan — Subscribe to create bots</div>

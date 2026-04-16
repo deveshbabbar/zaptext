@@ -23,6 +23,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const { field, value } = await request.json();
+
+    // Only allow safe fields to be updated by clients
+    const ALLOWED_FIELDS = ['system_prompt', 'knowledge_base_json', 'business_name', 'city', 'whatsapp_number'];
+    if (!ALLOWED_FIELDS.includes(field)) {
+      return NextResponse.json({ error: 'Field not allowed' }, { status: 403 });
+    }
+
     await updateClientField(bot.client_id, field, value);
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -50,6 +50,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Validate WhatsApp number
+    if (config.whatsappNumber) {
+      const digits = config.whatsappNumber.replace(/[^0-9]/g, '');
+      if (digits.length < 10 || digits.length > 15) {
+        return NextResponse.json(
+          { error: 'Invalid WhatsApp number. Please enter a valid number with country code (e.g., +919876543210).' },
+          { status: 400 }
+        );
+      }
+    }
+
     const systemPrompt = generateSystemPrompt(config);
     const clientId = generateId();
     const client: ClientRow = {

@@ -12,15 +12,33 @@ export async function POST() {
     return NextResponse.json({ alreadySent: true });
   }
 
-  // Welcome email
+  let emailSent = false;
+
+  // Welcome email to user
   if (user.email) {
-    await sendTemplate(user.email, tplWelcome({ name: user.name || 'there' }), user.name);
+    console.log(`[Welcome] Sending welcome email to ${user.email}`);
+    const result = await sendTemplate(user.email, tplWelcome({ name: user.name || 'there' }), user.name);
+    if (result.success) {
+      emailSent = true;
+      console.log(`[Welcome] Welcome email sent successfully to ${user.email}`);
+    } else {
+      console.error(`[Welcome] Failed to send welcome email to ${user.email}:`, result.error);
+    }
   }
+
   // Admin notification
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@zaptext.shop';
-  await sendTemplate(adminEmail, tplAdminNewSignup({ name: user.name || 'Unknown', email: user.email }));
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    const adminResult = await sendTemplate(adminEmail, tplAdminNewSignup({ name: user.name || 'Unknown', email: user.email }));
+    if (!adminResult.success) {
+      console.error(`[Welcome] Failed to send admin notification:`, adminResult.error);
+    }
+  }
 
-  store.set('welcomed', '1', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 365 });
+  // Only set cookie if email was actually sent — so it retries next time if it failed
+  if (emailSent) {
+    store.set('welcomed', '1', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 365 });
+  }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: emailSent, emailSent });
 }

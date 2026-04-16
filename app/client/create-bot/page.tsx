@@ -93,7 +93,7 @@ export default function CreateBotPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('🎉 Bot created! It will take up to 48 hours to activate your AI bot.');
+        toast.success('🎉 Bot request submitted! Our team will review and activate your bot within 48 hours.');
         router.push('/client/dashboard?activated=pending');
       } else if (data.error === 'NO_PLAN') {
         toast.error('Please purchase a plan first!');

@@ -62,8 +62,14 @@ export default function AdminClientsPage() {
                         <span>{meta?.icon}</span>
                         {client.business_name}
                       </CardTitle>
-                      <Badge className={client.status === 'active' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'}>
-                        {client.status}
+                      <Badge className={
+                        client.status === 'active'
+                          ? 'bg-primary/10 text-primary border-primary/30'
+                          : client.status === 'pending'
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                      }>
+                        {client.status === 'pending' ? '⏳ pending' : client.status}
                       </Badge>
                     </div>
                   </CardHeader>

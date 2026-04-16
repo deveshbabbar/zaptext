@@ -27,6 +27,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [testing, setTesting] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState('');
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     fetch(`/api/clients/${id}`)
@@ -92,6 +93,31 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const handleApproveReject = async (action: 'approve' | 'reject') => {
+    setApproving(true);
+    try {
+      const res = await fetch('/api/admin/approve-bot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: id, action }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        toast.success(result.message);
+        setData((prev) => prev ? {
+          ...prev,
+          client: { ...prev.client, status: action === 'approve' ? 'active' : 'paused' }
+        } : prev);
+      } else {
+        toast.error(result.error || 'Failed');
+      }
+    } catch {
+      toast.error('Something went wrong');
+    } finally {
+      setApproving(false);
+    }
+  };
+
   const handleTestBot = async () => {
     if (!testMessage.trim()) return;
     setTesting(true);
@@ -142,15 +168,55 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           <Badge className={
             client.status === 'active'
               ? 'bg-green-500/10 text-green-400 border-green-500/30'
+              : client.status === 'pending'
+              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
               : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
           }>
             {client.status}
           </Badge>
-          <Button variant="outline" onClick={handleStatusToggle}>
-            {client.status === 'active' ? 'Pause Bot' : 'Activate Bot'}
-          </Button>
+          {client.status !== 'pending' && (
+            <Button variant="outline" onClick={handleStatusToggle}>
+              {client.status === 'active' ? 'Pause Bot' : 'Activate Bot'}
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Pending Approval Banner */}
+      {client.status === 'pending' && (
+        <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-2 border-amber-500/30 rounded-2xl p-6 mb-8">
+          <div className="flex items-start gap-4">
+            <div className="text-4xl">⏳</div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-foreground mb-1">Bot Pending Approval</h3>
+              <p className="text-sm text-muted-foreground mb-1">
+                This bot was created by the client and is waiting for your review.
+                Review the configuration, test the bot, and approve or reject it.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Created: {client.created_at} &middot; Owner: {client.owner_name}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button
+                onClick={() => handleApproveReject('reject')}
+                variant="outline"
+                disabled={approving}
+                className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+              >
+                {approving ? '...' : '✕ Reject'}
+              </Button>
+              <Button
+                onClick={() => handleApproveReject('approve')}
+                disabled={approving}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                {approving ? '...' : '✓ Approve & Activate'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

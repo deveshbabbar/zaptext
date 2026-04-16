@@ -36,21 +36,12 @@ export function ClientDashboard({
   const [copied, setCopied] = useState(false);
   const [showActivationBanner, setShowActivationBanner] = useState(false);
 
-  // Show 48hr activation banner for newly created bots
+  // Show activation banner for pending bots (awaiting admin approval)
   useEffect(() => {
-    if (searchParams.get('activated') === 'pending') {
+    if (activeBot.status === 'pending' || searchParams.get('activated') === 'pending') {
       setShowActivationBanner(true);
     }
-    // Also show if bot was created within last 48 hours
-    if (activeBot.created_at) {
-      const createdAt = new Date(activeBot.created_at);
-      const now = new Date();
-      const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceCreation < 48) {
-        setShowActivationBanner(true);
-      }
-    }
-  }, [searchParams, activeBot.created_at]);
+  }, [searchParams, activeBot.status]);
 
   useEffect(() => {
     fetch('/api/auth/welcome', { method: 'POST' }).catch(() => {});
@@ -104,23 +95,25 @@ export function ClientDashboard({
         <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl p-5 mb-5 flex items-start gap-4">
           <div className="text-3xl">⏳</div>
           <div className="flex-1">
-            <h3 className="font-bold text-foreground text-[15px] mb-1">Bot Activation In Progress</h3>
+            <h3 className="font-bold text-foreground text-[15px] mb-1">Bot Pending Approval</h3>
             <p className="text-sm text-muted-foreground">
-              Your AI bot for <strong>{activeBot.business_name}</strong> is being set up.
-              It will take <strong>up to 48 hours</strong> to fully activate your WhatsApp AI bot.
-              We&apos;ll notify you once it&apos;s live and ready to handle customer conversations!
+              Your AI bot for <strong>{activeBot.business_name}</strong> has been submitted for review.
+              Our team will review and activate your bot within <strong>48 hours</strong>.
+              You&apos;ll be notified once it&apos;s live and ready to handle customer conversations!
             </p>
             <div className="mt-3 flex items-center gap-2">
               <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-              <span className="text-xs font-semibold text-amber-600">Activation pending...</span>
+              <span className="text-xs font-semibold text-amber-600">Awaiting admin approval...</span>
             </div>
           </div>
-          <button
-            onClick={() => setShowActivationBanner(false)}
-            className="text-muted-foreground hover:text-foreground text-sm"
-          >
-            ✕
-          </button>
+          {activeBot.status !== 'pending' && (
+            <button
+              onClick={() => setShowActivationBanner(false)}
+              className="text-muted-foreground hover:text-foreground text-sm"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 
@@ -134,17 +127,41 @@ export function ClientDashboard({
         </div>
       )}
 
-      <div className="relative overflow-hidden bg-gradient-to-br from-sidebar to-primary rounded-2xl p-6 mb-5 text-sidebar-foreground grid grid-cols-[1fr_auto] gap-5 items-center">
+      <div className={`relative overflow-hidden rounded-2xl p-6 mb-5 text-sidebar-foreground grid grid-cols-[1fr_auto] gap-5 items-center ${
+        activeBot.status === 'pending'
+          ? 'bg-gradient-to-br from-amber-900/80 to-amber-800/60'
+          : 'bg-gradient-to-br from-sidebar to-primary'
+      }`}>
         <div className="absolute text-[180px] -right-8 -top-5 opacity-[0.08] select-none pointer-events-none">{icon}</div>
         <div className="relative">
-          <div className="text-[11px] uppercase tracking-wider text-accent mb-2 font-semibold flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 bg-accent rounded-full shadow-[0_0_8px_var(--accent)]" />
-            {icon} {activeBot.business_name.toUpperCase()} — LIVE
+          <div className="text-[11px] uppercase tracking-wider mb-2 font-semibold flex items-center gap-1.5">
+            {activeBot.status === 'pending' ? (
+              <>
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                <span className="text-amber-300">{icon} {activeBot.business_name.toUpperCase()} — PENDING APPROVAL</span>
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 bg-accent rounded-full shadow-[0_0_8px_var(--accent)]" />
+                <span className="text-accent">{icon} {activeBot.business_name.toUpperCase()} — LIVE</span>
+              </>
+            )}
           </div>
-          <h2 className="text-[22px] font-bold mb-1">Customers can chat 24/7</h2>
-          <p className="text-sidebar-foreground/70 text-[13px]">
-            Your AI has handled {stats?.totalMessages ?? 0} messages total.
-          </p>
+          {activeBot.status === 'pending' ? (
+            <>
+              <h2 className="text-[22px] font-bold mb-1">Bot under review</h2>
+              <p className="text-sidebar-foreground/70 text-[13px]">
+                Our team is setting up your bot. It will be activated within 48 hours.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-[22px] font-bold mb-1">Customers can chat 24/7</h2>
+              <p className="text-sidebar-foreground/70 text-[13px]">
+                Your AI has handled {stats?.totalMessages ?? 0} messages total.
+              </p>
+            </>
+          )}
         </div>
         <div className="bg-sidebar-foreground/10 px-[18px] py-3.5 rounded-xl font-mono text-sm flex items-center gap-2.5 relative">
           <span>📱</span>

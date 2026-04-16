@@ -24,7 +24,8 @@ export default function AdminDashboard() {
   const typeMeta = (type: string) => BUSINESS_TYPES.find((bt) => bt.type === type);
 
   const activeCount = clients.filter((c) => c.status === 'active').length;
-  const totalMessages = clients.length; // placeholder; real count comes from analytics
+  const pendingCount = clients.filter((c) => c.status === 'pending').length;
+  const pendingBots = clients.filter((c) => c.status === 'pending');
 
   return (
     <div className="p-8">
@@ -38,9 +39,32 @@ export default function AdminDashboard() {
         </a>
       </div>
 
+      {/* Pending Approvals Alert */}
+      {!loading && pendingCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-xl">⏳</div>
+              <div>
+                <p className="font-bold text-foreground">{pendingCount} bot{pendingCount > 1 ? 's' : ''} waiting for approval</p>
+                <p className="text-xs text-muted-foreground">
+                  {pendingBots.map((b) => b.business_name).join(', ')}
+                </p>
+              </div>
+            </div>
+            <a
+              href={pendingBots.length === 1 ? `/admin/clients/${pendingBots[0].client_id}` : '/admin/clients'}
+              className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors"
+            >
+              Review Now
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Stats Summary */}
       {!loading && clients.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card className="border-l-4 border-l-primary">
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-muted-foreground">Total Clients</p>
@@ -51,6 +75,12 @@ export default function AdminDashboard() {
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-muted-foreground">Active Bots</p>
               <p className="text-3xl font-bold">{activeCount}</p>
+            </CardContent>
+          </Card>
+          <Card className={`border-l-4 ${pendingCount > 0 ? 'border-l-amber-500' : 'border-l-primary'}`}>
+            <CardContent className="pt-4 pb-4">
+              <p className="text-sm text-muted-foreground">Pending Approval</p>
+              <p className={`text-3xl font-bold ${pendingCount > 0 ? 'text-amber-500' : ''}`}>{pendingCount}</p>
             </CardContent>
           </Card>
           <Card className="border-l-4 border-l-primary">
@@ -96,8 +126,14 @@ export default function AdminDashboard() {
                         <span>{meta?.icon}</span>
                         {client.business_name}
                       </CardTitle>
-                      <Badge className={client.status === 'active' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'}>
-                        {client.status}
+                      <Badge className={
+                        client.status === 'active'
+                          ? 'bg-primary/10 text-primary border-primary/30'
+                          : client.status === 'pending'
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                      }>
+                        {client.status === 'pending' ? '⏳ pending' : client.status}
                       </Badge>
                     </div>
                   </CardHeader>

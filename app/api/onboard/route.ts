@@ -62,7 +62,8 @@ export async function POST(request: NextRequest) {
       city: config.city,
       system_prompt: systemPrompt,
       knowledge_base_json: JSON.stringify(config),
-      status: 'active',
+      // Admin-created bots are active immediately; client-created bots need admin approval
+      status: isAdmin ? 'active' : 'pending',
       created_at: getISTTimestamp(),
       owner_user_id: user.userId,
     };
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
         await sendTemplate(ownerEmail, tplWelcome({ name: ownerName }), ownerName);
       }
 
+      // Notify admin about new bot (needs approval)
       const adminEmail = process.env.ADMIN_EMAIL || 'admin@zaptext.shop';
       await sendTemplate(adminEmail, tplAdminNewBot({
         businessName: client.business_name,
@@ -93,7 +95,8 @@ export async function POST(request: NextRequest) {
       console.error('Onboard emails failed:', e);
     }
 
-    if (phoneNumberId && config.whatsappNumber) {
+    // Only send WhatsApp activation message if admin created (immediately active)
+    if (isAdmin && phoneNumberId && config.whatsappNumber) {
       await sendWhatsAppMessage(
         phoneNumberId,
         formatPhoneNumber(config.whatsappNumber),
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, clientId });
+    return NextResponse.json({ success: true, clientId, status: isAdmin ? 'active' : 'pending' });
   } catch (error) {
     console.error('Onboard error:', error);
     return NextResponse.json({ error: String(error) }, { status: 500 });

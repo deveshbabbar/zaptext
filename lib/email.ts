@@ -1,8 +1,8 @@
-// Brevo (formerly Sendinblue) email integration
-// Free tier: 300 emails/day
-// Get API key from: https://app.brevo.com/settings/keys/api
+// Resend email integration
+// Free tier: 3,000 emails/month
+// Get API key from: https://resend.com/api-keys
 
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+const RESEND_API_URL = 'https://api.resend.com/emails';
 
 interface SendEmailParams {
   to: string;
@@ -12,54 +12,51 @@ interface SendEmailParams {
 }
 
 export async function sendEmail({ to, toName, subject, html }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
-  const apiKey = process.env.BREVO_API_KEY;
-  if (!apiKey || apiKey === 'YOUR_BREVO_API_KEY_HERE') {
-    console.error('BREVO_API_KEY not configured or still placeholder. Get your key from https://app.brevo.com/settings/keys/api');
-    return { success: false, error: 'BREVO_API_KEY not configured' };
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error('[Email] RESEND_API_KEY not configured. Get your key from https://resend.com/api-keys');
+    return { success: false, error: 'RESEND_API_KEY not configured' };
   }
   if (!to) {
     return { success: false, error: 'No recipient' };
   }
 
-  const senderName = process.env.BREVO_SENDER_NAME || 'ZapText';
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'zaptextofficial@gmail.com';
+  // Resend free tier uses "onboarding@resend.dev" as sender
+  // To use custom domain, add & verify domain at https://resend.com/domains
+  const senderEmail = process.env.RESEND_SENDER_EMAIL || 'onboarding@resend.dev';
+  const senderName = process.env.RESEND_SENDER_NAME || 'ZapText';
 
   try {
-    const payload = {
-      sender: { name: senderName, email: senderEmail },
-      to: [{ email: to, name: toName || to }],
-      subject,
-      htmlContent: html,
-    };
+    console.log(`[Email] Sending to ${to} | Subject: ${subject} | Sender: ${senderName} <${senderEmail}>`);
 
-    console.log(`[Email] Sending to ${to} | Subject: ${subject} | Sender: ${senderEmail}`);
-
-    const res = await fetch(BREVO_API_URL, {
+    const res = await fetch(RESEND_API_URL, {
       method: 'POST',
       headers: {
-        'api-key': apiKey,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        accept: 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        from: `${senderName} <${senderEmail}>`,
+        to: [to],
+        subject,
+        html,
+      }),
     });
 
     if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`[Email] Brevo API error (${res.status}):`, errorText);
-      // Common Brevo errors:
-      // 401 = Invalid API key
-      // 400 = Sender email not verified in Brevo
+      const errorData = await res.text();
+      console.error(`[Email] Resend API error (${res.status}):`, errorData);
       if (res.status === 401) {
-        console.error('[Email] Invalid BREVO_API_KEY. Check your key at https://app.brevo.com/settings/keys/api');
+        console.error('[Email] Invalid RESEND_API_KEY. Check your key at https://resend.com/api-keys');
       }
-      if (res.status === 400 && errorText.includes('sender')) {
-        console.error(`[Email] Sender email "${senderEmail}" may not be verified in Brevo. Go to https://app.brevo.com/senders/list to verify it.`);
+      if (res.status === 403) {
+        console.error('[Email] Sender domain not verified. Free tier must use "onboarding@resend.dev". For custom domain, verify at https://resend.com/domains');
       }
-      return { success: false, error: errorText };
+      return { success: false, error: errorData };
     }
 
-    console.log(`[Email] Successfully sent to ${to}`);
+    const result = await res.json();
+    console.log(`[Email] Successfully sent to ${to} | ID: ${result.id}`);
     return { success: true };
   } catch (error) {
     console.error('[Email] Network/send error:', error);

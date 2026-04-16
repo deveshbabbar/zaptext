@@ -32,9 +32,13 @@ export default async function AllBotsPage() {
                   </div>
                 </div>
                 <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full ${
-                  bot.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-yellow-500/15 text-yellow-600'
+                  bot.status === 'active'
+                    ? 'bg-primary/15 text-primary'
+                    : bot.status === 'pending'
+                    ? 'bg-amber-500/15 text-amber-600'
+                    : 'bg-yellow-500/15 text-yellow-600'
                 }`}>
-                  {bot.status}
+                  {bot.status === 'pending' ? '⏳ Pending Approval' : bot.status}
                 </span>
               </div>
               <div className="text-[12px] text-muted-foreground mb-3">

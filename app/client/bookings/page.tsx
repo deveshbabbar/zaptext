@@ -30,8 +30,10 @@ export default function ClientBookingsPage() {
       .catch(() => setLoading(false));
   }, []);
 
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
   const handleCancel = async (bookingId: string) => {
-    if (!confirm('Cancel this booking?')) return;
+    setCancellingId(bookingId);
     try {
       await fetch('/api/booking/cancel', {
         method: 'POST',
@@ -39,16 +41,19 @@ export default function ClientBookingsPage() {
         body: JSON.stringify({ bookingId }),
       });
       setBookings((prev) => prev.map((b) => b.booking_id === bookingId ? { ...b, status: 'cancelled' } : b));
-      toast.success('Booking cancelled');
+      toast.success('Booking cancelled successfully');
     } catch {
-      toast.error('Failed to cancel');
+      toast.error('Failed to cancel booking');
+    } finally {
+      setCancellingId(null);
     }
   };
 
   if (loading) return <div className="p-8"><div className="animate-pulse h-64 bg-muted rounded-lg"></div></div>;
 
-  const upcoming = bookings.filter((b) => b.status === 'confirmed' && b.date >= new Date().toISOString().split('T')[0]);
-  const past = bookings.filter((b) => b.status === 'completed' || (b.status === 'confirmed' && b.date < new Date().toISOString().split('T')[0]));
+  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const upcoming = bookings.filter((b) => b.status === 'confirmed' && b.date >= todayIST);
+  const past = bookings.filter((b) => b.status === 'completed' || (b.status === 'confirmed' && b.date < todayIST));
   const cancelled = bookings.filter((b) => b.status === 'cancelled');
 
   const BookingList = ({ items }: { items: BookingItem[] }) => (
@@ -69,7 +74,9 @@ export default function ClientBookingsPage() {
                 {b.status}
               </Badge>
               {b.status === 'confirmed' && (
-                <Button variant="outline" size="sm" onClick={() => handleCancel(b.booking_id)}>Cancel</Button>
+                <Button variant="outline" size="sm" onClick={() => handleCancel(b.booking_id)} disabled={cancellingId === b.booking_id}>
+                  {cancellingId === b.booking_id ? 'Cancelling...' : 'Cancel'}
+                </Button>
               )}
             </div>
           </div>

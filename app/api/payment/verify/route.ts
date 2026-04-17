@@ -28,6 +28,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate plan is a real plan key before using it
+    if (typeof plan !== 'string' || !(plan in PLANS)) {
+      return NextResponse.json(
+        { error: 'Invalid plan' },
+        { status: 400 }
+      );
+    }
+    const validPlan = plan as PlanKey;
+
     // Verify the payment signature
     const isValid = verifyPaymentSignature(
       razorpay_order_id,
@@ -50,25 +59,25 @@ export async function POST(req: NextRequest) {
     // Create subscription record in Google Sheets
     await createSubscription({
       userId: user.userId,
-      plan: plan as PlanKey,
+      plan: validPlan,
       status: 'active',
       razorpayPaymentId: razorpay_payment_id,
       razorpayOrderId: razorpay_order_id,
-      amount: PLANS[plan as PlanKey].price,
+      amount: PLANS[validPlan].price,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       createdAt: getISTTimestamp(),
     });
 
-    const planLabel = PLANS[plan as PlanKey].name;
-    const planAmount = PLANS[plan as PlanKey].price;
+    const planLabel = PLANS[validPlan].name;
+    const planAmount = PLANS[validPlan].price;
 
     try {
       const cc = await clerkClient();
       const ownerData = await cc.users.getUser(user.userId);
       const ownerEmail = ownerData.emailAddresses[0]?.emailAddress;
       const ownerName = `${ownerData.firstName || ''} ${ownerData.lastName || ''}`.trim() || 'there';
-      const nextBilling = new Date(); nextBilling.setMonth(nextBilling.getMonth() + 1);
+      const nextBilling = new Date(); nextBilling.setDate(nextBilling.getDate() + 30);
       if (ownerEmail) {
         await sendTemplate(ownerEmail, tplSubscriptionStarted({
           name: ownerName,

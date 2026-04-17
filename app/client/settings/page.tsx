@@ -26,12 +26,16 @@ export default function ClientSettingsPage() {
   const handleSavePrompt = async () => {
     setSaving(true);
     try {
-      await fetch('/api/client/settings', {
+      const res = await fetch('/api/client/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ field: 'system_prompt', value: prompt }),
       });
-      toast.success('System prompt updated!');
+      if (res.ok) {
+        toast.success('System prompt updated!');
+      } else {
+        toast.error('Failed to save');
+      }
     } catch {
       toast.error('Failed to save');
     } finally {

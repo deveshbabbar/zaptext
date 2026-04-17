@@ -153,21 +153,28 @@ BOOKING INSTRUCTIONS:
     // Process booking commands from AI response
     let finalResponse = aiResponse;
 
-    const bookingMatch = aiResponse.match(/\[BOOK:([^\]]+)\]/);
+    const bookingMatch = aiResponse.match(/\[BOOK:(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2}):([^:\]]+):([^:\]]*):?([^\]]*)\]/);
     if (bookingMatch) {
-      const parts = bookingMatch[1].split(':');
-      const [date, time, name, service, ...notesParts] = parts;
+      const [, date, time, name, service, notes] = bookingMatch;
       try {
+        // Validate date and time format
+        const dateObj = new Date(date);
+        if (isNaN(dateObj.getTime())) throw new Error('Invalid date from AI');
+        const [h, m] = time.split(':').map(Number);
+        if (h < 0 || h > 23 || m < 0 || m > 59) throw new Error('Invalid time from AI');
+        const safeName = (name || 'Customer').slice(0, 100);
+        const safeService = (service || '').slice(0, 100);
+        const safeNotes = (notes || '').slice(0, 200);
         const slotDuration = 30; // default
         await createBooking({
           clientId: client.client_id,
           customerPhone,
-          customerName: name || 'Customer',
+          customerName: safeName,
           date,
           timeSlot: time,
           endTime: calculateEndTime(time, slotDuration),
-          service: service || '',
-          notes: notesParts.join(':') || '',
+          service: safeService,
+          notes: safeNotes,
         });
         // Notify owner via WhatsApp
         const ownerMsg = `🔔 *New Booking!*\n\n👤 ${name}\n📞 ${customerPhone}\n📅 ${date}\n🕐 ${time}\n${service ? `💼 ${service}\n` : ''}`;

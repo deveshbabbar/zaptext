@@ -130,10 +130,14 @@ export async function updateClientStatus(clientId: string, status: ClientRow['st
 
 export async function updateClientField(clientId: string, field: string, value: string): Promise<void> {
   const fieldToCol: Record<string, string> = {
+    business_name: 'B',
+    owner_name: 'D',
+    whatsapp_number: 'E',
+    phone_number_id: 'F',
+    city: 'G',
     system_prompt: 'H',
     knowledge_base_json: 'I',
     status: 'J',
-    phone_number_id: 'F',
   };
   const col = fieldToCol[field];
   if (!col) return;
@@ -290,6 +294,7 @@ export async function getClientAnalytics(clientId: string, days: number = 7): Pr
       unique_customers: parseInt(row[3] || '0', 10),
     }))
     .filter((r) => r.client_id === clientId)
+    .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-days);
 }
 

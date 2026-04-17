@@ -77,13 +77,17 @@ export function getCurrentTimeIST(): string {
 
 export function getDayOfWeek(date: string): string {
   const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  return days[new Date(date).getDay()];
+  // Parse as local date to avoid UTC day-of-week shift
+  const [year, month, day] = date.split('-').map(Number);
+  return days[new Date(year, month - 1, day).getDay()];
 }
 
 export function getDateOffset(date: string, days: number): string {
-  const d = new Date(date);
+  // Parse as local date to avoid UTC shift
+  const [year, month, day] = date.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function calculateEndTime(startTime: string, durationMinutes: number): string {
@@ -325,7 +329,7 @@ export async function createBooking(params: {
   }
 
   const booking: Booking = {
-    booking_id: `BK_${Date.now()}`,
+    booking_id: `BK_${crypto.randomUUID()}`,
     client_id: params.clientId,
     customer_phone: params.customerPhone,
     customer_name: params.customerName,

@@ -6,7 +6,8 @@ import { clerkClient } from '@clerk/nextjs/server';
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -16,15 +17,15 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
   const cc = await clerkClient();
 
-  for (const client of clients) {
-    if (client.status !== 'active') continue;
-    try {
+  const activeClients = clients.filter((c) => c.status === 'active');
+  const results = await Promise.allSettled(
+    activeClients.map(async (client) => {
       const bookings = await getBookingsForDate(client.client_id, tomorrow);
       const confirmed = bookings.filter((b) => b.status === 'confirmed');
       const owner = await cc.users.getUser(client.owner_user_id);
       const ownerEmail = owner.emailAddresses[0]?.emailAddress;
       const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
-      if (!ownerEmail) continue;
+      if (!ownerEmail) return;
       await sendTemplate(ownerEmail, tplDailyEveningSummary({
         ownerName,
         businessName: client.business_name,
@@ -32,9 +33,10 @@ export async function GET(request: NextRequest) {
         bookings: confirmed.map((b) => ({ time: b.time_slot, customer: b.customer_name, service: b.service })),
       }), ownerName);
       sent++;
-    } catch (e) {
-      errors.push(`${client.client_id}: ${e}`);
-    }
+    })
+  );
+  for (const r of results) {
+    if (r.status === 'rejected') errors.push(String(r.reason));
   }
 
   return NextResponse.json({ success: true, sent, errors });

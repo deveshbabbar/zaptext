@@ -87,6 +87,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Admin messages error:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 });
   }
 }

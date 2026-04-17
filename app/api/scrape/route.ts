@@ -4,12 +4,28 @@ import { BusinessType } from '@/lib/types';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
+function isAllowedUrl(input: string): boolean {
+  let parsed: URL;
+  try { parsed = new URL(input); } catch { return false; }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+  const hostname = parsed.hostname.toLowerCase();
+  const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254',
+    'metadata.google.internal', '::1', '[::1]'];
+  if (blocked.includes(hostname) || hostname.endsWith('.local') || hostname.endsWith('.internal')) return false;
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)) return false;
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { url, businessType } = await request.json() as { url: string; businessType: BusinessType };
 
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    if (!isAllowedUrl(url)) {
+      return NextResponse.json({ error: 'Invalid or disallowed URL' }, { status: 400 });
     }
 
     // Fetch website content
@@ -65,7 +81,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Scrape error:', error);
     return NextResponse.json(
-      { error: 'Failed to extract data. Try a different URL or fill manually.', details: String(error) },
+      { error: 'Failed to extract data. Try a different URL or fill manually.' },
       { status: 500 }
     );
   }

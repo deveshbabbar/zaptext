@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { PLANS, type PlanKey } from '@/lib/plans';
 import { toast } from 'sonner';
@@ -112,8 +112,14 @@ export default function SubscriptionPage() {
 
       const orderData = await orderRes.json();
 
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        toast.error('Payment configuration error. Please contact support.');
+        return;
+      }
+
       const options: RazorpayOptions = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+        key: razorpayKey,
         amount: orderData.amount,
         currency: orderData.currency,
         name: 'ZapText',

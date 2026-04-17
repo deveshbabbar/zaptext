@@ -205,7 +205,7 @@ export interface ClientRow {
   city: string;
   system_prompt: string;
   knowledge_base_json: string;
-  status: 'active' | 'pending' | 'paused' | 'error';
+  status: 'active' | 'pending' | 'paused' | 'rejected' | 'error';
   created_at: string;
   owner_user_id: string;
 }

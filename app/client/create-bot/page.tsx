@@ -31,7 +31,7 @@ export default function CreateBotPage() {
           setHasActivePlan(true);
         }
       })
-      .catch(() => setHasActivePlan(true));
+      .catch(() => setHasActivePlan(false));
   }, []);
 
   const onChange = (field: string, value: unknown) => {

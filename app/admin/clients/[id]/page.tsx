@@ -66,11 +66,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const handleStatusToggle = async () => {
     const newStatus = client.status === 'active' ? 'paused' : 'active';
     try {
-      await fetch(`/api/clients/${id}`, {
+      const res = await fetch(`/api/clients/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ field: 'status', value: newStatus }),
       });
+      if (!res.ok) { toast.error('Failed to update status'); return; }
       setData((prev) => prev ? { ...prev, client: { ...prev.client, status: newStatus as ClientRow['status'] } } : prev);
       toast.success(`Bot ${newStatus === 'active' ? 'activated' : 'paused'}`);
     } catch {
@@ -80,11 +81,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
   const handleSavePrompt = async () => {
     try {
-      await fetch(`/api/clients/${id}`, {
+      const res = await fetch(`/api/clients/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ field: 'system_prompt', value: promptDraft }),
       });
+      if (!res.ok) { toast.error('Failed to save'); return; }
       setData((prev) => prev ? { ...prev, client: { ...prev.client, system_prompt: promptDraft } } : prev);
       setEditingPrompt(false);
       toast.success('System prompt updated');
@@ -106,7 +108,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         toast.success(result.message);
         setData((prev) => prev ? {
           ...prev,
-          client: { ...prev.client, status: action === 'approve' ? 'active' : 'paused' }
+          client: { ...prev.client, status: action === 'approve' ? 'active' : 'rejected' }
         } : prev);
       } else {
         toast.error(result.error || 'Failed');
@@ -384,7 +386,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             </CardHeader>
             <CardContent>
               <pre className="whitespace-pre-wrap text-sm bg-muted rounded-lg p-4 max-h-[600px] overflow-y-auto">
-                {JSON.stringify(JSON.parse(client.knowledge_base_json || '{}'), null, 2)}
+                {(() => { try { return JSON.stringify(JSON.parse(client.knowledge_base_json || '{}'), null, 2); } catch { return client.knowledge_base_json || 'No configuration data'; } })()}
               </pre>
             </CardContent>
           </Card>

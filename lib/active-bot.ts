@@ -13,6 +13,7 @@ export async function setActiveBotId(botId: string): Promise<void> {
   const store = await cookies();
   store.set(COOKIE_NAME, botId, {
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 365,

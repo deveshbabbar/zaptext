@@ -83,8 +83,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'reject') {
-      // Set bot to paused/rejected
-      await updateClientField(clientId, 'status', 'paused');
+      await updateClientField(clientId, 'status', 'rejected');
 
       return NextResponse.json({ success: true, message: `Bot "${client.business_name}" has been rejected.` });
     }
@@ -92,6 +91,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('Approve bot error:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 });
   }
 }

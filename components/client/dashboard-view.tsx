@@ -79,8 +79,16 @@ export function ClientDashboard({
           </div>
         </div>
         <div className="flex gap-2.5">
-          <button className="bg-card border border-border px-3.5 py-2.5 rounded-xl text-[13px] font-semibold flex items-center gap-1.5 hover:border-primary/50 transition-colors">
-            🔗 Share Bot Link
+          <button
+            onClick={() => {
+              const link = `${window.location.origin}/clients/${activeBot.client_id}`;
+              navigator.clipboard.writeText(link);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="bg-card border border-border px-3.5 py-2.5 rounded-xl text-[13px] font-semibold flex items-center gap-1.5 hover:border-primary/50 transition-colors"
+          >
+            🔗 {copied ? 'Link Copied!' : 'Share Bot Link'}
           </button>
           <a
             href="/client/create-bot"

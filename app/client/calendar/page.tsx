@@ -1,27 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { PageTopbar, PageHead, Panel, Pill, StatusPill } from '@/components/app/primitives';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
-interface Override {
-  date: string;
-  override_type: string;
-  reason: string;
-}
-
+interface Override { date: string; override_type: string; reason: string; }
 interface BookingItem {
-  date: string;
-  time_slot: string;
-  end_time: string;
-  customer_name: string;
-  service: string;
-  status: string;
+  date: string; time_slot: string; end_time: string;
+  customer_name: string; service: string; status: string;
 }
 
 export default function CalendarPage() {
@@ -37,30 +29,27 @@ export default function CalendarPage() {
     Promise.all([
       fetch('/api/client/date-overrides').then((r) => r.json()),
       fetch('/api/client/bookings').then((r) => r.json()),
-    ]).then(([ovData, bkData]) => {
-      setOverrides(ovData.overrides || []);
-      setBookings(bkData.bookings || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    ])
+      .then(([ovData, bkData]) => {
+        setOverrides(ovData.overrides || []);
+        setBookings(bkData.bookings || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  // Calendar helpers
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date().toISOString().split('T')[0];
 
-  const prevMonth = () => setCurrentMonth(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
+  const formatDate = (day: number) =>
+    `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  const formatDate = (day: number) => {
-    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  };
-
-  const isBlocked = (dateStr: string) => overrides.some((o) => o.date === dateStr && o.override_type === 'blocked');
-  const getBookingsForDay = (dateStr: string) => bookings.filter((b) => b.date === dateStr && b.status === 'confirmed');
-  const getOverride = (dateStr: string) => overrides.find((o) => o.date === dateStr);
+  const isBlocked = (d: string) => overrides.some((o) => o.date === d && o.override_type === 'blocked');
+  const getBookingsForDay = (d: string) => bookings.filter((b) => b.date === d && b.status === 'confirmed');
+  const getOverride = (d: string) => overrides.find((o) => o.date === d);
 
   const handleBlockDate = async () => {
     if (!selectedDate) return;
@@ -79,200 +68,180 @@ export default function CalendarPage() {
     }
   };
 
-  if (loading) return <div className="p-8"><div className="animate-pulse h-64 bg-muted rounded-lg"></div></div>;
-
   const selectedBookings = selectedDate ? getBookingsForDay(selectedDate) : [];
   const selectedOverride = selectedDate ? getOverride(selectedDate) : null;
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-8">Calendar</h1>
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Calendar</b> · {MONTHS[month]} {year}</>}
+        actions={
+          <>
+            <Pill variant="ghost" onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}>← Prev</Pill>
+            <Pill variant="ghost" onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}>Next →</Pill>
+          </>
+        }
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Month at a <span className="zt-serif">glance.</span></>}
+          sub="Bookings, blocked days, density — at a glance."
+        />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Calendar Grid */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <Button variant="outline" size="sm" onClick={prevMonth}>&larr;</Button>
-                <CardTitle className="text-xl">{MONTHS[month]} {year}</CardTitle>
-                <Button variant="outline" size="sm" onClick={nextMonth}>&rarr;</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Day headers */}
-              <div className="grid grid-cols-7 gap-1 mb-2">
-                {DAYS.map((d) => (
-                  <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>
-                ))}
-              </div>
-
-              {/* Calendar days */}
-              <div className="grid grid-cols-7 gap-1">
-                {/* Empty cells before first day */}
-                {Array.from({ length: firstDay }).map((_, i) => (
-                  <div key={`empty-${i}`} className="h-20 rounded-lg"></div>
-                ))}
-
-                {/* Day cells */}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const day = i + 1;
-                  const dateStr = formatDate(day);
-                  const blocked = isBlocked(dateStr);
-                  const dayBookings = getBookingsForDay(dateStr);
-                  const isToday = dateStr === today;
-                  const isSelected = dateStr === selectedDate;
-                  const isPast = dateStr < today;
-
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => setSelectedDate(dateStr)}
-                      className={`h-20 rounded-lg border text-left p-1.5 transition-all relative
-                        ${isSelected ? 'border-primary ring-2 ring-primary/30' : 'border-border'}
-                        ${blocked ? 'bg-red-500/10' : 'hover:border-primary/50'}
-                        ${isToday ? 'bg-primary/10' : ''}
-                        ${isPast ? 'opacity-50' : ''}
-                      `}
-                    >
-                      <span className={`text-sm font-medium ${isToday ? 'text-primary' : ''} ${blocked ? 'text-red-400 line-through' : ''}`}>
-                        {day}
+        {loading ? (
+          <div className="animate-pulse h-96 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+            <div
+              className="grid grid-cols-7 gap-1 bg-[var(--card)] border border-[var(--line)] rounded-[14px]"
+              style={{ padding: 12 }}
+            >
+              {DAYS.map((d) => (
+                <div key={d} className="zt-mono text-[10.5px] text-[var(--mute)] text-center py-2">
+                  {d}
+                </div>
+              ))}
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <div key={`e-${i}`} className="aspect-square" />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const dateStr = formatDate(day);
+                const blocked = isBlocked(dateStr);
+                const dayBookings = getBookingsForDay(dateStr);
+                const isToday = dateStr === today;
+                const isSelected = dateStr === selectedDate;
+                const isPast = dateStr < today;
+                const has = dayBookings.length > 0;
+                return (
+                  <button
+                    key={day}
+                    onClick={() => setSelectedDate(dateStr)}
+                    className={`aspect-square rounded-[10px] flex flex-col justify-between text-[12px] text-left cursor-pointer transition-all border ${
+                      blocked
+                        ? 'bg-red-500/10 border-red-500/20'
+                        : has
+                        ? 'bg-[var(--accent)] text-[var(--accent-2)] font-semibold border-transparent'
+                        : 'bg-[var(--bg-2)] border-transparent hover:bg-[#f5eadb]'
+                    } ${isToday ? 'ring-1 ring-[var(--ink)]' : ''} ${isSelected ? 'ring-2 ring-[var(--ink)]' : ''} ${isPast ? 'opacity-60' : ''}`}
+                    style={{ padding: '6px 8px' }}
+                  >
+                    <span className={`zt-mono font-bold ${blocked ? 'text-red-400 line-through' : ''}`}>{day}</span>
+                    {blocked && <span className="text-[9.5px] text-red-400">Blocked</span>}
+                    {has && !blocked && (
+                      <span className="text-[9.5px] opacity-80">
+                        {dayBookings.length} booking{dayBookings.length > 1 ? 's' : ''}
                       </span>
-                      {blocked && (
-                        <div className="text-[10px] text-red-400 mt-0.5">Blocked</div>
-                      )}
-                      {dayBookings.length > 0 && (
-                        <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                          <div className="text-[10px] bg-primary/20 text-primary rounded px-1 py-0.5 text-center font-medium">
-                            {dayBookings.length} booking{dayBookings.length > 1 ? 's' : ''}
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col gap-3.5">
+              {selectedDate ? (
+                <>
+                  <Panel
+                    title={new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-IN', {
+                      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+                    })}
+                  >
+                    {selectedOverride?.override_type === 'blocked' ? (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-[10px] p-3">
+                        <div className="text-[13px] font-semibold text-red-400">Day blocked</div>
+                        {selectedOverride.reason && (
+                          <div className="text-[12px] text-[var(--mute)] mt-1">{selectedOverride.reason}</div>
+                        )}
+                      </div>
+                    ) : selectedBookings.length === 0 ? (
+                      <p className="text-[13px] text-[var(--mute)] m-0">No bookings.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {selectedBookings.map((b, i) => (
+                          <div key={i} className="border border-[var(--line)] rounded-[10px] p-2.5">
+                            <div className="flex justify-between items-baseline">
+                              <div className="font-semibold text-[13.5px]">{b.customer_name}</div>
+                              <div className="zt-mono text-[12px] text-[var(--ink)]">
+                                {b.time_slot}–{b.end_time}
+                              </div>
+                            </div>
+                            {b.service && (
+                              <div className="text-[12px] text-[var(--mute)] mt-0.5">{b.service}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Panel>
+
+                  {!isBlocked(selectedDate) && selectedDate >= today && (
+                    <Panel>
+                      {showBlockForm ? (
+                        <div className="flex flex-col gap-2.5">
+                          <input
+                            placeholder="Reason (optional)"
+                            value={blockReason}
+                            onChange={(e) => setBlockReason(e.target.value)}
+                            className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                            style={{ padding: '11px 13px' }}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleBlockDate}
+                              className="flex-1 rounded-[12px] bg-red-500 text-white font-semibold text-[13px] py-3 hover:bg-red-600"
+                            >
+                              Block this day
+                            </button>
+                            <Pill onClick={() => setShowBlockForm(false)}>Cancel</Pill>
                           </div>
                         </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowBlockForm(true)}
+                          className="w-full rounded-[12px] border border-red-500/30 text-red-400 font-semibold text-[13px] py-3 hover:bg-red-500/10"
+                        >
+                          Block this day
+                        </button>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
+                    </Panel>
+                  )}
+                </>
+              ) : (
+                <Panel>
+                  <div className="text-center text-[var(--mute)] py-6">
+                    <div className="text-[32px] mb-1">📆</div>
+                    <div className="text-[13px]">Click a date to see details</div>
+                  </div>
+                </Panel>
+              )}
 
-              {/* Legend */}
-              <div className="flex gap-4 mt-4 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-primary/20 border border-primary/30"></div>
-                  Today
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-red-500/10 border border-red-500/30"></div>
-                  Blocked
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-primary/20"></div>
-                  Has Bookings
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Selected Date Details */}
-        <div className="space-y-4">
-          {selectedDate ? (
-            <>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">
-                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-IN', {
-                      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                    })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedOverride?.override_type === 'blocked' ? (
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                      <p className="text-sm font-medium text-red-400">Day Blocked</p>
-                      {selectedOverride.reason && (
-                        <p className="text-xs text-muted-foreground mt-1">{selectedOverride.reason}</p>
-                      )}
-                    </div>
-                  ) : selectedBookings.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No bookings</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedBookings.map((b, i) => (
-                        <div key={i} className="border border-border rounded-lg p-3">
-                          <div className="flex items-center justify-between">
-                            <p className="font-medium text-sm">{b.customer_name}</p>
-                            <span className="text-xs text-primary font-medium">{b.time_slot} - {b.end_time}</span>
+              <Panel title="Upcoming blocked dates">
+                {overrides.filter((o) => o.override_type === 'blocked' && o.date >= today).length === 0 ? (
+                  <p className="text-[13px] text-[var(--mute)] m-0">No upcoming blocks.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {overrides
+                      .filter((o) => o.override_type === 'blocked' && o.date >= today)
+                      .map((o, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between text-[13px] py-1.5"
+                          style={{ borderBottom: '1px solid var(--line)' }}
+                        >
+                          <div>
+                            <span className="zt-mono font-semibold">{o.date}</span>
+                            {o.reason && <span className="text-[var(--mute)] ml-2">— {o.reason}</span>}
                           </div>
-                          {b.service && <p className="text-xs text-muted-foreground mt-1">{b.service}</p>}
+                          <StatusPill variant="cancel">Blocked</StatusPill>
                         </div>
                       ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Block/Unblock */}
-              {!isBlocked(selectedDate) && selectedDate >= today && (
-                <Card>
-                  <CardContent className="pt-4">
-                    {showBlockForm ? (
-                      <div className="space-y-3">
-                        <Input
-                          placeholder="Reason (optional)"
-                          value={blockReason}
-                          onChange={(e) => setBlockReason(e.target.value)}
-                        />
-                        <div className="flex gap-2">
-                          <Button onClick={handleBlockDate} className="flex-1 bg-red-500 hover:bg-red-600">
-                            Block This Day
-                          </Button>
-                          <Button variant="outline" onClick={() => setShowBlockForm(false)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button variant="outline" className="w-full text-red-400 border-red-500/30 hover:bg-red-500/10" onClick={() => setShowBlockForm(true)}>
-                        Block This Day
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-            </>
-          ) : (
-            <Card>
-              <CardContent className="pt-6 text-center text-muted-foreground">
-                <p className="text-4xl mb-2">📆</p>
-                <p className="text-sm">Click on a date to see details</p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Blocked dates list */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Blocked Dates</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {overrides.filter((o) => o.override_type === 'blocked' && o.date >= today).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No upcoming blocked dates</p>
-              ) : (
-                <div className="space-y-2">
-                  {overrides.filter((o) => o.override_type === 'blocked' && o.date >= today).map((o, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-border last:border-0">
-                      <div>
-                        <span className="font-medium">{o.date}</span>
-                        {o.reason && <span className="text-muted-foreground ml-2">- {o.reason}</span>}
-                      </div>
-                      <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded">Blocked</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                  </div>
+                )}
+              </Panel>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }

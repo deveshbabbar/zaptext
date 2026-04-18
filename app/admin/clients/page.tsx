@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import Link from 'next/link';
 import { BUSINESS_TYPES } from '@/lib/constants';
 import { ClientRow } from '@/lib/types';
+import { PageTopbar, PageHead, Pill, StatusPill } from '@/components/app/primitives';
 
 export default function AdminClientsPage() {
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -15,77 +14,83 @@ export default function AdminClientsPage() {
   useEffect(() => {
     fetch('/api/clients')
       .then((res) => res.json())
-      .then((data) => { setClients(data.clients || []); setLoading(false); })
+      .then((data) => {
+        setClients(data.clients || []);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
   const typeMeta = (type: string) => BUSINESS_TYPES.find((bt) => bt.type === type);
 
-  const filtered = clients.filter((c) =>
-    c.business_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.owner_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.city.toLowerCase().includes(search.toLowerCase())
+  const filtered = clients.filter(
+    (c) =>
+      c.business_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.owner_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.city.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (loading) {
-    return <div className="p-8"><div className="animate-pulse h-64 bg-muted rounded-lg"></div></div>;
-  }
-
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">All Clients</h1>
-        <a href="/admin/onboard" className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium">
-          + Onboard Client
-        </a>
-      </div>
-
-      <Input
-        placeholder="Search by name, owner, or city..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-6 max-w-md"
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">All clients</b> · {clients.length} total</>}
+        actions={<Pill variant="ink" href="/admin/onboard">+ Onboard client</Pill>}
       />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Client <span className="zt-serif">roster.</span></>}
+          sub="Search, filter, drill in."
+        />
 
-      {filtered.length === 0 ? (
-        <p className="text-muted-foreground text-center py-12">No clients found</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((client) => {
-            const meta = typeMeta(client.type);
-            return (
-              <a key={client.client_id} href={`/admin/clients/${client.client_id}`}>
-                <Card className="hover:border-primary/50 border-2 border-transparent transition-all cursor-pointer h-full hover:shadow-md">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <span>{meta?.icon}</span>
-                        {client.business_name}
-                      </CardTitle>
-                      <Badge className={
-                        client.status === 'active'
-                          ? 'bg-primary/10 text-primary border-primary/30'
-                          : client.status === 'pending'
-                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
-                          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                      }>
-                        {client.status === 'pending' ? '⏳ pending' : client.status}
-                      </Badge>
+        <input
+          placeholder="Search by name, owner, or city…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full max-w-md rounded-[12px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] mb-5"
+          style={{ padding: '11px 13px' }}
+        />
+
+        {loading ? (
+          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : filtered.length === 0 ? (
+          <div className="bg-[var(--card)] border border-[var(--line)] rounded-[18px] text-center text-[var(--mute)] py-16">
+            No clients found
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filtered.map((client) => {
+              const meta = typeMeta(client.type);
+              return (
+                <Link
+                  key={client.client_id}
+                  href={`/admin/clients/${client.client_id}`}
+                  className="border border-[var(--line)] rounded-[18px] bg-[var(--card)] hover:-translate-y-0.5 transition block"
+                  style={{ padding: 22 }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="text-[28px] leading-none">{meta?.icon}</div>
+                      <div>
+                        <div className="font-bold text-[15.5px]">{client.business_name}</div>
+                        <div className="text-[12px] text-[var(--mute)]">{meta?.label}</div>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-1.5 text-sm text-muted-foreground">
-                      <div className={meta?.color}>{meta?.label}</div>
-                      <div>{client.city} &middot; {client.owner_name}</div>
-                      <div className="text-xs text-muted-foreground/60">Created: {client.created_at}</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </a>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                    <StatusPill
+                      variant={client.status === 'active' ? 'active' : client.status === 'pending' ? 'pending' : 'ok'}
+                    >
+                      {client.status === 'pending' ? '⏳ pending' : client.status}
+                    </StatusPill>
+                  </div>
+                  <div className="text-[12.5px] text-[var(--mute)]">
+                    {client.city} · {client.owner_name}
+                  </div>
+                  <div className="text-[11px] text-[var(--mute)] mt-1.5">Created: {client.created_at}</div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

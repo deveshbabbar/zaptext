@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import { BUSINESS_TYPES } from '@/lib/constants';
 import { ClientRow } from '@/lib/types';
+import { PageTopbar, PageHead, Kpi, Panel, Pill, StatusPill } from '@/components/app/primitives';
 
 export default function AdminDashboard() {
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -17,7 +17,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetch('/api/clients')
       .then((res) => res.json())
-      .then((data) => { setClients(data.clients || []); setLoading(false); })
+      .then((data) => {
+        setClients(data.clients || []);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
@@ -28,128 +31,105 @@ export default function AdminDashboard() {
   const pendingBots = clients.filter((c) => c.status === 'pending');
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Manage all your WhatsApp bots</p>
-        </div>
-        <a href="/admin/onboard" className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium">
-          + Onboard Client
-        </a>
-      </div>
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Admin dashboard</b> · {clients.length} clients · {pendingCount} pending</>}
+        actions={<Pill variant="ink" href="/admin/onboard">+ Onboard client</Pill>}
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Workspace <span className="zt-serif">overview.</span></>}
+          sub="All clients, status, and actions — in one place."
+        />
 
-      {/* Pending Approvals Alert */}
-      {!loading && pendingCount > 0 && (
-        <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl p-4 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-xl">⏳</div>
-              <div>
-                <p className="font-bold text-foreground">{pendingCount} bot{pendingCount > 1 ? 's' : ''} waiting for approval</p>
-                <p className="text-xs text-muted-foreground">
-                  {pendingBots.map((b) => b.business_name).join(', ')}
-                </p>
+        {!loading && pendingCount > 0 && (
+          <div
+            className="rounded-[18px] flex items-center gap-3.5 mb-5"
+            style={{
+              padding: '18px 22px',
+              background:
+                'linear-gradient(90deg, color-mix(in oklab, #E89A1C 20%, transparent), color-mix(in oklab, #E89A1C 5%, transparent))',
+              border: '1px solid color-mix(in oklab, #E89A1C 45%, transparent)',
+            }}
+          >
+            <div className="w-11 h-11 rounded-[12px] bg-[#E89A1C] text-white grid place-items-center text-[20px]">⏳</div>
+            <div className="flex-1">
+              <b>{pendingCount} bot{pendingCount > 1 ? 's' : ''} waiting for approval</b>
+              <div className="text-[12.5px] text-[var(--ink-2)] mt-0.5">
+                {pendingBots.map((b) => b.business_name).join(', ')}
               </div>
             </div>
-            <a
+            <Pill
+              variant="ink"
               href={pendingBots.length === 1 ? `/admin/clients/${pendingBots[0].client_id}` : '/admin/clients'}
-              className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors"
             >
-              Review Now
-            </a>
+              Review now
+            </Pill>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Stats Summary */}
-      {!loading && clients.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card className="border-l-4 border-l-primary">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-sm text-muted-foreground">Total Clients</p>
-              <p className="text-3xl font-bold">{clients.length}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-primary">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-sm text-muted-foreground">Active Bots</p>
-              <p className="text-3xl font-bold">{activeCount}</p>
-            </CardContent>
-          </Card>
-          <Card className={`border-l-4 ${pendingCount > 0 ? 'border-l-amber-500' : 'border-l-primary'}`}>
-            <CardContent className="pt-4 pb-4">
-              <p className="text-sm text-muted-foreground">Pending Approval</p>
-              <p className={`text-3xl font-bold ${pendingCount > 0 ? 'text-amber-500' : ''}`}>{pendingCount}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-primary">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-sm text-muted-foreground">Total Messages</p>
-              <p className="text-3xl font-bold">--</p>
-              <p className="text-xs text-muted-foreground">View per-client details</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+        {!loading && clients.length > 0 && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <Kpi label="Total clients" value={clients.length} />
+            <Kpi label="Active bots" value={activeCount} />
+            <Kpi
+              label="Pending approval"
+              value={<span className={pendingCount > 0 ? 'text-[#E89A1C]' : ''}>{pendingCount}</span>}
+            />
+            <Kpi label="Total messages" value="—" trend="View per-client" />
+          </div>
+        )}
 
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader><div className="h-6 bg-muted rounded w-3/4"></div></CardHeader>
-              <CardContent><div className="h-4 bg-muted rounded w-1/2 mb-2"></div><div className="h-4 bg-muted rounded w-1/3"></div></CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : clients.length === 0 ? (
-        <Card className="text-center py-16">
-          <CardContent>
-            <div className="text-6xl mb-4">🤖</div>
-            <h2 className="text-xl font-semibold mb-2">No bots yet</h2>
-            <p className="text-muted-foreground mb-6">Create your first WhatsApp AI bot</p>
-            <a href="/admin/onboard" className="bg-primary text-primary-foreground px-6 py-2.5 rounded-lg hover:bg-primary/90 transition-colors font-medium inline-block">
-              Onboard First Client
-            </a>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clients.map((client) => {
-            const meta = typeMeta(client.type);
-            return (
-              <a key={client.client_id} href={`/admin/clients/${client.client_id}`}>
-                <Card className="hover:border-primary/50 border-2 border-transparent transition-all cursor-pointer h-full hover:shadow-md">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <span>{meta?.icon}</span>
-                        {client.business_name}
-                      </CardTitle>
-                      <Badge className={
-                        client.status === 'active'
-                          ? 'bg-primary/10 text-primary border-primary/30'
-                          : client.status === 'pending'
-                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
-                          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                      }>
-                        {client.status === 'pending' ? '⏳ pending' : client.status}
-                      </Badge>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse h-36 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+            ))}
+          </div>
+        ) : clients.length === 0 ? (
+          <Panel>
+            <div className="text-center py-12">
+              <div className="text-[48px] mb-3">🤖</div>
+              <h2 className="text-[20px] font-semibold mb-1.5">No bots yet</h2>
+              <p className="text-[13px] text-[var(--mute)] mb-5">Onboard your first client.</p>
+              <Pill variant="ink" href="/admin/onboard">Onboard first client</Pill>
+            </div>
+          </Panel>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {clients.map((client) => {
+              const meta = typeMeta(client.type);
+              return (
+                <Link
+                  key={client.client_id}
+                  href={`/admin/clients/${client.client_id}`}
+                  className="border border-[var(--line)] rounded-[18px] bg-[var(--card)] hover:-translate-y-0.5 transition block"
+                  style={{ padding: 22 }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="text-[28px] leading-none">{meta?.icon}</div>
+                      <div>
+                        <div className="font-bold text-[15.5px]">{client.business_name}</div>
+                        <div className="text-[12px] text-[var(--mute)]">{meta?.label}</div>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-1.5 text-sm text-muted-foreground">
-                      <div className={meta?.color}>{meta?.label}</div>
-                      <div>{client.city} &middot; {client.owner_name}</div>
-                      <div className="text-xs text-muted-foreground/60">Created: {client.created_at}</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </a>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                    <StatusPill
+                      variant={client.status === 'active' ? 'active' : client.status === 'pending' ? 'pending' : 'ok'}
+                    >
+                      {client.status === 'pending' ? '⏳ pending' : client.status}
+                    </StatusPill>
+                  </div>
+                  <div className="text-[12.5px] text-[var(--mute)]">
+                    {client.city} · {client.owner_name}
+                  </div>
+                  <div className="text-[11px] text-[var(--mute)] mt-1.5">Created: {client.created_at}</div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

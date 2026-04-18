@@ -1,27 +1,27 @@
 import { requireClientWithBots } from '@/lib/auth';
 import { UserButton } from '@clerk/nextjs';
 import { BotSwitcher } from '@/components/client/bot-switcher';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
+import Link from 'next/link';
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireClientWithBots();
 
-  // Fetch real subscription data
-  let subscriptionLabel = 'No Plan';
-  let subscriptionStatus = 'Inactive';
+  let planName: string | null = null;
+  let planPrice: number | null = null;
   let usagePercent = 0;
   let daysRemaining = 0;
   let expiryWarning = false;
+  let hasActive = false;
 
   try {
     const sub = await getActiveSubscription(user.userId);
     if (sub) {
+      hasActive = true;
       const plan = PLANS[sub.plan];
-      subscriptionLabel = plan?.name || sub.plan;
-      subscriptionStatus = 'Active';
-      // Calculate days remaining as percentage
+      planName = plan?.name || sub.plan;
+      planPrice = plan?.price || null;
       const start = new Date(sub.startDate).getTime();
       const end = new Date(sub.endDate).getTime();
       const now = Date.now();
@@ -32,7 +32,7 @@ export default async function ClientLayout({ children }: { children: React.React
       expiryWarning = daysRemaining <= 5;
     }
   } catch {
-    // Subscription fetch failed, show no plan
+    // ignore
   }
 
   const initials = (user.name || user.email)
@@ -44,71 +44,94 @@ export default async function ClientLayout({ children }: { children: React.React
 
   return (
     <div className="flex h-screen">
-      <aside className="w-[280px] bg-sidebar text-sidebar-foreground p-4 flex flex-col overflow-y-auto">
-        <div className="flex items-center gap-2.5 px-2 pb-4 border-b border-sidebar-border mb-4">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center text-sidebar-foreground font-bold text-sm">
-            {initials}
+      <aside
+        className="w-[268px] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
+        style={{ padding: '18px 14px' }}
+      >
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 pb-4 border-b border-white/10 mb-3.5"
+          style={{ padding: '4px 8px 16px' }}
+        >
+          <span className="w-8 h-8 rounded-[8px] bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center zt-mono font-extrabold text-[18px]">
+            Z
+          </span>
+          <div>
+            <div className="font-bold tracking-[-0.01em]">ZapText</div>
+            <div className="text-[10.5px] text-white/55 zt-mono uppercase tracking-[.08em]">Client workspace</div>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-bold text-sm truncate">{user.name || 'User'}</div>
-            <div className="text-[11px] text-sidebar-foreground/50 truncate">{user.email}</div>
-          </div>
-        </div>
+        </Link>
 
         <BotSwitcher bots={user.allBots} activeBotId={user.activeBot?.client_id || null} />
 
-        <div className={`mx-2 mt-2 border rounded-lg p-2 text-[11px] ${
-          subscriptionStatus === 'Active'
-            ? 'bg-primary/10 border-primary/20'
-            : 'bg-amber-500/10 border-amber-500/20'
-        }`}>
-          <div className="flex justify-between text-sidebar-foreground">
-            <span className="font-bold">{subscriptionLabel} Plan</span>
-            <a href="/client/subscription" className="text-accent font-semibold hover:underline">
-              {subscriptionStatus === 'Active' ? 'Manage' : 'Subscribe'}
-            </a>
+        <div
+          className="rounded-[12px] mb-3.5 mt-2 mx-2"
+          style={{
+            padding: '10px 12px',
+            background: hasActive
+              ? 'color-mix(in oklab, var(--accent) 14%, transparent)'
+              : 'color-mix(in oklab, #E89A1C 14%, transparent)',
+            border: hasActive
+              ? '1px solid color-mix(in oklab, var(--accent) 30%, transparent)'
+              : '1px solid color-mix(in oklab, #E89A1C 40%, transparent)',
+          }}
+        >
+          <div className="flex justify-between text-[12px]">
+            <b className={`${hasActive ? 'text-[var(--accent)]' : 'text-[#ffb54a]'} tracking-[-0.01em]`}>
+              {hasActive ? `${planName}${planPrice ? ` · ₹${planPrice.toLocaleString('en-IN')}/mo` : ''}` : 'No active plan'}
+            </b>
+            <Link
+              href="/client/subscription"
+              className={`${hasActive ? 'text-[var(--accent)] border-[var(--accent)]' : 'text-[#ffb54a] border-[#ffb54a]'} font-semibold text-[11px] border-b`}
+            >
+              {hasActive ? 'Manage' : 'Subscribe'}
+            </Link>
           </div>
-          {subscriptionStatus === 'Active' ? (
+          {hasActive ? (
             <>
-              <div className={`h-[3px] rounded-full mt-1.5 overflow-hidden ${expiryWarning ? 'bg-red-500/20' : 'bg-sidebar-foreground/10'}`}>
-                <div className={`h-full rounded-full ${expiryWarning ? 'bg-red-500' : 'bg-gradient-to-r from-accent to-accent/70'}`} style={{ width: `${usagePercent}%` }} />
+              <div className={`h-[3px] rounded-[3px] mt-2 mb-1.5 overflow-hidden ${expiryWarning ? 'bg-red-500/20' : 'bg-white/10'}`}>
+                <i
+                  className={`block h-full ${expiryWarning ? 'bg-red-500' : 'bg-[var(--accent)]'}`}
+                  style={{ width: `${usagePercent}%` }}
+                />
               </div>
-              {expiryWarning ? (
-                <div className="text-[10px] text-red-500 mt-1 font-semibold">⚠️ {daysRemaining} day{daysRemaining !== 1 ? 's' : ''} left — Renew now!</div>
-              ) : (
-                <div className="text-[10px] text-sidebar-foreground/50 mt-1">{daysRemaining} days left · Active</div>
-              )}
+              <div className={`text-[10.5px] zt-mono ${expiryWarning ? 'text-red-400 font-semibold' : 'text-white/55'}`}>
+                {expiryWarning
+                  ? `⚠ ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left`
+                  : `${daysRemaining} days left · Active`}
+              </div>
             </>
           ) : (
-            <div className="text-[10px] text-amber-600 mt-1 font-semibold">⚠️ No active plan — Subscribe to create bots</div>
+            <div className="text-[10.5px] text-[#ffb54a] mt-1">Subscribe to create bots</div>
           )}
         </div>
 
-        <div className="mt-4 mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
-          Current Bot
-        </div>
-        <nav className="space-y-0.5">
-          <NavLink href="/client/dashboard" icon="📊" label="Dashboard" />
-          <NavLink href="/client/conversations" icon="💬" label="Conversations" />
-          <NavLink href="/client/bookings" icon="📅" label="Bookings" />
-          <NavLink href="/client/availability" icon="⏰" label="Availability" />
-          <NavLink href="/client/calendar" icon="📆" label="Calendar" />
-          <NavLink href="/client/settings" icon="⚙️" label="Bot Settings" />
+        <SideSec>Workspace</SideSec>
+        <nav className="flex flex-col gap-px">
+          <SideLink href="/client/dashboard" icon="📊" label="Dashboard" />
+          <SideLink href="/client/conversations" icon="💬" label="Conversations" />
+          <SideLink href="/client/bookings" icon="📅" label="Bookings" />
+          <SideLink href="/client/availability" icon="⏰" label="Availability" />
+          <SideLink href="/client/calendar" icon="📆" label="Calendar" />
+          <SideLink href="/client/settings" icon="⚙️" label="Bot Settings" />
         </nav>
 
-        <div className="mt-4 mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
-          Account
-        </div>
-        <nav className="space-y-0.5">
-          <NavLink href="/client/subscription" icon="💳" label="Subscription" />
-          <NavLink href="/client/bots" icon="🤖" label="All Bots" />
+        <SideSec>Account</SideSec>
+        <nav className="flex flex-col gap-px">
+          <SideLink href="/client/subscription" icon="💳" label="Subscription" />
+          <SideLink href="/client/bots" icon="🤖" label="All bots" />
+          <SideLink href="/client/create-bot" icon="✨" label="Create bot" />
         </nav>
 
-        <div className="mt-auto pt-3 border-t border-sidebar-border flex gap-1.5 items-center">
-          <ThemeToggle />
-          <div className="ml-auto">
-            <UserButton />
+        <div className="mt-auto pt-3 border-t border-white/10 flex items-center gap-2.5">
+          <div className="w-[34px] h-[34px] rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[13px]">
+            {initials}
           </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-semibold truncate">{user.name || 'User'}</div>
+            <div className="text-[10.5px] text-white/50 truncate">{user.email}</div>
+          </div>
+          <UserButton />
         </div>
       </aside>
 
@@ -117,14 +140,34 @@ export default async function ClientLayout({ children }: { children: React.React
   );
 }
 
-function NavLink({ href, icon, label }: { href: string; icon: string; label: string }) {
+function SideSec({ children }: { children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground text-[13px] transition-colors"
+    <div
+      className="zt-mono text-[10px] uppercase tracking-[.09em] text-white/55"
+      style={{ padding: '14px 8px 4px' }}
     >
-      <span className="w-[18px] text-center text-sm">{icon}</span>
+      {children}
+    </div>
+  );
+}
+
+function SideLink({ href, icon, label, count }: { href: string; icon: string; label: string; count?: number }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-2.5 rounded-[9px] text-white/65 hover:text-white hover:bg-white/5 transition-colors font-medium text-[13.5px]"
+      style={{ padding: '9px 10px' }}
+    >
+      <span className="w-4 text-center text-[13px]">{icon}</span>
       {label}
-    </a>
+      {typeof count === 'number' && (
+        <span
+          className="ml-auto zt-mono text-[10.5px] rounded-full font-semibold text-white/65"
+          style={{ padding: '2px 7px', background: '#ffffff10' }}
+        >
+          {count}
+        </span>
+      )}
+    </Link>
   );
 }

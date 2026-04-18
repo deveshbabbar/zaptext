@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { BUSINESS_TYPES } from '@/lib/constants';
 import { ClientRow } from '@/lib/types';
+import { PageTopbar, PageHead, Kpi, Panel, StatusPill } from '@/components/app/primitives';
 
 export default function AnalyticsPage() {
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -13,7 +12,10 @@ export default function AnalyticsPage() {
   useEffect(() => {
     fetch('/api/clients')
       .then((r) => r.json())
-      .then((d) => { setClients(d.clients || []); setLoading(false); })
+      .then((d) => {
+        setClients(d.clients || []);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
@@ -55,149 +57,118 @@ export default function AnalyticsPage() {
       .slice(0, 5);
   }, [clients]);
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="animate-pulse h-64 bg-muted rounded-lg" />
-      </div>
-    );
-  }
-
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-2">Analytics</h1>
-      <p className="text-muted-foreground mb-8">Overview across all your bots</p>
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Analytics</b> · {stats.total} total · {stats.active} active</>}
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Usage <span className="zt-serif">at a glance.</span></>}
+          sub="Across every bot, every client, every city."
+        />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Total Bots</p>
-            <p className="text-3xl font-bold">{stats.total}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Active</p>
-            <p className="text-3xl font-bold text-primary">{stats.active}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-yellow-500">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Paused</p>
-            <p className="text-3xl font-bold">{stats.paused}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Created This Month</p>
-            <p className="text-3xl font-bold">{stats.createdThisMonth}</p>
-          </CardContent>
-        </Card>
-      </div>
+        {loading ? (
+          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              <Kpi label="Total bots" value={stats.total} />
+              <Kpi label="Active" value={stats.active} />
+              <Kpi label="Paused" value={stats.paused} />
+              <Kpi label="Created this month" value={stats.createdThisMonth} />
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Business Type breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Bots by Business Type</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {typeBreakdown.map((bt) => {
-              const pct = (bt.count / maxTypeCount) * 100;
-              return (
-                <div key={bt.type}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="flex items-center gap-2">
-                      <span>{bt.icon}</span>
-                      <span className={bt.color}>{bt.label}</span>
-                    </span>
-                    <span className="font-medium">{bt.count}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              <Panel title="Bots by business type" sub="Ranked by count">
+                {clients.length === 0 ? (
+                  <p className="text-[13px] text-[var(--mute)] text-center py-4 m-0">No bots yet</p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {typeBreakdown.map((bt) => {
+                      const pct = (bt.count / maxTypeCount) * 100;
+                      return (
+                        <div key={bt.type}>
+                          <div className="flex items-center justify-between text-[13px] mb-1">
+                            <span className="flex items-center gap-2">
+                              <span>{bt.icon}</span>
+                              <span>{bt.label}</span>
+                            </span>
+                            <span className="font-semibold">{bt.count}</span>
+                          </div>
+                          <div className="h-2 bg-[var(--bg-2)] rounded-full overflow-hidden">
+                            <div className="h-full bg-[var(--ink)] transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            {clients.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-6">No bots yet</p>
-            )}
-          </CardContent>
-        </Card>
+                )}
+              </Panel>
 
-        {/* City breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Cities</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {cityBreakdown.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-6">No data</p>
-            )}
-            {cityBreakdown.map((c) => {
-              const pct = (c.count / (cityBreakdown[0]?.count || 1)) * 100;
-              return (
-                <div key={c.city}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span>{c.city}</span>
-                    <span className="font-medium">{c.count}</span>
+              <Panel title="Top cities" sub="Where your customers are">
+                {cityBreakdown.length === 0 ? (
+                  <p className="text-[13px] text-[var(--mute)] text-center py-4 m-0">No data</p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {cityBreakdown.map((c) => {
+                      const pct = (c.count / (cityBreakdown[0]?.count || 1)) * 100;
+                      return (
+                        <div key={c.city}>
+                          <div className="flex items-center justify-between text-[13px] mb-1">
+                            <span>{c.city}</span>
+                            <span className="font-semibold">{c.count}</span>
+                          </div>
+                          <div className="h-2 bg-[var(--bg-2)] rounded-full overflow-hidden">
+                            <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary/70" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </div>
+                )}
+              </Panel>
+            </div>
 
-      {/* Recent activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No activity</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {recent.map((c) => {
-                const meta = BUSINESS_TYPES.find((bt) => bt.type === c.type);
-                return (
-                  <li key={c.client_id} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl">{meta?.icon || '🤖'}</div>
-                      <div>
-                        <p className="font-medium">{c.business_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {meta?.label} &middot; {c.city}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        className={
-                          c.status === 'active'
-                            ? 'bg-primary/10 text-primary border-primary/30'
-                            : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'
-                        }
+            <Panel title="Recent activity" sub="5 most recent clients">
+              {recent.length === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] text-center py-4 m-0">No activity</p>
+              ) : (
+                <div className="flex flex-col">
+                  {recent.map((c, i) => {
+                    const meta = BUSINESS_TYPES.find((bt) => bt.type === c.type);
+                    return (
+                      <div
+                        key={c.client_id}
+                        className="flex items-center justify-between py-3"
+                        style={{ borderBottom: i < recent.length - 1 ? '1px solid var(--line)' : 'none' }}
                       >
-                        {c.status}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">{c.created_at}</span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-[24px]">{meta?.icon || '🤖'}</div>
+                          <div>
+                            <div className="font-semibold text-[14px]">{c.business_name}</div>
+                            <div className="text-[12px] text-[var(--mute)]">
+                              {meta?.label} · {c.city}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <StatusPill
+                            variant={c.status === 'active' ? 'active' : c.status === 'pending' ? 'pending' : 'ok'}
+                          >
+                            {c.status}
+                          </StatusPill>
+                          <span className="zt-mono text-[11.5px] text-[var(--mute)]">{c.created_at}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+          </>
+        )}
+      </div>
+    </>
   );
 }

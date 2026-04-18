@@ -1,13 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { PageTopbar, PageHead, Panel, Pill, StatusPill } from '@/components/app/primitives';
 
-// demo data — integration display values
 const INTEGRATIONS = [
   {
     id: 'gemini',
@@ -43,8 +38,8 @@ const INTEGRATIONS = [
   },
 ];
 
-const WEBHOOK_URL = 'https://yourdomain.com/api/webhook';
-const VERIFY_TOKEN = 'botfactory-verify-token';
+const WEBHOOK_URL = 'https://zaptext.shop/api/webhook';
+const VERIFY_TOKEN = 'zaptext-verify-token';
 
 export default function ApiKeysPage() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -60,88 +55,79 @@ export default function ApiKeysPage() {
   };
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-2">API Keys</h1>
-      <p className="text-muted-foreground mb-8">Manage integration credentials</p>
+    <>
+      <PageTopbar crumbs={<><b className="text-foreground">API keys</b> · integrations & webhooks</>} />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Keys & <span className="zt-serif">webhooks.</span></>}
+          sub="Integration credentials — rotate regularly."
+        />
 
-      {/* Integrations */}
-      <h2 className="text-xl font-semibold mb-4">Integrations</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        {INTEGRATIONS.map((it) => (
-          <Card key={it.id}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <span className="text-2xl">{it.icon}</span>
-                  {it.name}
-                </CardTitle>
-                {it.meta && (
-                  <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/30">
-                    {it.meta}
-                  </Badge>
-                )}
+        <h2 className="text-[17px] font-bold tracking-[-0.015em] mb-3.5">Integrations</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-8">
+          {INTEGRATIONS.map((it) => (
+            <Panel key={it.id}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="text-[24px]">{it.icon}</div>
+                  <div className="font-bold text-[15.5px]">{it.name}</div>
+                </div>
+                {it.meta && <StatusPill variant="pending">{it.meta}</StatusPill>}
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">{it.description}</p>
+              <p className="text-[12.5px] text-[var(--mute)] m-0 mb-3">{it.description}</p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 bg-muted rounded-md text-sm font-mono truncate">
+                <code
+                  className="flex-1 zt-mono text-[12.5px] bg-[var(--bg-2)] rounded-[8px] truncate overflow-hidden"
+                  style={{ padding: '8px 12px' }}
+                >
                   {it.maskedKey}
                 </code>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copy(it.id, it.maskedKey)}
-                >
+                <Pill onClick={() => copy(it.id, it.maskedKey)}>
                   {copied === it.id ? 'Copied' : 'Copy'}
-                </Button>
-                <Button variant="outline" size="sm">
-                  Rotate
-                </Button>
+                </Pill>
+                <Pill>Rotate</Pill>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            </Panel>
+          ))}
+        </div>
 
-      {/* Webhooks */}
-      <h2 className="text-xl font-semibold mb-4">Webhooks</h2>
-      <Card>
-        <CardHeader>
-          <CardTitle>WhatsApp Webhook Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Webhook URL</Label>
-            <div className="flex items-center gap-2">
-              <Input value={WEBHOOK_URL} readOnly className="font-mono text-sm" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => copy('webhook-url', WEBHOOK_URL)}
-              >
-                {copied === 'webhook-url' ? 'Copied' : 'Copy'}
-              </Button>
+        <h2 className="text-[17px] font-bold tracking-[-0.015em] mb-3.5">Webhooks</h2>
+        <Panel title="WhatsApp webhook configuration">
+          <div className="flex flex-col gap-3.5">
+            <div>
+              <div className="text-[12.5px] font-semibold mb-1.5">Webhook URL</div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={WEBHOOK_URL}
+                  readOnly
+                  className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--card)] zt-mono text-[13px]"
+                  style={{ padding: '9px 12px' }}
+                />
+                <Pill onClick={() => copy('webhook-url', WEBHOOK_URL)}>
+                  {copied === 'webhook-url' ? 'Copied' : 'Copy'}
+                </Pill>
+              </div>
+              <p className="text-[11.5px] text-[var(--mute)] mt-1.5 m-0">
+                Paste this into Meta Business webhook config.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Paste this into Meta Business webhook config
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Verify Token</Label>
-            <div className="flex items-center gap-2">
-              <Input value={VERIFY_TOKEN} readOnly className="font-mono text-sm" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => copy('verify-token', VERIFY_TOKEN)}
-              >
-                {copied === 'verify-token' ? 'Copied' : 'Copy'}
-              </Button>
+            <div>
+              <div className="text-[12.5px] font-semibold mb-1.5">Verify token</div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={VERIFY_TOKEN}
+                  readOnly
+                  className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--card)] zt-mono text-[13px]"
+                  style={{ padding: '9px 12px' }}
+                />
+                <Pill onClick={() => copy('verify-token', VERIFY_TOKEN)}>
+                  {copied === 'verify-token' ? 'Copied' : 'Copy'}
+                </Pill>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }

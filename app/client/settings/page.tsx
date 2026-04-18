@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
 
 export default function ClientSettingsPage() {
   const [prompt, setPrompt] = useState('');
@@ -31,11 +29,8 @@ export default function ClientSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ field: 'system_prompt', value: prompt }),
       });
-      if (res.ok) {
-        toast.success('System prompt updated!');
-      } else {
-        toast.error('Failed to save');
-      }
+      if (res.ok) toast.success('System prompt updated!');
+      else toast.error('Failed to save');
     } catch {
       toast.error('Failed to save');
     } finally {
@@ -43,32 +38,51 @@ export default function ClientSettingsPage() {
     }
   };
 
-  if (loading) return <div className="p-8"><div className="animate-pulse h-64 bg-muted rounded-lg"></div></div>;
+  const prettyConfig = (() => {
+    try {
+      return JSON.stringify(JSON.parse(config), null, 2);
+    } catch {
+      return config;
+    }
+  })();
 
   return (
-    <div className="p-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-8">Settings</h1>
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Bot settings</b> · voice & knowledge</>}
+        actions={<Pill variant="ink" onClick={handleSavePrompt}>{saving ? 'Saving…' : 'Save prompt'}</Pill>}
+      />
+      <div style={{ padding: '28px 32px 60px' }} className="max-w-4xl">
+        <PageHead
+          title={<>Your bot&apos;s <span className="zt-serif">voice.</span></>}
+          sub="Tune tone, rules, and knowledge. Changes go live instantly."
+        />
 
-      <Card className="mb-6">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">System Prompt</CardTitle>
-            <Button onClick={handleSavePrompt} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
+        {loading ? (
+          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <Panel title="System prompt" sub="The instructions your bot follows. Edit carefully.">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={18}
+                className="w-full rounded-[12px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none zt-mono text-[12.5px]"
+                style={{ padding: '12px 14px', resize: 'vertical' }}
+              />
+            </Panel>
+
+            <Panel title="Business knowledge" sub="Parsed from onboarding. Read-only for now.">
+              <pre
+                className="zt-mono whitespace-pre-wrap text-[12.5px] bg-[var(--bg-2)] rounded-[10px] overflow-y-auto m-0"
+                style={{ padding: 14, maxHeight: 400 }}
+              >
+                {prettyConfig}
+              </pre>
+            </Panel>
           </div>
-        </CardHeader>
-        <CardContent>
-          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={20} className="font-mono text-sm" />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-lg">Business Configuration</CardTitle></CardHeader>
-        <CardContent>
-          <pre className="whitespace-pre-wrap text-sm bg-muted rounded-lg p-4 max-h-[400px] overflow-y-auto">
-            {(() => { try { return JSON.stringify(JSON.parse(config), null, 2); } catch { return config; } })()}
-          </pre>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+      </div>
+    </>
   );
 }

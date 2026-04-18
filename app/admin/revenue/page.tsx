@@ -1,22 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { PageTopbar, PageHead, Kpi, Panel, StatusPill } from '@/components/app/primitives';
 
-interface ChartPoint {
-  month: string;
-  value: number;
-}
-
+interface ChartPoint { month: string; value: number; }
 interface RecentSub {
   userId: string;
   plan: string;
@@ -27,7 +14,6 @@ interface RecentSub {
   createdAt: string;
   businessNames: string[];
 }
-
 interface RevenueData {
   mrr: number;
   totalRevenue: number;
@@ -51,14 +37,6 @@ export default function RevenuePage() {
       .catch(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="animate-pulse h-64 bg-muted rounded-lg" />
-      </div>
-    );
-  }
-
   const mrr = data?.mrr || 0;
   const totalRevenue = data?.totalRevenue || 0;
   const activeCount = data?.activeCount || 0;
@@ -68,121 +46,100 @@ export default function RevenuePage() {
   const chartMax = Math.max(1, ...chartData.map((d) => d.value));
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-2">Revenue</h1>
-      <p className="text-muted-foreground mb-8">Track subscriptions and earnings</p>
+    <>
+      <PageTopbar crumbs={<><b className="text-foreground">Revenue</b> · MRR ₹{mrr.toLocaleString('en-IN')}</>} />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Monthly <span className="zt-serif">revenue.</span></>}
+          sub="MRR, churn, total — and every recent transaction."
+        />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">MRR</p>
-            <p className="text-3xl font-bold">₹{mrr.toLocaleString('en-IN')}</p>
-            <p className="text-xs text-muted-foreground mt-1">Monthly recurring</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Total Revenue</p>
-            <p className="text-3xl font-bold">₹{totalRevenue.toLocaleString('en-IN')}</p>
-            <p className="text-xs text-muted-foreground mt-1">All time</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Active Subscriptions</p>
-            <p className="text-3xl font-bold">{activeCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Churn Rate</p>
-            <p className="text-3xl font-bold">{churnRate}%</p>
-            <p className="text-xs text-muted-foreground mt-1">Last 30 days</p>
-          </CardContent>
-        </Card>
-      </div>
+        {loading ? (
+          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              <Kpi label="MRR" value={`₹${mrr.toLocaleString('en-IN')}`} trend="Monthly recurring" />
+              <Kpi label="Total revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} trend="All time" />
+              <Kpi label="Active subscriptions" value={activeCount} />
+              <Kpi label="Churn rate" value={`${churnRate}%`} trend="Last 30 days" />
+            </div>
 
-      {/* Revenue chart */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Revenue Growth (last 6 months)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-4 h-48 mt-4">
-            {chartData.map((d) => {
-              const h = (d.value / chartMax) * 100;
-              return (
-                <div key={d.month} className="flex-1 flex flex-col items-center gap-2">
-                  <div className="text-xs text-muted-foreground">
-                    ₹{d.value.toLocaleString('en-IN')}
-                  </div>
-                  <div className="w-full bg-muted rounded-md flex items-end h-full overflow-hidden">
-                    <div
-                      className="w-full bg-primary rounded-md transition-all"
-                      style={{ height: `${h}%` }}
-                    />
-                  </div>
-                  <div className="text-xs font-medium">{d.month}</div>
+            <Panel title="Revenue growth" sub="Last 6 months" className="mb-4">
+              {chartData.length === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] text-center py-4 m-0">No data.</p>
+              ) : (
+                <div className="flex items-end gap-3 h-48 mt-2">
+                  {chartData.map((d) => {
+                    const h = (d.value / chartMax) * 100;
+                    return (
+                      <div key={d.month} className="flex-1 flex flex-col items-center gap-2">
+                        <div className="zt-mono text-[10.5px] text-[var(--mute)]">
+                          ₹{d.value.toLocaleString('en-IN')}
+                        </div>
+                        <div className="w-full bg-[var(--bg-2)] rounded-[6px] flex items-end h-full overflow-hidden">
+                          <div
+                            className="w-full bg-[var(--ink)] rounded-[6px] transition-all"
+                            style={{ height: `${h}%` }}
+                          />
+                        </div>
+                        <div className="zt-mono text-[11px] font-semibold">{d.month}</div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+              )}
+            </Panel>
 
-      {/* Transactions table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Transactions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No transactions yet
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Business</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recent.map((r, i) => (
-                  <TableRow key={`${r.userId}-${i}`}>
-                    <TableCell className="font-medium">
-                      {r.businessNames.join(', ')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{r.plan}</Badge>
-                    </TableCell>
-                    <TableCell>₹{(r.amount || 0).toLocaleString('en-IN')}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {r.createdAt || r.startDate || '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          r.status === 'active'
-                            ? 'bg-primary/10 text-primary border-primary/30'
-                            : 'bg-muted text-muted-foreground border-border'
-                        }
-                      >
-                        {r.status || 'unknown'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            <Panel title="Recent transactions">
+              {recent.length === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] text-center py-6 m-0">No transactions yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]" style={{ borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        {['Business', 'Plan', 'Amount', 'Date', 'Status'].map((h) => (
+                          <th
+                            key={h}
+                            className="zt-mono text-[10.5px] uppercase tracking-[.08em] text-[var(--mute)] font-medium"
+                            style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--line)' }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recent.map((r, i) => (
+                        <tr key={`${r.userId}-${i}`}>
+                          <td className="font-semibold" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                            {r.businessNames.join(', ')}
+                          </td>
+                          <td className="capitalize" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                            {r.plan}
+                          </td>
+                          <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                            ₹{(r.amount || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="zt-mono text-[11.5px] text-[var(--mute)]" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                            {r.createdAt || r.startDate || '—'}
+                          </td>
+                          <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                            <StatusPill variant={r.status === 'active' ? 'active' : 'ok'}>
+                              {r.status || 'unknown'}
+                            </StatusPill>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Panel>
+          </>
+        )}
+      </div>
+    </>
   );
 }

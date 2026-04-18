@@ -1,24 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { PageTopbar, PageHead, Pill } from '@/components/app/primitives';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAY_SHORT: Record<string, string> = {
+  monday: 'MON', tuesday: 'TUE', wednesday: 'WED', thursday: 'THU',
+  friday: 'FRI', saturday: 'SAT', sunday: 'SUN',
+};
 
-interface TimeBlock {
-  start: string;
-  end: string;
-}
-
-interface DaySchedule {
-  enabled: boolean;
-  blocks: TimeBlock[];
-}
+interface TimeBlock { start: string; end: string; }
+interface DaySchedule { enabled: boolean; blocks: TimeBlock[]; }
 
 export default function AvailabilityPage() {
   const [schedule, setSchedule] = useState<Record<string, DaySchedule>>({});
@@ -34,7 +27,6 @@ export default function AvailabilityPage() {
           setSchedule(data.schedule);
           setSlotDuration(data.slotDuration || 30);
         } else {
-          // Default schedule
           const def: Record<string, DaySchedule> = {};
           DAYS.forEach((d) => {
             def[d] = d === 'sunday'
@@ -58,12 +50,14 @@ export default function AvailabilityPage() {
   };
 
   const removeBlock = (day: string, index: number) => {
-    const blocks = schedule[day].blocks.filter((_, i) => i !== index);
+    const current = schedule[day]?.blocks || [];
+    const blocks = current.filter((_, i) => i !== index);
     updateDay(day, { blocks });
   };
 
   const updateBlock = (day: string, index: number, field: 'start' | 'end', value: string) => {
-    const blocks = [...schedule[day].blocks];
+    const current = schedule[day]?.blocks || [];
+    const blocks = [...current];
     blocks[index] = { ...blocks[index], [field]: value };
     updateDay(day, { blocks });
   };
@@ -85,57 +79,119 @@ export default function AvailabilityPage() {
     }
   };
 
-  if (loading) return <div className="p-8"><div className="animate-pulse h-64 bg-muted rounded-lg"></div></div>;
-
   return (
-    <div className="p-8 max-w-3xl">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold">Weekly Availability</h1>
-        <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Schedule'}</Button>
-      </div>
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Availability</b> · weekly schedule & slots</>}
+        actions={<Pill variant="ink" onClick={handleSave}>{saving ? 'Saving…' : 'Save schedule'}</Pill>}
+      />
+      <div style={{ padding: '28px 32px 60px' }} className="max-w-4xl">
+        <PageHead
+          title={<>Your weekly <span className="zt-serif">hours.</span></>}
+          sub="Bot books only inside these windows. Close a day, add a second block, tune slot length — all here."
+        />
 
-      <Card className="mb-6">
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-4">
-            <Label>Slot Duration (minutes):</Label>
-            <Input type="number" value={slotDuration} onChange={(e) => setSlotDuration(Number(e.target.value))} className="w-24" min={15} max={120} step={15} />
-          </div>
-        </CardContent>
-      </Card>
+        {loading ? (
+          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : (
+          <>
+            <div
+              className="flex items-center gap-4 mb-5 bg-[var(--card)] border border-[var(--line)] rounded-[14px]"
+              style={{ padding: 18 }}
+            >
+              <label className="font-semibold text-[13px]">Slot duration</label>
+              <input
+                type="number"
+                value={slotDuration}
+                onChange={(e) => setSlotDuration(Number(e.target.value))}
+                min={15} max={120} step={15}
+                className="w-24 rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none"
+                style={{ padding: '11px 13px', fontSize: 13.5 }}
+              />
+              <span className="text-[var(--mute)] text-[12.5px]">minutes</span>
+            </div>
 
-      <div className="space-y-4">
-        {DAYS.map((day) => {
-          const daySchedule = schedule[day] || { enabled: false, blocks: [] };
-          return (
-            <Card key={day}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base capitalize">{day}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">{daySchedule.enabled ? 'Open' : 'Closed'}</span>
-                    <Switch checked={daySchedule.enabled} onCheckedChange={(v) => updateDay(day, { enabled: v })} />
-                  </div>
-                </div>
-              </CardHeader>
-              {daySchedule.enabled && (
-                <CardContent className="space-y-2">
-                  {daySchedule.blocks.map((block, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <Input type="time" value={block.start} onChange={(e) => updateBlock(day, i, 'start', e.target.value)} className="w-32" />
-                      <span className="text-muted-foreground">to</span>
-                      <Input type="time" value={block.end} onChange={(e) => updateBlock(day, i, 'end', e.target.value)} className="w-32" />
-                      <Button variant="outline" size="sm" onClick={() => removeBlock(day, i)}>Remove</Button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {DAYS.map((day) => {
+                const raw = schedule[day] || { enabled: false, blocks: [] };
+                const ds = { enabled: !!raw.enabled, blocks: Array.isArray(raw.blocks) ? raw.blocks : [] };
+                return (
+                  <div key={day} className="border border-[var(--line)] rounded-[14px] bg-[var(--card)]" style={{ padding: '18px 20px' }}>
+                    <div className="flex items-center gap-3.5 mb-2">
+                      <div className="w-[42px] h-[42px] rounded-[10px] bg-[var(--bg-2)] grid place-items-center">
+                        <span className="zt-mono text-[10px] text-[var(--mute)]">{DAY_SHORT[day]}</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold capitalize text-[14px]">{day}</div>
+                        <div className="zt-mono text-[12.5px] text-[var(--mute)]">
+                          {ds.enabled ? (ds.blocks.length ? `${ds.blocks.length} window${ds.blocks.length > 1 ? 's' : ''}` : 'Open · add windows') : 'Closed'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => updateDay(day, { enabled: !ds.enabled })}
+                        className="relative rounded-full cursor-pointer"
+                        style={{
+                          width: 38, height: 22,
+                          background: ds.enabled ? 'var(--ink)' : 'var(--bg-2)',
+                          transition: 'background .2s',
+                        }}
+                        aria-label="toggle"
+                      >
+                        <span
+                          className="absolute top-[3px] rounded-full transition-all"
+                          style={{
+                            width: 16, height: 16,
+                            left: ds.enabled ? 19 : 3,
+                            background: ds.enabled ? 'var(--accent)' : 'var(--card)',
+                            boxShadow: '0 1px 3px #00000022',
+                          }}
+                        />
+                      </button>
                     </div>
-                  ))}
-                  <Button variant="outline" size="sm" onClick={() => addBlock(day)} className="border-dashed w-full">
-                    + Add Time Block
-                  </Button>
-                </CardContent>
-              )}
-            </Card>
-          );
-        })}
+                    {ds.enabled && (
+                      <div className="flex flex-col gap-2 mt-3">
+                        {ds.blocks.map((block, i) => (
+                          <div key={i} className="flex items-center gap-2.5">
+                            <input
+                              type="time"
+                              value={block.start}
+                              onChange={(e) => updateBlock(day, i, 'start', e.target.value)}
+                              className="w-[110px] rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-[13px]"
+                              style={{ padding: '8px 10px' }}
+                            />
+                            <span className="text-[var(--mute)] text-[12px]">to</span>
+                            <input
+                              type="time"
+                              value={block.end}
+                              onChange={(e) => updateBlock(day, i, 'end', e.target.value)}
+                              className="w-[110px] rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-[13px]"
+                              style={{ padding: '8px 10px' }}
+                            />
+                            <button
+                              onClick={() => removeBlock(day, i)}
+                              className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] hover:border-[var(--ink)] font-semibold text-[11.5px]"
+                              style={{ padding: '6px 10px' }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => addBlock(day)}
+                          className="rounded-[10px] border border-dashed border-[var(--line)] text-[var(--mute)] font-semibold text-[12.5px] hover:border-[var(--ink)] hover:text-[var(--ink)]"
+                          style={{ padding: '10px 12px' }}
+                        >
+                          + Add time block
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </>
   );
 }

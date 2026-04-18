@@ -49,3 +49,6 @@ next-env.d.ts
 
 # Environment overrides (just in case)
 .env.local
+
+# Generated artifacts
+graphify-out/

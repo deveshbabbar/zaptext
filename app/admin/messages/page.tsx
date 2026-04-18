@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { BUSINESS_TYPES } from '@/lib/constants';
+import { PageTopbar, PageHead, Kpi, Panel } from '@/components/app/primitives';
 
 interface ConversationItem {
   client_id: string;
@@ -17,7 +15,6 @@ interface ConversationItem {
   business_name: string;
   business_type: string;
 }
-
 interface Stats {
   totalConversations: number;
   totalMessages: number;
@@ -28,12 +25,7 @@ interface Stats {
 export default function MessagesPage() {
   const router = useRouter();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [stats, setStats] = useState<Stats>({
-    totalConversations: 0,
-    totalMessages: 0,
-    today: 0,
-    avgPerClient: 0,
-  });
+  const [stats, setStats] = useState<Stats>({ totalConversations: 0, totalMessages: 0, today: 0, avgPerClient: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -42,9 +34,7 @@ export default function MessagesPage() {
       .then((r) => r.json())
       .then((d) => {
         setConversations(d.conversations || []);
-        setStats(
-          d.stats || { totalConversations: 0, totalMessages: 0, today: 0, avgPerClient: 0 },
-        );
+        setStats(d.stats || { totalConversations: 0, totalMessages: 0, today: 0, avgPerClient: 0 });
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -57,112 +47,89 @@ export default function MessagesPage() {
       (c) =>
         c.customer_phone.toLowerCase().includes(q) ||
         c.business_name.toLowerCase().includes(q) ||
-        c.lastMessage.toLowerCase().includes(q),
+        c.lastMessage.toLowerCase().includes(q)
     );
   }, [conversations, search]);
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="animate-pulse h-64 bg-muted rounded-lg" />
-      </div>
-    );
-  }
-
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-2">Messages</h1>
-      <p className="text-muted-foreground mb-8">View conversations across all bots</p>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Total Conversations</p>
-            <p className="text-3xl font-bold">
-              {stats.totalConversations.toLocaleString('en-IN')}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Total Messages</p>
-            <p className="text-3xl font-bold">{stats.totalMessages.toLocaleString('en-IN')}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Today</p>
-            <p className="text-3xl font-bold">{stats.today}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm text-muted-foreground">Avg / Client</p>
-            <p className="text-3xl font-bold">{stats.avgPerClient}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <div className="mb-4">
-        <Input
-          placeholder="Search by customer, bot name, or message..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Messages</b> · {stats.totalConversations.toLocaleString('en-IN')} conversations · {stats.today} today</>}
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Every <span className="zt-serif">conversation.</span></>}
+          sub="Read-only inbox across all bots."
         />
-      </div>
 
-      {/* Conversations list */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Conversations</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              {conversations.length === 0
-                ? 'No conversations yet — messages will appear here once customers start chatting with your bots.'
-                : 'No matches'}
-            </p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {filtered.map((c) => {
-                const meta = BUSINESS_TYPES.find((bt) => bt.type === c.business_type);
-                return (
-                  <li
-                    key={`${c.client_id}::${c.customer_phone}`}
-                    onClick={() => router.push(`/admin/clients/${c.client_id}`)}
-                    className="py-3 flex items-center gap-4 hover:bg-muted/40 rounded-md px-2 transition-colors cursor-pointer"
-                  >
-                    <div className="text-2xl">{meta?.icon || '💬'}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-medium truncate">{c.customer_phone}</p>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {c.lastTimestamp}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {c.lastMessage}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {c.business_name}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        {loading ? (
+          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+              <Kpi label="Conversations" value={stats.totalConversations.toLocaleString('en-IN')} />
+              <Kpi label="Messages" value={stats.totalMessages.toLocaleString('en-IN')} />
+              <Kpi label="Today" value={stats.today} />
+              <Kpi label="Avg / client" value={stats.avgPerClient} />
+            </div>
+
+            <input
+              placeholder="Search by customer, bot, or message…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full max-w-md rounded-[12px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] mb-4"
+              style={{ padding: '11px 13px' }}
+            />
+
+            <Panel title="Recent conversations">
+              {filtered.length === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] text-center py-6 m-0">
+                  {conversations.length === 0
+                    ? 'No conversations yet — messages will appear once customers chat with your bots.'
+                    : 'No matches'}
+                </p>
+              ) : (
+                <div className="flex flex-col">
+                  {filtered.map((c, i) => {
+                    const meta = BUSINESS_TYPES.find((bt) => bt.type === c.business_type);
+                    return (
+                      <button
+                        key={`${c.client_id}::${c.customer_phone}`}
+                        onClick={() => router.push(`/admin/clients/${c.client_id}`)}
+                        className="flex items-center gap-3.5 py-3 text-left hover:bg-[var(--bg-2)] rounded-[8px]"
+                        style={{
+                          borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none',
+                          padding: '11px 8px',
+                        }}
+                      >
+                        <div className="text-[24px]">{meta?.icon || '💬'}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold text-[14px] truncate">{c.customer_phone}</div>
+                            <div className="zt-mono text-[11.5px] text-[var(--mute)] shrink-0">{c.lastTimestamp}</div>
+                          </div>
+                          <div className="text-[13px] text-[var(--mute)] truncate">{c.lastMessage}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className="zt-mono text-[10.5px] border border-[var(--line)] rounded-full"
+                              style={{ padding: '2px 7px' }}
+                            >
+                              {c.business_name}
+                            </span>
+                            <span className="text-[11px] text-[var(--mute)]">
+                              {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+          </>
+        )}
+      </div>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { PLANS, type PlanKey } from '@/lib/plans';
 import { toast } from 'sonner';
+import { PageTopbar, PageHead, Panel, StatusPill, MonoLabel } from '@/components/app/primitives';
 
 interface Subscription {
   plan: PlanKey;
@@ -14,8 +15,6 @@ interface Subscription {
   razorpayPaymentId: string;
   createdAt: string;
 }
-
-// ─── Razorpay Types ───
 
 interface RazorpayOptions {
   key: string;
@@ -28,24 +27,15 @@ interface RazorpayOptions {
   prefill: { name: string; email: string };
   theme: { color: string };
 }
-
 interface RazorpayResponse {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
 }
-
-interface RazorpayInstance {
-  open: () => void;
-}
-
+interface RazorpayInstance { open: () => void; }
 declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => RazorpayInstance;
-  }
+  interface Window { Razorpay: new (options: RazorpayOptions) => RazorpayInstance; }
 }
-
-// ─── Component ───
 
 export default function SubscriptionPage() {
   const { user } = useUser();
@@ -53,6 +43,7 @@ export default function SubscriptionPage() {
   const [history, setHistory] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPlan, setProcessingPlan] = useState<PlanKey | null>(null);
+  const [razorpayReady, setRazorpayReady] = useState(false);
 
   useEffect(() => {
     loadSubscriptionData();
@@ -74,8 +65,6 @@ export default function SubscriptionPage() {
     }
   }
 
-  const [razorpayReady, setRazorpayReady] = useState(false);
-
   function loadRazorpayScript() {
     if (typeof window !== 'undefined' && window.Razorpay) {
       setRazorpayReady(true);
@@ -93,31 +82,24 @@ export default function SubscriptionPage() {
 
   async function handleSubscribe(plan: PlanKey) {
     if (!user) return;
-
     if (!razorpayReady || !window.Razorpay) {
       toast.error('Payment system is still loading. Please wait a moment and try again.');
       return;
     }
-
     setProcessingPlan(plan);
-
     try {
       const orderRes = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan }),
       });
-
       if (!orderRes.ok) throw new Error('Failed to create order');
-
       const orderData = await orderRes.json();
-
       const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
       if (!razorpayKey) {
         toast.error('Payment configuration error. Please contact support.');
         return;
       }
-
       const options: RazorpayOptions = {
         key: razorpayKey,
         amount: orderData.amount,
@@ -125,16 +107,13 @@ export default function SubscriptionPage() {
         name: 'ZapText',
         description: `${PLANS[plan].name} Plan - Monthly Subscription`,
         order_id: orderData.orderId,
-        handler: async (response: RazorpayResponse) => {
-          await verifyPayment(response, plan);
-        },
+        handler: async (response) => verifyPayment(response, plan),
         prefill: {
           name: user.fullName || '',
           email: user.emailAddresses[0]?.emailAddress || '',
         },
-        theme: { color: '#25D366' },
+        theme: { color: '#14130F' },
       };
-
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (err) {
@@ -157,187 +136,200 @@ export default function SubscriptionPage() {
           plan,
         }),
       });
-
       if (verifyRes.ok) {
-        toast.success('🎉 Payment successful! Your subscription is now active.');
+        toast.success('🎉 Payment successful! Subscription active.');
         loadSubscriptionData();
       } else {
-        toast.error('Payment verification failed. Please contact support at zaptextofficial@gmail.com');
+        toast.error('Verification failed. Contact support.');
       }
     } catch (err) {
       console.error('Verification error:', err);
-      toast.error('Payment verification failed. Please contact support at zaptextofficial@gmail.com');
+      toast.error('Verification failed. Contact support.');
     }
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[var(--ink)] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Subscription</h1>
-        <p className="mt-1 text-muted-foreground">Manage your plan and billing</p>
-      </div>
+    <>
+      <PageTopbar
+        crumbs={
+          <>
+            <b className="text-foreground">Subscription</b> ·{' '}
+            {currentSub ? `${PLANS[currentSub.plan]?.name || currentSub.plan} · active` : 'no plan'}
+          </>
+        }
+      />
+      <div style={{ padding: '28px 32px 60px' }} className="max-w-6xl mx-auto flex flex-col gap-6">
+        <PageHead
+          title={<>Your <span className="zt-serif">plan.</span></>}
+          sub="Upgrade, manage, or view billing history."
+        />
 
-      {/* Current Plan */}
-      <section className="p-6 rounded-xl bg-card border border-border">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Current Plan</h2>
-        {currentSub ? (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <span className="text-2xl font-bold text-primary">
-                  {PLANS[currentSub.plan]?.name || currentSub.plan}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase">
-                  {currentSub.status}
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                &#8377;{currentSub.amount}/mo &middot; Renews on{' '}
-                {new Date(currentSub.endDate).toLocaleDateString('en-IN', {
-                  day: 'numeric', month: 'short', year: 'numeric',
-                })}
-              </p>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Bots: {PLANS[currentSub.plan]?.bots || '-'} &middot; Conversations:{' '}
-              {PLANS[currentSub.plan]?.conversations === -1 ? 'Unlimited' : PLANS[currentSub.plan]?.conversations || '-'}/mo
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <p className="text-muted-foreground text-lg">No active plan</p>
-            <p className="text-sm text-muted-foreground mt-1">Choose a plan below to get started</p>
-          </div>
-        )}
-      </section>
-
-      {/* Pricing Cards */}
-      <section>
-        <h2 className="text-lg font-semibold text-foreground mb-6">
-          {currentSub ? 'Upgrade Your Plan' : 'Choose a Plan'}
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {(Object.entries(PLANS) as [PlanKey, (typeof PLANS)[PlanKey]][]).map(([key, plan]) => {
-            const isCurrent = currentSub?.plan === key;
-            const isHighlighted = 'highlighted' in plan && plan.highlighted === true;
-            return (
-              <div
-                key={key}
-                className={`relative p-6 rounded-xl flex flex-col ${
-                  isHighlighted
-                    ? 'bg-primary/5 border-2 border-primary'
-                    : 'bg-card border border-border'
-                }`}
-              >
-                {isHighlighted && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-primary text-primary-foreground text-xs font-bold rounded-full uppercase whitespace-nowrap">
-                    Most Popular
-                  </div>
-                )}
-                <h3 className={`text-lg font-bold ${isHighlighted ? 'text-foreground' : 'text-foreground/80'}`}>
-                  {plan.name}
-                </h3>
-                <div className="mt-3 flex items-baseline gap-1">
-                  <span className={`text-3xl font-extrabold ${isHighlighted ? 'text-primary' : 'text-foreground'}`}>
-                    &#8377;{plan.price.toLocaleString('en-IN')}
+        <Panel title="Current plan">
+          {currentSub ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[24px] font-bold tracking-[-0.025em]">
+                    {PLANS[currentSub.plan]?.name || currentSub.plan}
                   </span>
-                  <span className="text-muted-foreground">/month</span>
+                  <StatusPill variant={currentSub.status === 'active' ? 'active' : 'ok'}>
+                    {currentSub.status}
+                  </StatusPill>
                 </div>
-                <p className="mt-1 text-xs flex items-center gap-1.5 flex-wrap">
-                  <span className="text-primary font-semibold">FREE Setup</span>
-                  {'originalSetupFee' in plan && plan.originalSetupFee ? (
-                    <span className="text-muted-foreground line-through text-[10px]">
-                      &#8377;{plan.originalSetupFee.toLocaleString('en-IN')}
-                    </span>
-                  ) : null}
+                <p className="mt-1 text-[13px] text-[var(--mute)]">
+                  ₹{currentSub.amount}/mo · Renews on{' '}
+                  {new Date(currentSub.endDate).toLocaleDateString('en-IN', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
                 </p>
-                <ul className="mt-6 space-y-2.5 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-foreground/80">
-                      <svg className="w-4 h-4 text-primary shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                {isCurrent ? (
-                  <div className="mt-6 w-full py-2.5 rounded-xl font-semibold text-sm text-center bg-primary/10 text-primary border border-primary/30">
-                    Current Plan
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleSubscribe(key)}
-                    disabled={processingPlan === key}
-                    className={`mt-6 w-full py-2.5 rounded-xl font-semibold text-sm transition-colors ${
-                      isHighlighted
-                        ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20'
-                        : 'border border-primary/40 text-primary hover:bg-primary/10'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {processingPlan === key ? 'Processing...' : 'Subscribe'}
-                  </button>
-                )}
               </div>
-            );
-          })}
-        </div>
-      </section>
+              <div className="text-[13px] text-[var(--mute)]">
+                Bots: {PLANS[currentSub.plan]?.bots || '-'} · Conversations:{' '}
+                {PLANS[currentSub.plan]?.conversations === -1
+                  ? 'Unlimited'
+                  : PLANS[currentSub.plan]?.conversations || '-'}/mo
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <p className="text-[15px] text-[var(--mute)]">No active plan</p>
+              <p className="text-[13px] text-[var(--mute)] mt-1">Pick a plan below to get started</p>
+            </div>
+          )}
+        </Panel>
 
-      {/* Payment History */}
-      <section className="p-6 rounded-xl bg-card border border-border">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Payment History</h2>
-        {history.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-muted-foreground border-b border-border">
-                  <th className="pb-3 pr-4 font-medium">Date</th>
-                  <th className="pb-3 pr-4 font-medium">Plan</th>
-                  <th className="pb-3 pr-4 font-medium">Amount</th>
-                  <th className="pb-3 pr-4 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Payment ID</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {history.map((sub, idx) => (
-                  <tr key={idx} className="text-foreground/80">
-                    <td className="py-3 pr-4">
-                      {new Date(sub.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })}
-                    </td>
-                    <td className="py-3 pr-4 capitalize">{sub.plan}</td>
-                    <td className="py-3 pr-4">&#8377;{sub.amount}</td>
-                    <td className="py-3 pr-4">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        sub.status === 'active'
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-gray-500/10 text-muted-foreground'
-                      }`}>
-                        {sub.status}
-                      </span>
-                    </td>
-                    <td className="py-3 font-mono text-xs text-muted-foreground">
-                      {sub.razorpayPaymentId || '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div>
+          <MonoLabel className="mb-4">{currentSub ? '// Upgrade your plan' : '// Choose a plan'}</MonoLabel>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {(Object.entries(PLANS) as [PlanKey, (typeof PLANS)[PlanKey]][]).map(([key, plan]) => {
+              const isCurrent = currentSub?.plan === key;
+              const highlighted = 'highlighted' in plan && plan.highlighted === true;
+              return (
+                <div
+                  key={key}
+                  className={`rounded-[16px] border flex flex-col relative ${
+                    isCurrent
+                      ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]'
+                      : 'bg-[var(--card)] border-[var(--line)]'
+                  }`}
+                  style={{ padding: '20px 18px' }}
+                >
+                  {highlighted && !isCurrent && (
+                    <div
+                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[var(--accent)] text-[var(--accent-2)] zt-mono text-[10.5px] font-bold rounded-full"
+                      style={{ padding: '3px 10px' }}
+                    >
+                      Most popular
+                    </div>
+                  )}
+                  <div
+                    className={`zt-mono text-[11.5px] font-semibold uppercase tracking-[.08em] ${
+                      isCurrent ? 'text-white/55' : 'text-[var(--mute)]'
+                    }`}
+                  >
+                    {plan.name}
+                  </div>
+                  <div className="mt-2.5 flex items-baseline gap-1">
+                    <span className="text-[36px] font-bold tracking-[-0.03em] leading-none">
+                      <span className="zt-serif text-[0.7em]">₹</span>
+                      {plan.price.toLocaleString('en-IN')}
+                    </span>
+                    <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>/mo</span>
+                  </div>
+                  <ul className="flex flex-col gap-1.5 my-3.5 text-[12.5px] list-none p-0 flex-1">
+                    {plan.features.map((f) => (
+                      <li key={f} className={`${isCurrent ? 'text-white/80' : 'text-[var(--ink-2)]'}`}>
+                        <span className={`zt-mono mr-1 ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--mute)]'}`}>
+                          →
+                        </span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  {isCurrent ? (
+                    <div
+                      className="text-center rounded-[10px] border font-semibold text-[12.5px]"
+                      style={{
+                        padding: 10,
+                        background: 'var(--accent)',
+                        color: 'var(--accent-2)',
+                        borderColor: 'var(--accent)',
+                      }}
+                    >
+                      Current plan
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleSubscribe(key)}
+                      disabled={processingPlan === key}
+                      className="text-center rounded-[10px] border border-[var(--ink)] font-semibold text-[12.5px] hover:bg-[var(--ink)] hover:text-[var(--background)] disabled:opacity-60"
+                      style={{ padding: 10 }}
+                    >
+                      {processingPlan === key ? 'Processing…' : 'Subscribe'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ) : (
-          <p className="text-muted-foreground text-center py-6">No payment history yet</p>
-        )}
-      </section>
-    </div>
+        </div>
+
+        <Panel title="Payment history">
+          {history.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Date', 'Plan', 'Amount', 'Status', 'Payment ID'].map((h) => (
+                      <th
+                        key={h}
+                        className="zt-mono text-[10.5px] uppercase tracking-[.08em] text-[var(--mute)] font-medium"
+                        style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--line)' }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((sub, idx) => (
+                    <tr key={idx}>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                        {new Date(sub.createdAt).toLocaleDateString('en-IN', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                        })}
+                      </td>
+                      <td className="capitalize" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                        {sub.plan}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>₹{sub.amount}</td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                        <StatusPill variant={sub.status === 'active' ? 'active' : 'ok'}>{sub.status}</StatusPill>
+                      </td>
+                      <td
+                        className="zt-mono text-[11.5px] text-[var(--mute)]"
+                        style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}
+                      >
+                        {sub.razorpayPaymentId || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-[13px] text-[var(--mute)] text-center py-4 m-0">No payment history yet.</p>
+          )}
+        </Panel>
+      </div>
+    </>
   );
 }

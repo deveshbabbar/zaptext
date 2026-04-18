@@ -1,11 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { PageTopbar, PageHead, Tabs as ZTabs, StatusPill } from '@/components/app/primitives';
 
 interface BookingItem {
   booking_id: string;
@@ -19,18 +16,23 @@ interface BookingItem {
   notes: string;
 }
 
+type TabKey = 'upcoming' | 'past' | 'cancelled';
+
 export default function ClientBookingsPage() {
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>('upcoming');
 
   useEffect(() => {
     fetch('/api/client/bookings')
       .then((res) => res.json())
-      .then((data) => { setBookings(data.bookings || []); setLoading(false); })
+      .then((data) => {
+        setBookings(data.bookings || []);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
-
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const handleCancel = async (bookingId: string) => {
     setCancellingId(bookingId);
@@ -41,7 +43,9 @@ export default function ClientBookingsPage() {
         body: JSON.stringify({ bookingId }),
       });
       if (res.ok) {
-        setBookings((prev) => prev.map((b) => b.booking_id === bookingId ? { ...b, status: 'cancelled' } : b));
+        setBookings((prev) =>
+          prev.map((b) => (b.booking_id === bookingId ? { ...b, status: 'cancelled' } : b))
+        );
         toast.success('Booking cancelled successfully');
       } else {
         toast.error('Failed to cancel booking');
@@ -53,55 +57,108 @@ export default function ClientBookingsPage() {
     }
   };
 
-  if (loading) return <div className="p-8"><div className="animate-pulse h-64 bg-muted rounded-lg"></div></div>;
-
   const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const upcoming = bookings.filter((b) => b.status === 'confirmed' && b.date >= todayIST);
   const past = bookings.filter((b) => b.status === 'completed' || (b.status === 'confirmed' && b.date < todayIST));
   const cancelled = bookings.filter((b) => b.status === 'cancelled');
 
-  const BookingList = ({ items }: { items: BookingItem[] }) => (
-    items.length === 0 ? (
-      <p className="text-muted-foreground text-center py-8">No bookings</p>
-    ) : (
-      <div className="space-y-3">
-        {items.map((b) => (
-          <div key={b.booking_id} className="flex items-center justify-between p-4 border border-border rounded-lg">
-            <div>
-              <p className="font-medium">{b.customer_name}</p>
-              <p className="text-sm text-muted-foreground">{b.date} &middot; {b.time_slot} - {b.end_time}</p>
-              {b.service && <p className="text-sm text-muted-foreground">{b.service}</p>}
-              {b.notes && <p className="text-xs text-muted-foreground mt-1">{b.notes}</p>}
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge className={b.status === 'confirmed' ? 'bg-green-500/10 text-green-400' : b.status === 'cancelled' ? 'bg-red-500/10 text-red-400' : 'bg-muted text-muted-foreground'}>
-                {b.status}
-              </Badge>
-              {b.status === 'confirmed' && (
-                <Button variant="outline" size="sm" onClick={() => handleCancel(b.booking_id)} disabled={cancellingId === b.booking_id}>
-                  {cancellingId === b.booking_id ? 'Cancelling...' : 'Cancel'}
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  );
+  const list = tab === 'upcoming' ? upcoming : tab === 'past' ? past : cancelled;
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-8">Bookings</h1>
-      <Tabs defaultValue="upcoming">
-        <TabsList>
-          <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
-          <TabsTrigger value="past">Past ({past.length})</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled ({cancelled.length})</TabsTrigger>
-        </TabsList>
-        <TabsContent value="upcoming"><Card><CardContent className="pt-4"><BookingList items={upcoming} /></CardContent></Card></TabsContent>
-        <TabsContent value="past"><Card><CardContent className="pt-4"><BookingList items={past} /></CardContent></Card></TabsContent>
-        <TabsContent value="cancelled"><Card><CardContent className="pt-4"><BookingList items={cancelled} /></CardContent></Card></TabsContent>
-      </Tabs>
-    </div>
+    <>
+      <PageTopbar
+        crumbs={
+          <>
+            <b className="text-foreground">Bookings</b> · {bookings.length} total · {upcoming.length} upcoming
+          </>
+        }
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={
+            <>
+              All your <span className="zt-serif">bookings.</span>
+            </>
+          }
+          sub="Managed by the bot — cancel or review any time."
+        />
+
+        <ZTabs<TabKey>
+          active={tab}
+          onChange={setTab}
+          items={[
+            { id: 'upcoming', label: 'Upcoming', count: upcoming.length },
+            { id: 'past', label: 'Past', count: past.length },
+            { id: 'cancelled', label: 'Cancelled', count: cancelled.length },
+          ]}
+        />
+
+        <div className="bg-[var(--card)] border border-[var(--line)] rounded-[18px] overflow-hidden">
+          {loading ? (
+            <div className="p-10 animate-pulse text-[var(--mute)]">Loading…</div>
+          ) : list.length === 0 ? (
+            <div className="text-center text-[var(--mute)] py-16">No bookings in this tab.</div>
+          ) : (
+            <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Date', 'Time', 'Customer', 'Service', 'Status', ''].map((h) => (
+                    <th
+                      key={h}
+                      className="zt-mono text-[10.5px] tracking-[.08em] uppercase text-[var(--mute)] font-medium bg-[var(--bg-2)]"
+                      style={{ padding: '14px 16px', textAlign: 'left', borderBottom: '1px solid var(--line)' }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((b) => (
+                  <tr key={b.booking_id} className="hover:bg-[color-mix(in_oklab,var(--accent)_12%,transparent)]">
+                    <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+                      <span className="zt-mono text-[12.5px]">{b.date}</span>
+                    </td>
+                    <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+                      <span className="zt-mono text-[12.5px]">
+                        {b.time_slot}
+                        {b.end_time ? `–${b.end_time}` : ''}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+                      <div className="font-semibold">{b.customer_name}</div>
+                      <div className="zt-mono text-[11.5px] text-[var(--mute)]">{b.customer_phone}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+                      {b.service || '—'}
+                      {b.notes && <div className="text-[11.5px] text-[var(--mute)] mt-0.5">{b.notes}</div>}
+                    </td>
+                    <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+                      <StatusPill
+                        variant={b.status === 'cancelled' ? 'cancel' : b.status === 'confirmed' ? 'ok' : 'pending'}
+                      >
+                        {b.status}
+                      </StatusPill>
+                    </td>
+                    <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', textAlign: 'right' }}>
+                      {b.status === 'confirmed' && (
+                        <button
+                          onClick={() => handleCancel(b.booking_id)}
+                          disabled={cancellingId === b.booking_id}
+                          className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] hover:border-[var(--ink)] font-semibold text-[11.5px] disabled:opacity-50"
+                          style={{ padding: '6px 10px' }}
+                        >
+                          {cancellingId === b.booking_id ? 'Cancelling…' : 'Cancel'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

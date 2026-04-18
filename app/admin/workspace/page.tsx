@@ -1,11 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
 
 export default function WorkspacePage() {
   const [workspaceName, setWorkspaceName] = useState('ZapText HQ');
@@ -14,115 +10,106 @@ export default function WorkspacePage() {
   const [notificationEmail, setNotificationEmail] = useState('admin@zaptext.shop');
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-2">Workspace Settings</h1>
-      <p className="text-muted-foreground mb-8">Configure your admin workspace</p>
+    <>
+      <PageTopbar
+        crumbs={<><b className="text-foreground">Workspace</b> · settings & branding</>}
+        actions={<Pill variant="ink">Save changes</Pill>}
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={<>Workspace <span className="zt-serif">settings.</span></>}
+          sub="Your admin defaults, branding, and billing."
+        />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* General settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>General</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="ws-name">Workspace Name</Label>
-              <Input
-                id="ws-name"
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-              />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Panel title="General">
+            <div className="flex flex-col gap-3.5">
+              <LabeledInput label="Workspace name" value={workspaceName} onChange={setWorkspaceName} />
+              <LabeledInput label="Default language" value={language} onChange={setLanguage} />
+              <LabeledInput label="Timezone" value={timezone} onChange={setTimezone} />
+              <LabeledInput label="Notification email" value={notificationEmail} onChange={setNotificationEmail} type="email" />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ws-lang">Default Language</Label>
-              <Input
-                id="ws-lang"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ws-tz">Timezone</Label>
-              <Input
-                id="ws-tz"
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ws-email">Notification Email</Label>
-              <Input
-                id="ws-email"
-                type="email"
-                value={notificationEmail}
-                onChange={(e) => setNotificationEmail(e.target.value)}
-              />
-            </div>
-            <div className="pt-2">
-              <Button>Save Changes</Button>
-            </div>
-          </CardContent>
-        </Card>
+          </Panel>
 
-        {/* Branding */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Branding</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Logo</Label>
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-lg bg-primary/10 border border-border flex items-center justify-center text-2xl">
-                  🤖
+          <Panel title="Branding">
+            <div className="flex flex-col gap-3.5">
+              <div>
+                <div className="text-[12.5px] font-semibold mb-1.5">Logo</div>
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-[12px] bg-[var(--bg-2)] border border-[var(--line)] flex items-center justify-center text-[24px]">
+                    🤖
+                  </div>
+                  <Pill>Upload new logo</Pill>
                 </div>
-                <Button variant="outline" size="sm">
-                  Upload new logo
-                </Button>
+                <p className="text-[11.5px] text-[var(--mute)] mt-1.5 m-0">PNG or SVG, 512×512 recommended.</p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                PNG or SVG, 512x512 recommended
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Primary Color</Label>
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-md border border-border"
-                  style={{ backgroundColor: '#25D366' }}
-                />
-                <Input value="#25D366" readOnly className="max-w-[140px]" />
-                <Badge variant="outline">WhatsApp Green</Badge>
+              <div>
+                <div className="text-[12.5px] font-semibold mb-1.5">Primary color</div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-[8px] border border-[var(--line)]" style={{ backgroundColor: '#DCFE5A' }} />
+                  <input
+                    readOnly
+                    value="#DCFE5A"
+                    className="max-w-[140px] rounded-[10px] border border-[var(--line)] bg-[var(--card)] zt-mono text-[13px]"
+                    style={{ padding: '8px 10px' }}
+                  />
+                  <span
+                    className="zt-mono text-[10.5px] border border-[var(--line)] rounded-full"
+                    style={{ padding: '2px 8px' }}
+                  >
+                    ZapText Lime
+                  </span>
+                </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </Panel>
 
-        {/* Billing */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Billing</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Panel title="Billing" className="lg:col-span-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <p className="text-sm text-muted-foreground">Current Plan</p>
-                <p className="text-lg font-semibold mt-1">Business</p>
-                <Badge className="bg-primary/10 text-primary border-primary/30 mt-2">
+                <div className="text-[12.5px] text-[var(--mute)]">Current plan</div>
+                <div className="text-[17px] font-semibold mt-1">Business</div>
+                <span
+                  className="zt-mono text-[11px] bg-[var(--accent)] text-[var(--accent-2)] rounded-full font-bold mt-2 inline-block"
+                  style={{ padding: '3px 10px' }}
+                >
                   ₹4,999 / month
-                </Badge>
+                </span>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Payment Method</p>
-                <p className="text-lg font-semibold mt-1">Visa •••• 4242</p>
-                <Button variant="outline" size="sm" className="mt-2">
-                  Update payment method
-                </Button>
+                <div className="text-[12.5px] text-[var(--mute)]">Payment method</div>
+                <div className="text-[17px] font-semibold mt-1 zt-mono">Visa •••• 4242</div>
+                <Pill>Update payment method</Pill>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </Panel>
+        </div>
       </div>
+    </>
+  );
+}
+
+function LabeledInput({
+  label,
+  value,
+  onChange,
+  type,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[12.5px] font-semibold mb-1.5">{label}</div>
+      <input
+        type={type || 'text'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+        style={{ padding: '11px 13px' }}
+      />
     </div>
   );
 }

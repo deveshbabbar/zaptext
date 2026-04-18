@@ -197,6 +197,36 @@ export type ClientConfig =
   | D2CFields
   | GymFields;
 
+// ─── Trainer Types ───
+
+export interface TrainerAvailabilityBlock {
+  start: string; // HH:MM 24h
+  end: string;
+}
+
+export interface TrainerAvailability {
+  monday: TrainerAvailabilityBlock[];
+  tuesday: TrainerAvailabilityBlock[];
+  wednesday: TrainerAvailabilityBlock[];
+  thursday: TrainerAvailabilityBlock[];
+  friday: TrainerAvailabilityBlock[];
+  saturday: TrainerAvailabilityBlock[];
+  sunday: TrainerAvailabilityBlock[];
+}
+
+export interface Trainer {
+  trainer_id: string;
+  client_id: string;
+  name: string;
+  specialty: string;
+  price: number;
+  whatsapp_phone: string; // digits only e.g. "919876543210"
+  bio: string;
+  is_active: boolean;
+  availability: TrainerAvailability;
+  created_at: string;
+}
+
 // ─── Database Types ───
 
 export interface ClientRow {

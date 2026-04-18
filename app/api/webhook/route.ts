@@ -21,6 +21,15 @@ import {
   findBestMatch,
   slugify,
 } from '@/lib/inventory';
+import {
+  getTrainerByPhoneAny,
+  getActiveTrainers,
+  formatAvailabilityForBot,
+  parseAvailabilityCommand,
+  upsertTrainer,
+  getTrainerById,
+  DAYS,
+} from '@/lib/trainers';
 import { clerkClient } from '@clerk/nextjs/server';
 
 // WhatsApp webhook verification
@@ -91,6 +100,23 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
           message_type: 'text',
         });
         continue;
+      }
+    }
+
+    // Trainer-side commands (if msg.from matches a registered trainer's phone)
+    if (msg.type === 'text' && msg.text && !isOwner) {
+      const trainer = await getTrainerByPhoneAny(msg.from || '');
+      if (trainer && trainer.client_id === client.client_id) {
+        const handled = await handleTrainerCommand(
+          phoneNumberId, trainer, msg.text.trim(), client.client_id
+        );
+        if (handled) {
+          await addConversationMessage({
+            timestamp, client_id: client.client_id, customer_phone: customerPhone,
+            direction: 'incoming', message: `[trainer-cmd] ${msg.text}`, message_type: 'text',
+          });
+          continue;
+        }
       }
     }
 
@@ -253,9 +279,34 @@ ORDER INSTRUCTIONS (food / product orders):
 - Use EXACT item names as shown in LIVE STOCK below. Never confirm or [ORDER:] an item that shows OUT OF STOCK. If customer insists, politely say it's unavailable and suggest an alternative.${stockBlock}`;
     }
 
-    // Generate AI response with booking + payment + order context
+    // Trainer context: inject active trainers into bot prompt
+    let trainerContext = '';
+    try {
+      const activeTrainers = await getActiveTrainers(client.client_id);
+      if (activeTrainers.length > 0) {
+        const trainerLines = activeTrainers.map((t) => {
+          const avail = formatAvailabilityForBot(t);
+          const price = t.price > 0 ? ` · ₹${t.price}/session` : '';
+          const specialty = t.specialty ? ` (${t.specialty})` : '';
+          return `- ${t.name}${specialty}${price} · Available: ${avail}`;
+        }).join('\n');
+        trainerContext = `
+
+AVAILABLE TRAINERS/STAFF:
+${trainerLines}
+
+When a customer wants to book a specific trainer:
+1. Confirm the trainer name + preferred date/time from the customer
+2. Use [BOOK:date:time:customerName:Trainer - <TrainerName>:notes] to create the booking
+3. The system will notify the trainer directly on WhatsApp for approval
+4. Tell the customer: "Booking request bhej diya hai <TrainerName> ko, woh confirm karenge jaldi."
+5. Do NOT book a slot that falls outside the trainer's listed available hours.`;
+      }
+    } catch { /* ignore */ }
+
+    // Generate AI response with booking + payment + order + trainer context
     const aiResponse = await generateBotResponse(
-      client.system_prompt + availabilityContext + paymentContext + orderContext,
+      client.system_prompt + availabilityContext + paymentContext + orderContext + trainerContext,
       pastHistory,
       msg.text
     );
@@ -286,6 +337,29 @@ ORDER INSTRUCTIONS (food / product orders):
           service: safeService,
           notes: safeNotes,
         });
+        // Notify trainer directly if booking is for a specific trainer
+        try {
+          const trainerNameMatch = safeService.match(/^Trainer\s*[-–:]\s*(.+)/i);
+          if (trainerNameMatch) {
+            const trainerName = trainerNameMatch[1].trim();
+            const activeTrainers = await getActiveTrainers(client.client_id);
+            const matchedTrainer = activeTrainers.find(
+              (t) => t.name.toLowerCase().includes(trainerName.toLowerCase())
+            );
+            if (matchedTrainer?.whatsapp_phone) {
+              const bookingId = `BK_${Date.now()}`;
+              const trainerMsg =
+                `🏋️ *New booking request!*\n\n` +
+                `👤 ${safeName}\n📞 ${customerPhone}\n📅 ${date} · ${time}\n` +
+                `💰 ₹${matchedTrainer.price || '—'}/session\n\n` +
+                `Reply:\n*approve ${bookingId}* — confirm this booking\n*reject ${bookingId} <reason>* — decline`;
+              await sendWhatsAppMessage(phoneNumberId, matchedTrainer.whatsapp_phone, trainerMsg);
+            }
+          }
+        } catch (e) {
+          console.error('Trainer booking notify failed:', e);
+        }
+
         // Notify owner via WhatsApp
         const ownerMsg = `🔔 *New Booking!*\n\n👤 ${name}\n📞 ${customerPhone}\n📅 ${date}\n🕐 ${time}\n${service ? `💼 ${service}\n` : ''}`;
         await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
@@ -841,4 +915,120 @@ async function handleOwnerCommand(
   }
 
   return false;
+}
+
+// ─── Trainer-side command handler ───
+// Trainer texts the bot from their registered phone.
+// Only allows: approve/reject bookings + availability updates + schedule view.
+import type { Trainer } from '@/lib/types';
+
+async function handleTrainerCommand(
+  phoneNumberId: string,
+  trainer: Trainer,
+  text: string,
+  clientId: string
+): Promise<boolean> {
+  const normalized = text.trim().toLowerCase();
+  const trainerPhone = trainer.whatsapp_phone;
+
+  // approve <BK_xxx>
+  const approveMatch = normalized.match(/^approve\s+(\S+)/);
+  if (approveMatch) {
+    const bookingId = text.match(/approve\s+(\S+)/i)?.[1] || approveMatch[1];
+    const booking = await getBookingById(bookingId);
+    if (!booking || booking.client_id !== clientId) {
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone, `❌ Booking ${bookingId} not found.`);
+      return true;
+    }
+    // Notify the customer
+    try {
+      const { getClientById } = await import('@/lib/google-sheets');
+      const client = await getClientById(clientId);
+      if (client && booking.customer_phone) {
+        const msg =
+          `✅ Your booking is confirmed!\n\n` +
+          `🏋️ Trainer: ${trainer.name}\n` +
+          `📅 ${booking.date} at ${booking.time_slot}\n\n` +
+          `See you there! 💪`;
+        await sendWhatsAppMessage(client.phone_number_id, booking.customer_phone, msg);
+      }
+    } catch (e) { console.error('Trainer approve notify failed:', e); }
+    await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+      `✅ Confirmed ${bookingId} — customer has been notified.`);
+    return true;
+  }
+
+  // reject <BK_xxx> [reason]
+  const rejectMatch = normalized.match(/^reject\s+(\S+)(?:\s+(.+))?/);
+  if (rejectMatch) {
+    const bookingId = text.match(/reject\s+(\S+)/i)?.[1] || rejectMatch[1];
+    const reason = rejectMatch[2] || 'Trainer unavailable';
+    const booking = await getBookingById(bookingId);
+    if (!booking || booking.client_id !== clientId) {
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone, `❌ Booking ${bookingId} not found.`);
+      return true;
+    }
+    await cancelBooking(bookingId, `Rejected by trainer ${trainer.name}: ${reason}`);
+    try {
+      const { getClientById } = await import('@/lib/google-sheets');
+      const client = await getClientById(clientId);
+      if (client && booking.customer_phone) {
+        const msg =
+          `🙏 Sorry, your booking with ${trainer.name} on ${booking.date} at ${booking.time_slot} ` +
+          `couldn't be confirmed.\nReason: ${reason}\n\nPlease reply to rebook with another slot.`;
+        await sendWhatsAppMessage(client.phone_number_id, booking.customer_phone, msg);
+      }
+    } catch (e) { console.error('Trainer reject notify failed:', e); }
+    await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+      `✅ Declined ${bookingId} — customer notified.`);
+    return true;
+  }
+
+  // availability update: "avail mon-fri 9am-6pm"
+  if (normalized.startsWith('avail') || normalized.startsWith('availability')) {
+    const parsed = parseAvailabilityCommand(text);
+    if (parsed) {
+      await upsertTrainer({ ...trainer, availability: parsed });
+      const days = (DAYS as readonly string[]).filter((d) => ((parsed as unknown) as Record<string, unknown[]>)[d]?.length > 0);
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+        `✅ Availability updated!\nActive days: ${days.map((d) => d.slice(0,3)).join(', ') || 'none'}\n\nText *schedule* to confirm.`);
+    } else {
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+        `❌ Couldn't parse. Try: *avail mon-fri 9am-6pm* or *avail mon wed fri 8am-5pm*`);
+    }
+    return true;
+  }
+
+  // off today / off <date>
+  if (normalized.startsWith('off ') || normalized === 'off today') {
+    await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+      `⏸ Got it — mark yourself off in the dashboard or text *avail* with your new schedule.`);
+    return true;
+  }
+
+  // schedule — show current availability
+  if (normalized === 'schedule' || normalized === 'availability' || normalized === 'avail') {
+    const { formatAvailabilityForBot } = await import('@/lib/trainers');
+    const avail = formatAvailabilityForBot(trainer);
+    await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+      `📅 *${trainer.name}'s schedule*\n${avail}\n\nText *avail mon-fri 9am-6pm* to update.`);
+    return true;
+  }
+
+  // help
+  if (normalized === 'help' || normalized === '?') {
+    await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+      `🏋️ *Trainer commands*:\n\n` +
+      `• *approve BK_xxx* — confirm a booking\n` +
+      `• *reject BK_xxx reason* — decline\n` +
+      `• *avail mon-fri 9am-6pm* — update schedule\n` +
+      `• *schedule* — see your current availability\n` +
+      `• *help* — this list`);
+    return true;
+  }
+
+  // Any other message from trainer — politely redirect
+  await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+    `Hi ${trainer.name}! 👋 I only process trainer commands here.\nText *help* for the list.`);
+  return true; // consumed — don't pass to customer AI flow
 }

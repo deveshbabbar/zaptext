@@ -71,6 +71,11 @@ const TABS: TabSpec[] = [
     headerRange: 'inventory!A1:I1',
     headers: ['client_id', 'sku', 'name', 'price', 'stock', 'low_stock_threshold', 'is_active', 'updated_at', 'notes'],
   },
+  {
+    name: 'trainers',
+    headerRange: 'trainers!A1:J1',
+    headers: ['trainer_id', 'client_id', 'name', 'specialty', 'price', 'whatsapp_phone', 'bio', 'is_active', 'availability_json', 'created_at'],
+  },
 ];
 
 export interface InitReport {

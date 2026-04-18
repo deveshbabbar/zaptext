@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
+import { WelcomeTrigger } from '@/components/welcome-trigger';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
@@ -13,6 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex h-screen">
+      <WelcomeTrigger />
       <aside
         className="w-[268px] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
         style={{ padding: '18px 14px' }}

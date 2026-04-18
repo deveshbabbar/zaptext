@@ -4,6 +4,7 @@ import { BotSwitcher } from '@/components/client/bot-switcher';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
 import Link from 'next/link';
+import { WelcomeTrigger } from '@/components/welcome-trigger';
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireClientWithBots();
@@ -44,6 +45,7 @@ export default async function ClientLayout({ children }: { children: React.React
 
   return (
     <div className="flex h-screen">
+      <WelcomeTrigger />
       <aside
         className="w-[268px] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
         style={{ padding: '18px 14px' }}

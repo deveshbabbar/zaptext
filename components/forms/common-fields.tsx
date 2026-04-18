@@ -227,6 +227,38 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           rows={3}
         />
       </div>
+
+      <h3 className="text-lg font-semibold border-b border-border pb-2 pt-4">
+        Payment (UPI){' '}
+        <span className="text-sm font-normal text-muted-foreground">— optional, enables in-chat payments</span>
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="upiId">UPI ID</Label>
+          <Input
+            id="upiId"
+            placeholder="e.g., rohit@ybl or 98xxx@upi"
+            value={(data.upiId as string) || ''}
+            onChange={(e) => onChange('upiId', e.target.value.trim())}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Format: name@bank. Bot uses this to build payment links for customers.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="upiName">Payee Name</Label>
+          <Input
+            id="upiName"
+            placeholder="e.g., Rohit's Biryani"
+            value={(data.upiName as string) || ''}
+            onChange={(e) => onChange('upiName', e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Shown to customer in their UPI app. Usually your business name.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

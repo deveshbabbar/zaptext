@@ -53,7 +53,7 @@ export async function getAllClients(): Promise<ClientRow[]> {
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A2:L',
+    range: 'clients!A2:N',
   });
   const rows = res.data.values || [];
   const result = rows.map((row) => ({
@@ -69,6 +69,8 @@ export async function getAllClients(): Promise<ClientRow[]> {
     status: (row[9] || 'active') as ClientRow['status'],
     created_at: row[10] || '',
     owner_user_id: row[11] || '',
+    upi_id: row[12] || '',
+    upi_name: row[13] || '',
   }));
   setCached('clients', result);
   return result;
@@ -88,7 +90,7 @@ export async function addClient(client: ClientRow): Promise<void> {
   const sheets = getSheets();
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A:L',
+    range: 'clients!A:N',
     valueInputOption: 'RAW',
     requestBody: {
       values: [[
@@ -104,6 +106,8 @@ export async function addClient(client: ClientRow): Promise<void> {
         client.status,
         client.created_at,
         client.owner_user_id,
+        client.upi_id || '',
+        client.upi_name || '',
       ]],
     },
   });
@@ -138,6 +142,8 @@ export async function updateClientField(clientId: string, field: string, value: 
     system_prompt: 'H',
     knowledge_base_json: 'I',
     status: 'J',
+    upi_id: 'M',
+    upi_name: 'N',
   };
   const col = fieldToCol[field];
   if (!col) return;
@@ -307,15 +313,15 @@ export async function initializeSheets(): Promise<void> {
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'clients!A1:L1',
+      range: 'clients!A1:N1',
     });
     if (!res.data.values || res.data.values.length === 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
-        range: 'clients!A1:L1',
+        range: 'clients!A1:N1',
         valueInputOption: 'RAW',
         requestBody: {
-          values: [['client_id', 'business_name', 'type', 'owner_name', 'whatsapp_number', 'phone_number_id', 'city', 'system_prompt', 'knowledge_base_json', 'status', 'created_at', 'owner_user_id']],
+          values: [['client_id', 'business_name', 'type', 'owner_name', 'whatsapp_number', 'phone_number_id', 'city', 'system_prompt', 'knowledge_base_json', 'status', 'created_at', 'owner_user_id', 'upi_id', 'upi_name']],
         },
       });
     }

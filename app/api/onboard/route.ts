@@ -77,6 +77,8 @@ export async function POST(request: NextRequest) {
       status: isAdmin ? 'active' : 'pending',
       created_at: getISTTimestamp(),
       owner_user_id: user.userId,
+      upi_id: typeof config.upiId === 'string' ? config.upiId.trim() : '',
+      upi_name: typeof config.upiName === 'string' ? config.upiName.trim() : '',
     };
 
     const existingBotsCount = existingBots.length;

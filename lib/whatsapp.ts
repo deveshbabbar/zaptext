@@ -91,6 +91,8 @@ export interface WhatsAppMessage {
   text?: string;
   type: string;
   timestamp: string;
+  imageId?: string;
+  caption?: string;
 }
 
 export interface WhatsAppWebhookPayload {
@@ -133,13 +135,18 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
 
     return {
       phoneNumberId,
-      messages: messages.map((m) => ({
-        id: (m.id as string) || '',
-        from: (m.from as string) || '',
-        text: (m.text as Record<string, string>)?.body,
-        type: (m.type as string) || 'unknown',
-        timestamp: (m.timestamp as string) || '',
-      })),
+      messages: messages.map((m) => {
+        const image = m.image as Record<string, string> | undefined;
+        return {
+          id: (m.id as string) || '',
+          from: (m.from as string) || '',
+          text: (m.text as Record<string, string>)?.body,
+          type: (m.type as string) || 'unknown',
+          timestamp: (m.timestamp as string) || '',
+          imageId: image?.id,
+          caption: image?.caption,
+        };
+      }),
     };
   } catch {
     return null;

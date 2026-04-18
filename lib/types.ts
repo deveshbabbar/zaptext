@@ -9,6 +9,8 @@ export interface CommonFields {
   languages: string[];
   welcomeMessage: string;
   additionalInfo: string;
+  upiId?: string;
+  upiName?: string;
 }
 
 // ─── Business Type Specific Fields ───
@@ -208,6 +210,8 @@ export interface ClientRow {
   status: 'active' | 'pending' | 'paused' | 'rejected' | 'error';
   created_at: string;
   owner_user_id: string;
+  upi_id?: string;
+  upi_name?: string;
 }
 
 export interface ConversationRow {

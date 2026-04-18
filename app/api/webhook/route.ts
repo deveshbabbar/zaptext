@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyWebhook, parseWebhookPayload, sendWhatsAppMessage, isMessageProcessed } from '@/lib/whatsapp';
+import { verifyWebhook, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
 import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics } from '@/lib/google-sheets';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getTodayIST, getDateOffset, calculateEndTime } from '@/lib/booking';
 import { sendTemplate, tplNewBooking } from '@/lib/email';
+import {
+  buildUpiLink,
+  downloadWhatsAppMedia,
+  verifyPaymentScreenshot,
+  setPendingPayment,
+  getPendingPayment,
+  clearPendingPayment,
+} from '@/lib/payments';
 import { clerkClient } from '@clerk/nextjs/server';
 
 // WhatsApp webhook verification
@@ -42,7 +50,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string }>) {
+async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
   if (!client || client.status !== 'active') return;
@@ -56,9 +64,15 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     const timestamp = getISTTimestamp();
     const customerPhone = msg.from;
 
-    // Handle non-text messages
+    // Handle image messages — may be a payment screenshot
+    if (msg.type === 'image' && msg.imageId) {
+      await handlePaymentScreenshot(phoneNumberId, client, customerPhone, msg.imageId, msg.caption || '');
+      continue;
+    }
+
+    // Handle other non-text messages
     if (msg.type !== 'text' || !msg.text) {
-      const fallback = 'Abhi main sirf text messages samajh sakta hoon. Kya aap text mein bata sakte hain? 🙏';
+      const fallback = 'Abhi main sirf text aur payment screenshot samajh sakta hoon. Kya aap text mein bata sakte hain? 🙏';
       await addConversationMessage({
         timestamp,
         client_id: client.client_id,
@@ -143,9 +157,23 @@ BOOKING INSTRUCTIONS:
       }
     }
 
-    // Generate AI response with booking context
+    // Payment context: teach bot the [PAY:] tag if this client has UPI configured
+    let paymentContext = '';
+    if (client.upi_id) {
+      paymentContext = `
+
+PAYMENT INSTRUCTIONS:
+- This business accepts UPI payments. UPI ID: ${client.upi_id}${client.upi_name ? ` (${client.upi_name})` : ''}
+- When customer agrees to a price / confirms an order, include EXACTLY this tag in your response: [PAY:amount:note]
+  Example: [PAY:560:Order #8821] or [PAY:500:Root canal consult]
+- The system will auto-insert a UPI payment link and ask for a screenshot. Don't paste the raw UPI link yourself — just use the tag.
+- When customer sends a payment screenshot, the system verifies + forwards to the owner automatically. Don't acknowledge payment yourself unless the customer just sent a text like "paid" without a screenshot.
+- Use [PAY:] only once per order. If already paid, don't ask again.`;
+    }
+
+    // Generate AI response with booking + payment context
     const aiResponse = await generateBotResponse(
-      client.system_prompt + availabilityContext,
+      client.system_prompt + availabilityContext + paymentContext,
       pastHistory,
       msg.text
     );
@@ -217,6 +245,31 @@ BOOKING INSTRUCTIONS:
       finalResponse = finalResponse.replace(/\[CANCEL:[^\]]+\]/, '').trim();
     }
 
+    // Payment tag: [PAY:amount:note] — bot asks customer to pay X amount
+    const payMatch = aiResponse.match(/\[PAY:(\d+(?:\.\d+)?):([^\]]*)\]/);
+    if (payMatch) {
+      const amount = parseFloat(payMatch[1]);
+      const note = (payMatch[2] || 'Order').slice(0, 60);
+      if (amount > 0 && client.upi_id) {
+        const upiLink = buildUpiLink({
+          upiId: client.upi_id,
+          name: client.upi_name || client.business_name,
+          amount,
+          note,
+        });
+        setPendingPayment(client.client_id, customerPhone, amount, note);
+        finalResponse =
+          finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim() +
+          `\n\n💳 Pay ₹${amount.toFixed(2)} here: ${upiLink}\nPaid hone ke baad screenshot bhej dena — hum confirm kar denge ✓`;
+      } else if (amount > 0 && !client.upi_id) {
+        finalResponse =
+          finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim() +
+          `\n\n💳 Amount: ₹${amount.toFixed(2)}. Payment ke liye hum aapko seedha contact karenge.`;
+      } else {
+        finalResponse = finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim();
+      }
+    }
+
     // Send response via WhatsApp
     await sendWhatsAppMessage(phoneNumberId, customerPhone, finalResponse);
 
@@ -232,5 +285,156 @@ BOOKING INSTRUCTIONS:
 
     // Update analytics
     await updateAnalytics(client.client_id, customerPhone);
+  }
+}
+
+// ─── Payment screenshot handler ───
+
+type ClientForPayment = {
+  client_id: string;
+  business_name: string;
+  whatsapp_number: string;
+  upi_id?: string;
+  upi_name?: string;
+  owner_user_id: string;
+};
+
+async function handlePaymentScreenshot(
+  phoneNumberId: string,
+  client: ClientForPayment,
+  customerPhone: string,
+  imageId: string,
+  caption: string
+) {
+  const ts = getISTTimestamp();
+  const pending = getPendingPayment(client.client_id, customerPhone);
+
+  await addConversationMessage({
+    timestamp: ts,
+    client_id: client.client_id,
+    customer_phone: customerPhone,
+    direction: 'incoming',
+    message: `[image] ${caption}`,
+    message_type: 'image',
+  });
+
+  // No pending payment → just forward to owner as-is
+  if (!pending) {
+    await forwardImageToOwner(phoneNumberId, client, customerPhone, imageId, caption, null);
+    const ack = 'Image mil gayi ✓ Owner ko bhej di hai. Wo confirm kar denge jaldi 🙏';
+    await sendWhatsAppMessage(phoneNumberId, customerPhone, ack);
+    await addConversationMessage({
+      timestamp: getISTTimestamp(),
+      client_id: client.client_id,
+      customer_phone: customerPhone,
+      direction: 'outgoing',
+      message: ack,
+      message_type: 'text',
+    });
+    return;
+  }
+
+  // Pending payment → download + verify + forward
+  let check: Awaited<ReturnType<typeof verifyPaymentScreenshot>> | null = null;
+  const media = await downloadWhatsAppMedia(imageId);
+  if (media && client.upi_id) {
+    check = await verifyPaymentScreenshot(media.base64, media.mimeType, {
+      upiId: client.upi_id,
+      amount: pending.amount,
+    });
+  }
+
+  await forwardImageToOwner(phoneNumberId, client, customerPhone, imageId, caption, check);
+
+  let reply: string;
+  if (check?.matchesExpected) {
+    reply = `Payment confirmed ✓ ₹${pending.amount.toFixed(2)} received${
+      check.txnIdDetected ? ` (Txn: ${check.txnIdDetected})` : ''
+    }. Thanks boss! 🙌`;
+    clearPendingPayment(client.client_id, customerPhone);
+  } else if (check) {
+    reply = `Screenshot mila, but verify nahi ho paya 🤔 Owner ko manually check karne bhej diya — thodi der mein confirm ho jayega.`;
+  } else {
+    reply = `Screenshot mil gayi ✓ Owner ko bhej di hai manual check ke liye 🙏`;
+  }
+
+  await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
+  await addConversationMessage({
+    timestamp: getISTTimestamp(),
+    client_id: client.client_id,
+    customer_phone: customerPhone,
+    direction: 'outgoing',
+    message: reply,
+    message_type: 'text',
+  });
+}
+
+async function forwardImageToOwner(
+  phoneNumberId: string,
+  client: ClientForPayment,
+  customerPhone: string,
+  imageId: string,
+  customerCaption: string,
+  check: Awaited<ReturnType<typeof verifyPaymentScreenshot>> | null
+) {
+  const ownerPhone = client.whatsapp_number.replace('+', '');
+  const pending = getPendingPayment(client.client_id, customerPhone);
+
+  const header = `💰 Payment screenshot from ${customerPhone}`;
+  const expected = pending ? `\nExpected: ₹${pending.amount.toFixed(2)} — ${pending.note}` : '';
+  const verdict = check
+    ? check.matchesExpected
+      ? `\n✅ Auto-verified: ₹${check.amountDetected} to ${check.upiIdDetected}${
+          check.txnIdDetected ? ` (Txn: ${check.txnIdDetected})` : ''
+        }`
+      : `\n⚠️ Needs your check:\n${check.reasons.slice(0, 4).map((r) => `• ${r}`).join('\n')}`
+    : '';
+  const cap = `${header}${expected}${verdict}${customerCaption ? `\n\nCustomer note: ${customerCaption}` : ''}`;
+
+  // Try sending the image via WhatsApp to owner. WhatsApp inbound media IDs
+  // aren't directly forwardable — we attempt `link: imageId` which may fail on
+  // some tenancies. Fall back to text if it does.
+  const mediaUrl = `https://graph.facebook.com/v21.0/${imageId}`;
+  const sent = await sendWhatsAppImage(phoneNumberId, ownerPhone, mediaUrl, cap);
+  if (!sent.success) {
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      ownerPhone,
+      `${cap}\n\n(Image preview couldn't auto-forward — check dashboard for the screenshot.)`,
+    );
+  }
+
+  // Also email the owner so they have a permanent record
+  try {
+    const cc = await clerkClient();
+    const owner = await cc.users.getUser(client.owner_user_id);
+    const ownerEmail = owner.emailAddresses[0]?.emailAddress;
+    if (ownerEmail) {
+      await sendTemplate(
+        ownerEmail,
+        {
+          subject: `💰 Payment screenshot — ${client.business_name}`,
+          html: `
+            <h2>Payment screenshot received</h2>
+            <p><strong>From:</strong> ${customerPhone}</p>
+            ${pending ? `<p><strong>Expected:</strong> ₹${pending.amount.toFixed(2)} — ${pending.note}</p>` : ''}
+            ${check ? `
+              <h3>${check.matchesExpected ? '✅ Auto-verified' : '⚠️ Needs manual check'}</h3>
+              <ul>
+                <li>Amount detected: ${check.amountDetected ?? 'n/a'}</li>
+                <li>UPI detected: ${check.upiIdDetected ?? 'n/a'}</li>
+                <li>Txn ID: ${check.txnIdDetected ?? 'n/a'}</li>
+                ${check.reasons.map((r) => `<li>${r}</li>`).join('')}
+              </ul>
+            ` : ''}
+            ${customerCaption ? `<p><strong>Customer note:</strong> ${customerCaption}</p>` : ''}
+            <p>Check your WhatsApp on ${client.whatsapp_number} for the screenshot.</p>
+          `,
+        },
+        owner.firstName || 'there',
+      );
+    }
+  } catch (e) {
+    console.error('Payment email failed:', e);
   }
 }

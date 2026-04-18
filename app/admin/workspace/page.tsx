@@ -1,13 +1,51 @@
 'use client';
 
 import { useState } from 'react';
-import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
+import { toast } from 'sonner';
+import { PageTopbar, PageHead, Panel, Pill, StatusPill } from '@/components/app/primitives';
+
+interface InitReport {
+  spreadsheetId: string;
+  tabsCreated: string[];
+  tabsAlreadyExisted: string[];
+  headersWritten: string[];
+  headersAlreadyExisted: string[];
+  errors: { tab: string; message: string }[];
+}
 
 export default function WorkspacePage() {
   const [workspaceName, setWorkspaceName] = useState('ZapText HQ');
   const [language, setLanguage] = useState('English + Hinglish');
   const [timezone, setTimezone] = useState('Asia/Kolkata (IST)');
   const [notificationEmail, setNotificationEmail] = useState('admin@zaptext.shop');
+  const [initing, setIniting] = useState(false);
+  const [initReport, setInitReport] = useState<InitReport | null>(null);
+
+  const runInit = async () => {
+    setIniting(true);
+    setInitReport(null);
+    try {
+      const res = await fetch('/api/admin/init-sheets', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok && data.report) {
+        setInitReport(data.report as InitReport);
+        const { tabsCreated, headersWritten, errors } = data.report as InitReport;
+        if (errors.length > 0) {
+          toast.error(`Completed with ${errors.length} error${errors.length > 1 ? 's' : ''}`);
+        } else if (tabsCreated.length === 0 && headersWritten.length === 0) {
+          toast.success('Already initialized — nothing to do ✓');
+        } else {
+          toast.success(`Done! ${tabsCreated.length} tab${tabsCreated.length !== 1 ? 's' : ''} created, ${headersWritten.length} header row${headersWritten.length !== 1 ? 's' : ''} written`);
+        }
+      } else {
+        toast.error(data.error || 'Init failed');
+      }
+    } catch (e) {
+      toast.error(`Init failed: ${String(e).slice(0, 200)}`);
+    } finally {
+      setIniting(false);
+    }
+  };
 
   return (
     <>
@@ -83,9 +121,80 @@ export default function WorkspacePage() {
               </div>
             </div>
           </Panel>
+
+          <Panel
+            title="Google Sheets setup"
+            sub="Create any missing tabs (clients, conversations, analytics, bookings, weekly_schedule, date_overrides, subscriptions) and write the correct header rows. Safe to run multiple times — existing data is untouched."
+            className="lg:col-span-2"
+            action={
+              <Pill variant="ink" onClick={runInit}>
+                {initing ? 'Running…' : '🧩 Initialize sheets'}
+              </Pill>
+            }
+          >
+            {initReport ? (
+              <div className="flex flex-col gap-3">
+                <ReportRow label="Tabs created" items={initReport.tabsCreated} variant="active" />
+                <ReportRow label="Tabs already existed" items={initReport.tabsAlreadyExisted} variant="ok" />
+                <ReportRow label="Headers written" items={initReport.headersWritten} variant="active" />
+                <ReportRow label="Headers already existed" items={initReport.headersAlreadyExisted} variant="ok" />
+                {initReport.errors.length > 0 && (
+                  <div>
+                    <div className="zt-mono text-[11px] text-[var(--mute)] uppercase tracking-[.08em] mb-1.5">
+                      Errors ({initReport.errors.length})
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {initReport.errors.map((e, i) => (
+                        <div
+                          key={i}
+                          className="text-[12.5px] border border-red-500/30 bg-red-500/10 rounded-[8px]"
+                          style={{ padding: '8px 12px' }}
+                        >
+                          <b>{e.tab}</b>: {e.message}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="zt-mono text-[11px] text-[var(--mute)] mt-2">
+                  Sheet ID: {initReport.spreadsheetId}
+                </div>
+              </div>
+            ) : (
+              <p className="text-[13px] text-[var(--mute)] m-0">
+                Click <b>Initialize sheets</b> to auto-setup or verify your Google Sheet structure.
+              </p>
+            )}
+          </Panel>
         </div>
       </div>
     </>
+  );
+}
+
+function ReportRow({
+  label,
+  items,
+  variant,
+}: {
+  label: string;
+  items: string[];
+  variant: 'active' | 'ok';
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="zt-mono text-[11px] text-[var(--mute)] uppercase tracking-[.08em] mb-1.5">
+        {label} ({items.length})
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((t) => (
+          <StatusPill key={t} variant={variant}>
+            {t}
+          </StatusPill>
+        ))}
+      </div>
+    </div>
   );
 }
 

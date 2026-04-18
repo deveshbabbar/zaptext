@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   }
 
   const envCheck = {
-    ZEPTO_API_KEY: process.env.ZEPTO_API_KEY ? `SET (${process.env.ZEPTO_API_KEY.slice(0, 20)}...)` : 'NOT SET',
+    ZEPTO_API_KEY: process.env.ZEPTO_API_KEY ? 'SET' : 'NOT SET',
     ZEPTO_SENDER_EMAIL: process.env.ZEPTO_SENDER_EMAIL || 'NOT SET',
     ZEPTO_SENDER_NAME: process.env.ZEPTO_SENDER_NAME || 'NOT SET',
   };

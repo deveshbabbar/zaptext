@@ -41,7 +41,10 @@ export function verifyPaymentSignature(
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
     .update(body)
     .digest('hex');
-  return expectedSignature === signature;
+  const a = Buffer.from(expectedSignature, 'utf8');
+  const b = Buffer.from(signature, 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 export { getRazorpay as razorpay };

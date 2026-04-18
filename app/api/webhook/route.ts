@@ -398,7 +398,17 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
 
     const cancelMatch = aiResponse.match(/\[CANCEL:([^\]]+)\]/);
     if (cancelMatch) {
-      await cancelBooking(cancelMatch[1]);
+      const cancelId = cancelMatch[1].trim();
+      const targetBooking = await getBookingById(cancelId);
+      if (
+        targetBooking &&
+        targetBooking.client_id === client.client_id &&
+        targetBooking.customer_phone === customerPhone
+      ) {
+        await cancelBooking(cancelId);
+      } else {
+        console.warn('[CANCEL] scope-check failed', { cancelId, clientId: client.client_id, customerPhone });
+      }
       finalResponse = finalResponse.replace(/\[CANCEL:[^\]]+\]/, '').trim();
     }
 

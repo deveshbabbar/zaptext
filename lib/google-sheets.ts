@@ -124,14 +124,14 @@ export async function updateClientStatus(clientId: string, status: ClientRow['st
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A:A',
+    range: 'clients!A2:A',
   });
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row) => row[0] === clientId);
   if (rowIndex === -1) return;
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: `clients!J${rowIndex + 1}`,
+    range: `clients!J${rowIndex + 2}`,
     valueInputOption: 'RAW',
     requestBody: { values: [[status]] },
   });
@@ -160,14 +160,14 @@ export async function updateClientField(clientId: string, field: string, value: 
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A:A',
+    range: 'clients!A2:A',
   });
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row) => row[0] === clientId);
   if (rowIndex === -1) return;
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: `clients!${col}${rowIndex + 1}`,
+    range: `clients!${col}${rowIndex + 2}`,
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
   });

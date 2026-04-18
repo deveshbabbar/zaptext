@@ -1,5 +1,13 @@
+import type { Metadata } from 'next';
 import { SignIn } from '@clerk/nextjs';
 import AuthShell from '@/components/auth/auth-shell';
+
+export const metadata: Metadata = {
+  title: 'Sign In',
+  description: 'Sign in to ZapText to manage your WhatsApp AI bots.',
+  robots: { index: false, follow: false },
+  alternates: { canonical: '/sign-in' },
+};
 
 export default function SignInPage() {
   return (

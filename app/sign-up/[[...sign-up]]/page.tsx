@@ -1,5 +1,13 @@
+import type { Metadata } from 'next';
 import { SignUp } from '@clerk/nextjs';
 import AuthShell from '@/components/auth/auth-shell';
+
+export const metadata: Metadata = {
+  title: 'Sign Up',
+  description: 'Create your ZapText account and launch your first WhatsApp AI bot in 5 minutes.',
+  robots: { index: false, follow: false },
+  alternates: { canonical: '/sign-up' },
+};
 
 export default function SignUpPage() {
   return (

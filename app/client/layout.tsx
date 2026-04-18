@@ -112,7 +112,7 @@ export default async function ClientLayout({ children }: { children: React.React
           <SideLink href="/client/conversations" icon="💬" label="Conversations" />
           <SideLink href="/client/bookings" icon="📅" label="Bookings" />
           <SideLink href="/client/inventory" icon="📦" label="Inventory" />
-          <SideLink href="/client/trainers" icon="🏋️" label="Trainers" />
+          <SideLink href="/client/staff" icon="👥" label="My Team" />
           <SideLink href="/client/availability" icon="⏰" label="Availability" />
           <SideLink href="/client/calendar" icon="📆" label="Calendar" />
           <SideLink href="/client/settings" icon="⚙️" label="Bot Settings" />

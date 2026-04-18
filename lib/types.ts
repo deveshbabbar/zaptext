@@ -197,25 +197,25 @@ export type ClientConfig =
   | D2CFields
   | GymFields;
 
-// ─── Trainer Types ───
+// ─── Staff / Team Member Types (generic across all business types) ───
 
-export interface TrainerAvailabilityBlock {
+export interface StaffAvailabilityBlock {
   start: string; // HH:MM 24h
   end: string;
 }
 
-export interface TrainerAvailability {
-  monday: TrainerAvailabilityBlock[];
-  tuesday: TrainerAvailabilityBlock[];
-  wednesday: TrainerAvailabilityBlock[];
-  thursday: TrainerAvailabilityBlock[];
-  friday: TrainerAvailabilityBlock[];
-  saturday: TrainerAvailabilityBlock[];
-  sunday: TrainerAvailabilityBlock[];
+export interface StaffAvailability {
+  monday: StaffAvailabilityBlock[];
+  tuesday: StaffAvailabilityBlock[];
+  wednesday: StaffAvailabilityBlock[];
+  thursday: StaffAvailabilityBlock[];
+  friday: StaffAvailabilityBlock[];
+  saturday: StaffAvailabilityBlock[];
+  sunday: StaffAvailabilityBlock[];
 }
 
-export interface Trainer {
-  trainer_id: string;
+export interface StaffMember {
+  staff_id: string;
   client_id: string;
   name: string;
   specialty: string;
@@ -223,9 +223,21 @@ export interface Trainer {
   whatsapp_phone: string; // digits only e.g. "919876543210"
   bio: string;
   is_active: boolean;
-  availability: TrainerAvailability;
+  availability: StaffAvailability;
   created_at: string;
 }
+
+// Role label mapping used by UI + bot prompt
+export const STAFF_ROLE_LABELS: Record<string, { singular: string; plural: string; icon: string }> = {
+  gym:        { singular: 'Trainer',      plural: 'Trainers',      icon: '🏋️' },
+  clinic:     { singular: 'Doctor',       plural: 'Doctors',       icon: '🩺' },
+  salon:      { singular: 'Stylist',      plural: 'Stylists',      icon: '💇' },
+  coaching:   { singular: 'Tutor',        plural: 'Tutors',        icon: '📚' },
+  restaurant: { singular: 'Staff member', plural: 'Staff',         icon: '👨‍🍳' },
+  realestate: { singular: 'Agent',        plural: 'Agents',        icon: '🏠' },
+  d2c:        { singular: 'Support rep',  plural: 'Support team',  icon: '🛒' },
+};
+export const DEFAULT_STAFF_LABEL = { singular: 'Staff member', plural: 'Staff', icon: '👥' };
 
 // ─── Database Types ───
 

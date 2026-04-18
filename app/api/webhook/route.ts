@@ -22,14 +22,15 @@ import {
   slugify,
 } from '@/lib/inventory';
 import {
-  getTrainerByPhoneAny,
-  getActiveTrainers,
+  getStaffByPhoneAny,
+  getActiveStaff,
   formatAvailabilityForBot,
   parseAvailabilityCommand,
-  upsertTrainer,
-  getTrainerById,
+  upsertStaff,
+  getStaffById,
   DAYS,
-} from '@/lib/trainers';
+} from '@/lib/staff';
+import { STAFF_ROLE_LABELS, DEFAULT_STAFF_LABEL } from '@/lib/types';
 import { clerkClient } from '@clerk/nextjs/server';
 
 // WhatsApp webhook verification
@@ -105,10 +106,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
 
     // Trainer-side commands (if msg.from matches a registered trainer's phone)
     if (msg.type === 'text' && msg.text && !isOwner) {
-      const trainer = await getTrainerByPhoneAny(msg.from || '');
-      if (trainer && trainer.client_id === client.client_id) {
-        const handled = await handleTrainerCommand(
-          phoneNumberId, trainer, msg.text.trim(), client.client_id
+      const staffMember = await getStaffByPhoneAny(msg.from || '');
+      if (staffMember && staffMember.client_id === client.client_id) {
+        const handled = await handleStaffCommand(
+          phoneNumberId, staffMember, msg.text.trim(), client.client_id
         );
         if (handled) {
           await addConversationMessage({
@@ -279,34 +280,35 @@ ORDER INSTRUCTIONS (food / product orders):
 - Use EXACT item names as shown in LIVE STOCK below. Never confirm or [ORDER:] an item that shows OUT OF STOCK. If customer insists, politely say it's unavailable and suggest an alternative.${stockBlock}`;
     }
 
-    // Trainer context: inject active trainers into bot prompt
-    let trainerContext = '';
+    // Staff context: inject active staff/trainers/doctors etc. into bot prompt
+    let staffContext = '';
     try {
-      const activeTrainers = await getActiveTrainers(client.client_id);
-      if (activeTrainers.length > 0) {
-        const trainerLines = activeTrainers.map((t) => {
-          const avail = formatAvailabilityForBot(t);
-          const price = t.price > 0 ? ` · ₹${t.price}/session` : '';
-          const specialty = t.specialty ? ` (${t.specialty})` : '';
-          return `- ${t.name}${specialty}${price} · Available: ${avail}`;
+      const activeStaff = await getActiveStaff(client.client_id);
+      if (activeStaff.length > 0) {
+        const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
+        const staffLines = activeStaff.map((m) => {
+          const avail = formatAvailabilityForBot(m);
+          const price = m.price > 0 ? ` · ₹${m.price}/session` : '';
+          const specialty = m.specialty ? ` (${m.specialty})` : '';
+          return `- ${m.name}${specialty}${price} · Available: ${avail}`;
         }).join('\n');
-        trainerContext = `
+        staffContext = `
 
-AVAILABLE TRAINERS/STAFF:
-${trainerLines}
+AVAILABLE ${roleLabel.plural.toUpperCase()}:
+${staffLines}
 
-When a customer wants to book a specific trainer:
-1. Confirm the trainer name + preferred date/time from the customer
-2. Use [BOOK:date:time:customerName:Trainer - <TrainerName>:notes] to create the booking
-3. The system will notify the trainer directly on WhatsApp for approval
-4. Tell the customer: "Booking request bhej diya hai <TrainerName> ko, woh confirm karenge jaldi."
-5. Do NOT book a slot that falls outside the trainer's listed available hours.`;
+When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
+1. Confirm the ${roleLabel.singular.toLowerCase()} name + preferred date/time from the customer
+2. Use [BOOK:date:time:customerName:${roleLabel.singular} - <Name>:notes] to create the booking
+3. The system will notify them directly on WhatsApp for approval
+4. Tell the customer: "Booking request bhej diya hai, woh confirm karenge jaldi."
+5. Do NOT book a slot that falls outside their listed available hours.`;
       }
     } catch { /* ignore */ }
 
-    // Generate AI response with booking + payment + order + trainer context
+    // Generate AI response with booking + payment + order + staff context
     const aiResponse = await generateBotResponse(
-      client.system_prompt + availabilityContext + paymentContext + orderContext + trainerContext,
+      client.system_prompt + availabilityContext + paymentContext + orderContext + staffContext,
       pastHistory,
       msg.text
     );
@@ -339,21 +341,20 @@ When a customer wants to book a specific trainer:
         });
         // Notify trainer directly if booking is for a specific trainer
         try {
-          const trainerNameMatch = safeService.match(/^Trainer\s*[-–:]\s*(.+)/i);
-          if (trainerNameMatch) {
-            const trainerName = trainerNameMatch[1].trim();
-            const activeTrainers = await getActiveTrainers(client.client_id);
-            const matchedTrainer = activeTrainers.find(
-              (t) => t.name.toLowerCase().includes(trainerName.toLowerCase())
-            );
-            if (matchedTrainer?.whatsapp_phone) {
+          const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
+          const staffNameMatch = safeService.match(new RegExp(`^${roleLabel.singular}\\s*[-–:]\\s*(.+)`, 'i'));
+          if (staffNameMatch) {
+            const staffName = staffNameMatch[1].trim();
+            const activeMembers = await getActiveStaff(client.client_id);
+            const matched = activeMembers.find((m) => m.name.toLowerCase().includes(staffName.toLowerCase()));
+            if (matched?.whatsapp_phone) {
               const bookingId = `BK_${Date.now()}`;
-              const trainerMsg =
-                `🏋️ *New booking request!*\n\n` +
+              const staffMsg =
+                `📅 *New booking request!*\n\n` +
                 `👤 ${safeName}\n📞 ${customerPhone}\n📅 ${date} · ${time}\n` +
-                `💰 ₹${matchedTrainer.price || '—'}/session\n\n` +
-                `Reply:\n*approve ${bookingId}* — confirm this booking\n*reject ${bookingId} <reason>* — decline`;
-              await sendWhatsAppMessage(phoneNumberId, matchedTrainer.whatsapp_phone, trainerMsg);
+                `${matched.price ? `💰 ₹${matched.price}/session\n` : ''}` +
+                `\nReply:\n*approve ${bookingId}* — confirm\n*reject ${bookingId} <reason>* — decline`;
+              await sendWhatsAppMessage(phoneNumberId, matched.whatsapp_phone, staffMsg);
             }
           }
         } catch (e) {
@@ -920,11 +921,11 @@ async function handleOwnerCommand(
 // ─── Trainer-side command handler ───
 // Trainer texts the bot from their registered phone.
 // Only allows: approve/reject bookings + availability updates + schedule view.
-import type { Trainer } from '@/lib/types';
+import type { StaffMember } from '@/lib/types';
 
-async function handleTrainerCommand(
+async function handleStaffCommand(
   phoneNumberId: string,
-  trainer: Trainer,
+  trainer: StaffMember,
   text: string,
   clientId: string
 ): Promise<boolean> {
@@ -988,7 +989,7 @@ async function handleTrainerCommand(
   if (normalized.startsWith('avail') || normalized.startsWith('availability')) {
     const parsed = parseAvailabilityCommand(text);
     if (parsed) {
-      await upsertTrainer({ ...trainer, availability: parsed });
+      await upsertStaff({ ...trainer, availability: parsed });
       const days = (DAYS as readonly string[]).filter((d) => ((parsed as unknown) as Record<string, unknown[]>)[d]?.length > 0);
       await sendWhatsAppMessage(phoneNumberId, trainerPhone,
         `✅ Availability updated!\nActive days: ${days.map((d) => d.slice(0,3)).join(', ') || 'none'}\n\nText *schedule* to confirm.`);

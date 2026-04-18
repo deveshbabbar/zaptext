@@ -35,18 +35,22 @@ export default function ClientBookingsPage() {
   }, []);
 
   const handleCancel = async (bookingId: string) => {
+    const reason = window.prompt(
+      'Reason for cancellation? (optional — customer will see this)\n\nExamples: Out of stock, Doctor unavailable, Kitchen closed early'
+    );
+    if (reason === null) return; // user pressed Cancel on prompt
     setCancellingId(bookingId);
     try {
       const res = await fetch('/api/booking/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId }),
+        body: JSON.stringify({ bookingId, reason: reason.trim() }),
       });
       if (res.ok) {
         setBookings((prev) =>
           prev.map((b) => (b.booking_id === bookingId ? { ...b, status: 'cancelled' } : b))
         );
-        toast.success('Booking cancelled successfully');
+        toast.success('Cancelled — customer notified on WhatsApp');
       } else {
         toast.error('Failed to cancel booking');
       }

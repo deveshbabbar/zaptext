@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhook, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
-import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics } from '@/lib/google-sheets';
+import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
-import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getTodayIST, getDateOffset, calculateEndTime } from '@/lib/booking';
+import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime } from '@/lib/booking';
 import { sendTemplate, tplNewBooking } from '@/lib/email';
 import {
   buildUpiLink,
@@ -53,7 +53,11 @@ export async function POST(request: NextRequest) {
 async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
-  if (!client || client.status !== 'active') return;
+  if (!client) return;
+  // Hard-skip for statuses that should receive nothing (rejected/error/pending)
+  if (!['active', 'paused'].includes(client.status)) return;
+
+  const ownerDigits = client.whatsapp_number.replace(/\D/g, '');
 
   for (const msg of messages) {
     // Skip duplicate messages (WhatsApp may retry delivery)
@@ -63,6 +67,41 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     }
     const timestamp = getISTTimestamp();
     const customerPhone = msg.from;
+
+    // Owner-side control commands (text from owner's own number -> their own bot)
+    const senderDigits = (msg.from || '').replace(/\D/g, '');
+    const isOwner = senderDigits && ownerDigits && senderDigits === ownerDigits;
+    if (isOwner && msg.type === 'text' && msg.text) {
+      const handled = await handleOwnerCommand(phoneNumberId, client.client_id, senderDigits, msg.text.trim());
+      if (handled) {
+        await addConversationMessage({
+          timestamp,
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'incoming',
+          message: `[owner-cmd] ${msg.text}`,
+          message_type: 'text',
+        });
+        continue;
+      }
+    }
+
+    // If bot is paused, send polite auto-reply to customers (not owner) and skip AI
+    if (client.status === 'paused' && !isOwner) {
+      const paused =
+        `Hi! 👋 We're temporarily offline right now. ` +
+        `${client.business_name} will be back soon and will reply personally. Thanks for your patience 🙏`;
+      await addConversationMessage({
+        timestamp, client_id: client.client_id, customer_phone: customerPhone,
+        direction: 'incoming', message: msg.text || `[${msg.type}]`, message_type: msg.type,
+      });
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, paused);
+      await addConversationMessage({
+        timestamp: getISTTimestamp(), client_id: client.client_id, customer_phone: customerPhone,
+        direction: 'outgoing', message: paused, message_type: 'text',
+      });
+      continue;
+    }
 
     // Handle image messages — may be a payment screenshot
     if (msg.type === 'image' && msg.imageId) {
@@ -541,4 +580,113 @@ async function forwardImageToOwner(
   } catch (e) {
     console.error('Payment email failed:', e);
   }
+}
+
+// ─── Owner-side WhatsApp control commands ───
+// Owner texts their own bot number. Recognized:
+//   cancel <BK_...> [reason]   -> cancel booking + notify customer
+//   pause                      -> stop AI replies (auto "we're offline" to customers)
+//   resume                     -> re-enable AI
+//   status                     -> bot status snapshot
+//   help                       -> list commands
+// Returns true if message was handled as a command.
+async function handleOwnerCommand(
+  phoneNumberId: string,
+  clientId: string,
+  ownerPhoneDigits: string,
+  text: string
+): Promise<boolean> {
+  const normalized = text.trim().toLowerCase();
+
+  // cancel <id> [reason...]
+  const cancelMatch = normalized.match(/^cancel\s+(\S+)(?:\s+(.+))?$/);
+  if (cancelMatch) {
+    const [, rawId, reasonPart] = cancelMatch;
+    // Re-pull the original case id from the raw text
+    const idMatch = text.match(/cancel\s+(\S+)/i);
+    const bookingId = idMatch ? idMatch[1] : rawId;
+    const reason = (reasonPart || '').slice(0, 200);
+
+    const booking = await getBookingById(bookingId);
+    if (!booking || booking.client_id !== clientId) {
+      await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, `❌ Booking ${bookingId} not found for this bot.`);
+      return true;
+    }
+    const ok = await cancelBooking(bookingId, reason);
+    if (!ok) {
+      await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, `❌ Couldn't cancel ${bookingId}.`);
+      return true;
+    }
+    // Tell the customer
+    try {
+      if (booking.customer_phone) {
+        const reasonLine = reason ? `\nReason: ${reason}` : '';
+        const isOrder = (booking.service || '').startsWith('ORDER');
+        const msg =
+          `🙏 Sorry, your ${isOrder ? 'order' : 'booking'} for ${booking.date}` +
+          `${booking.time_slot ? ` at ${booking.time_slot}` : ''} has been cancelled.${reasonLine}\n\n` +
+          `Reply here and we'll help you rebook.`;
+        await sendWhatsAppMessage(phoneNumberId, booking.customer_phone, msg);
+      }
+    } catch (e) {
+      console.error('Cancel notify customer failed:', e);
+    }
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      ownerPhoneDigits,
+      `✅ Cancelled ${bookingId} and notified ${booking.customer_phone}${reason ? ` (reason: ${reason})` : ''}.`
+    );
+    return true;
+  }
+
+  if (normalized === 'pause' || normalized === 'pause bot') {
+    await updateClientField(clientId, 'status', 'paused');
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      ownerPhoneDigits,
+      `⏸ Bot paused. Customers will see "temporarily offline" until you text *resume*.`
+    );
+    return true;
+  }
+
+  if (normalized === 'resume' || normalized === 'resume bot' || normalized === 'start' || normalized === 'unpause') {
+    await updateClientField(clientId, 'status', 'active');
+    await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, `▶️ Bot resumed. Back to handling customers.`);
+    return true;
+  }
+
+  if (normalized === 'status' || normalized === 'status?') {
+    try {
+      const { getClientById } = await import('@/lib/google-sheets');
+      const client = await getClientById(clientId);
+      const statusLine = client ? `Status: ${client.status}` : 'Status: unknown';
+      const upiLine = client?.upi_id ? `UPI: ${client.upi_id}` : 'UPI: not set';
+      const formatLine = client?.export_format ? `Export: ${client.export_format}` : 'Export: csv (default)';
+      await sendWhatsAppMessage(
+        phoneNumberId,
+        ownerPhoneDigits,
+        `📊 *${client?.business_name || 'Bot'}*\n${statusLine}\n${upiLine}\n${formatLine}\n\nType *help* for commands.`
+      );
+    } catch {
+      await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, 'Status check failed.');
+    }
+    return true;
+  }
+
+  if (normalized === 'help' || normalized === 'commands' || normalized === '?') {
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      ownerPhoneDigits,
+      `🤖 *Owner commands* (just text this number):\n\n` +
+        `• *cancel BK_xxx [reason]* — cancel a booking/order + notify customer\n` +
+        `• *pause* — stop AI replies\n` +
+        `• *resume* — turn AI back on\n` +
+        `• *status* — bot snapshot\n` +
+        `• *help* — this message\n\n` +
+        `_Any other message won't trigger commands._`
+    );
+    return true;
+  }
+
+  return false;
 }

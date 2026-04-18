@@ -364,11 +364,11 @@ export async function createBooking(params: {
 
 // ─── Cancel Booking ───
 
-export async function cancelBooking(bookingId: string): Promise<boolean> {
+export async function cancelBooking(bookingId: string, reason?: string): Promise<boolean> {
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'bookings!A:A',
+    range: 'bookings!A:J',
   });
   const rows = res.data.values || [];
   const rowIndex = rows.findIndex((row) => row[0] === bookingId);
@@ -380,7 +380,33 @@ export async function cancelBooking(bookingId: string): Promise<boolean> {
     valueInputOption: 'RAW',
     requestBody: { values: [['cancelled']] },
   });
+
+  if (reason && reason.trim()) {
+    const existingNotes = rows[rowIndex]?.[9] || '';
+    const appended = existingNotes
+      ? `${existingNotes} | [CANCELLED: ${reason.trim().slice(0, 120)}]`
+      : `[CANCELLED: ${reason.trim().slice(0, 120)}]`;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `bookings!J${rowIndex + 1}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[appended]] },
+    });
+  }
   return true;
+}
+
+// ─── Fetch single booking by id ───
+
+export async function getBookingById(bookingId: string): Promise<Booking | null> {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'bookings!A2:M',
+  });
+  const rows = res.data.values || [];
+  const row = rows.find((r) => r[0] === bookingId);
+  return row ? rowToBooking(row) : null;
 }
 
 // ─── Get upcoming bookings for reminders ───

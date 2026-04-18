@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { PageTopbar, PageHead, Panel, Pill, StatusPill } from '@/components/app/primitives';
+import { PageTopbar, PageHead, Panel, Pill, StatusPill, MonoLabel } from '@/components/app/primitives';
+
+const PLAN_OPTIONS = ['starter', 'growth', 'pro', 'enterprise'] as const;
 
 interface InitReport {
   spreadsheetId: string;
@@ -20,6 +22,36 @@ export default function WorkspacePage() {
   const [notificationEmail, setNotificationEmail] = useState('admin@zaptext.shop');
   const [initing, setIniting] = useState(false);
   const [initReport, setInitReport] = useState<InitReport | null>(null);
+
+  // Grant plan state
+  const [grantEmail, setGrantEmail] = useState('');
+  const [grantPlan, setGrantPlan] = useState<typeof PLAN_OPTIONS[number]>('enterprise');
+  const [grantMonths, setGrantMonths] = useState('12');
+  const [granting, setGranting] = useState(false);
+  const [grantResult, setGrantResult] = useState<{ name: string; plan: string; validUntil: string } | null>(null);
+
+  const runGrant = async () => {
+    if (!grantEmail.trim()) { toast.error('Email required'); return; }
+    setGranting(true);
+    setGrantResult(null);
+    try {
+      const res = await fetch('/api/admin/grant-plan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: grantEmail.trim(), plan: grantPlan, months: parseInt(grantMonths, 10) || 12 }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setGrantResult({ name: data.name || data.email, plan: data.plan, validUntil: data.validUntil });
+        toast.success(`✅ ${grantPlan} plan granted to ${data.name || grantEmail}!`);
+      } else {
+        toast.error(data.error || 'Grant failed');
+      }
+    } catch (e) {
+      toast.error(`Error: ${String(e).slice(0, 200)}`);
+    } finally {
+      setGranting(false);
+    }
+  };
 
   const runInit = async () => {
     setIniting(true);
@@ -120,6 +152,53 @@ export default function WorkspacePage() {
                 <Pill>Update payment method</Pill>
               </div>
             </div>
+          </Panel>
+
+          <Panel
+            title="Grant plan to user"
+            sub="Assign any plan directly by email — for testing, partnerships, or manual overrides. No payment required."
+            className="lg:col-span-2"
+            action={<Pill variant="ink" onClick={runGrant}>{granting ? 'Granting…' : '🎁 Grant plan'}</Pill>}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-1">
+                <MonoLabel className="mb-1.5">Email</MonoLabel>
+                <input type="email" value={grantEmail} onChange={(e) => setGrantEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                  style={{ padding: '10px 12px' }} />
+              </div>
+              <div>
+                <MonoLabel className="mb-1.5">Plan</MonoLabel>
+                <div className="flex gap-1.5 flex-wrap">
+                  {PLAN_OPTIONS.map((p) => (
+                    <button key={p} onClick={() => setGrantPlan(p)}
+                      className={`rounded-full text-[12.5px] font-semibold border capitalize transition ${
+                        grantPlan === p ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]' : 'border-[var(--line)] hover:border-[var(--ink)]'
+                      }`}
+                      style={{ padding: '6px 12px' }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <MonoLabel className="mb-1.5">Duration (months)</MonoLabel>
+                <input type="number" min={1} max={120} value={grantMonths} onChange={(e) => setGrantMonths(e.target.value)}
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                  style={{ padding: '10px 12px' }} />
+              </div>
+            </div>
+            {grantResult && (
+              <div className="mt-3 flex items-center gap-3 rounded-[10px] border border-[var(--accent)]"
+                style={{ padding: '12px 14px', background: 'color-mix(in oklab, var(--accent) 15%, transparent)' }}>
+                <StatusPill variant="active">{grantResult.plan}</StatusPill>
+                <span className="text-[13px]">
+                  <b>{grantResult.name}</b> — valid until <b>{grantResult.validUntil}</b>
+                </span>
+              </div>
+            )}
           </Panel>
 
           <Panel

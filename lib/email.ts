@@ -1,8 +1,8 @@
-// Resend email integration
-// Free tier: 3,000 emails/month
-// Get API key from: https://resend.com/api-keys
+// ZeptoMail (Zoho transactional email) integration
+// Dashboard: https://app.zeptomail.com
+// Env vars required: ZEPTO_API_KEY, ZEPTO_SENDER_EMAIL, ZEPTO_SENDER_NAME
 
-const RESEND_API_URL = 'https://api.resend.com/emails';
+const ZEPTO_API_URL = 'https://api.zeptomail.in/v1.1/email';
 
 export interface EmailAttachment {
   filename: string;
@@ -19,60 +19,60 @@ interface SendEmailParams {
 }
 
 export async function sendEmail({ to, toName, subject, html, attachments }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.ZEPTO_API_KEY;
   if (!apiKey) {
-    console.error('[Email] RESEND_API_KEY not configured. Get your key from https://resend.com/api-keys');
-    return { success: false, error: 'RESEND_API_KEY not configured' };
+    console.error('[Email] ZEPTO_API_KEY not configured. Add it from ZeptoMail dashboard → Mail Agents → API token.');
+    return { success: false, error: 'ZEPTO_API_KEY not configured' };
   }
   if (!to) {
     return { success: false, error: 'No recipient' };
   }
 
-  // Resend free tier uses "onboarding@resend.dev" as sender
-  // To use custom domain, add & verify domain at https://resend.com/domains
-  const senderEmail = process.env.RESEND_SENDER_EMAIL || 'onboarding@resend.dev';
-  const senderName = process.env.RESEND_SENDER_NAME || 'ZapText';
+  const senderEmail = process.env.ZEPTO_SENDER_EMAIL || 'noreply@zaptext.shop';
+  const senderName = process.env.ZEPTO_SENDER_NAME || 'ZapText';
 
   try {
-    console.log(`[Email] Sending to ${to} | Subject: ${subject} | Sender: ${senderName} <${senderEmail}>`);
+    console.log(`[Email] Sending to ${to} | Subject: ${subject} | From: ${senderName} <${senderEmail}>`);
 
-    const res = await fetch(RESEND_API_URL, {
+    const body: Record<string, unknown> = {
+      from: { address: senderEmail, name: senderName },
+      to: [{ email_address: { address: to, name: toName || to } }],
+      subject,
+      htmlbody: html,
+    };
+
+    if (attachments && attachments.length > 0) {
+      body.attachments = attachments.map((a) => ({
+        name: a.filename,
+        content: a.content,
+        mime_type: a.contentType || 'application/octet-stream',
+      }));
+    }
+
+    const res = await fetch(ZEPTO_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': apiKey,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: JSON.stringify({
-        from: `${senderName} <${senderEmail}>`,
-        to: [to],
-        subject,
-        html,
-        ...(attachments && attachments.length > 0
-          ? {
-              attachments: attachments.map((a) => ({
-                filename: a.filename,
-                content: a.content,
-                ...(a.contentType ? { content_type: a.contentType } : {}),
-              })),
-            }
-          : {}),
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const errorData = await res.text();
-      console.error(`[Email] Resend API error (${res.status}):`, errorData);
+      console.error(`[Email] ZeptoMail error (${res.status}):`, errorData);
       if (res.status === 401) {
-        console.error('[Email] Invalid RESEND_API_KEY. Check your key at https://resend.com/api-keys');
+        console.error('[Email] Invalid ZEPTO_API_KEY — check ZeptoMail dashboard → Mail Agents → API token.');
       }
-      if (res.status === 403) {
-        console.error('[Email] Sender domain not verified. Free tier must use "onboarding@resend.dev". For custom domain, verify at https://resend.com/domains');
+      if (res.status === 400) {
+        console.error('[Email] Bad request — verify noreply@zaptext.shop is added as sender in ZeptoMail.');
       }
       return { success: false, error: errorData };
     }
 
-    const result = await res.json();
-    console.log(`[Email] Successfully sent to ${to} | ID: ${result.id}`);
+    const result = await res.json().catch(() => ({})) as Record<string, unknown>;
+    console.log(`[Email] Sent to ${to} | ID: ${result.message_id || result.request_id || 'ok'}`);
     return { success: true };
   } catch (error) {
     console.error('[Email] Network/send error:', error);

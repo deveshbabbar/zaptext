@@ -23,6 +23,38 @@ export default function WorkspacePage() {
   const [initing, setIniting] = useState(false);
   const [initReport, setInitReport] = useState<InitReport | null>(null);
 
+  // Test email state
+  const [testEmail, setTestEmail] = useState('');
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+    to?: string;
+    envCheck?: Record<string, string>;
+    hint?: string;
+  } | null>(null);
+
+  const runTestEmail = async () => {
+    setTestingEmail(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: testEmail.trim() || undefined }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (data.success) toast.success(`Test email sent to ${data.to} — check inbox + spam`);
+      else toast.error(`Send failed — ${data.error || 'check result panel'}`);
+    } catch (e) {
+      setTestResult({ success: false, error: String(e).slice(0, 300) });
+      toast.error('Request failed');
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
   // Grant plan state
   const [grantEmail, setGrantEmail] = useState('');
   const [grantPlan, setGrantPlan] = useState<typeof PLAN_OPTIONS[number]>('enterprise');
@@ -152,6 +184,67 @@ export default function WorkspacePage() {
                 <Pill>Update payment method</Pill>
               </div>
             </div>
+          </Panel>
+
+          <Panel
+            title="Test ZeptoMail delivery"
+            sub="Send a diagnostic email to verify your ZeptoMail setup. Shows env config + exact error if delivery fails."
+            className="lg:col-span-2"
+            action={<Pill variant="ink" onClick={runTestEmail}>{testingEmail ? 'Sending…' : '🧪 Send test'}</Pill>}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-3 items-end">
+              <div>
+                <MonoLabel className="mb-1.5">Send to (optional — defaults to your email)</MonoLabel>
+                <input
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="Leave blank to send to yourself"
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                  style={{ padding: '10px 12px' }}
+                />
+              </div>
+            </div>
+            {testResult && (
+              <div className="mt-4 flex flex-col gap-2">
+                <div
+                  className="rounded-[10px] border"
+                  style={{
+                    padding: '12px 14px',
+                    background: testResult.success
+                      ? 'color-mix(in oklab, var(--accent) 12%, transparent)'
+                      : 'color-mix(in oklab, #D93A2E 10%, transparent)',
+                    borderColor: testResult.success
+                      ? 'var(--accent)'
+                      : 'color-mix(in oklab, #D93A2E 40%, transparent)',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <StatusPill variant={testResult.success ? 'active' : 'cancel'}>
+                      {testResult.success ? 'SENT' : 'FAILED'}
+                    </StatusPill>
+                    {testResult.to && <span className="text-[13px]">to <b>{testResult.to}</b></span>}
+                  </div>
+                  {testResult.error && (
+                    <div className="zt-mono text-[12px] text-red-500 mt-2 whitespace-pre-wrap break-all">
+                      {testResult.error}
+                    </div>
+                  )}
+                  {testResult.hint && (
+                    <div className="text-[12.5px] text-[var(--ink-2)] mt-2">{testResult.hint}</div>
+                  )}
+                </div>
+                {testResult.envCheck && (
+                  <div className="zt-mono text-[11.5px] bg-[var(--bg-2)] rounded-[8px]" style={{ padding: '10px 12px' }}>
+                    {Object.entries(testResult.envCheck).map(([k, v]) => (
+                      <div key={k}>
+                        <span className="text-[var(--mute)]">{k}</span> = <b>{v}</b>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </Panel>
 
           <Panel

@@ -252,7 +252,7 @@ export function tplWelcome(p: { name: string; }) {
     <p>You&apos;re all set to create your first AI-powered WhatsApp bot. Here&apos;s what to do next:</p>
     <ol style="padding-left:20px;line-height:1.8;">
       <li>Create your first bot from the dashboard</li>
-      <li>Auto-fill from your website (Zomato/Swiggy/Instagram link)</li>
+      <li>Fill in your business details (or auto-fill from your own website)</li>
       <li>Test with sample messages</li>
       <li>Share your WhatsApp number with customers</li>
     </ol>

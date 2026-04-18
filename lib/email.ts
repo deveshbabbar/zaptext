@@ -4,14 +4,21 @@
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
+export interface EmailAttachment {
+  filename: string;
+  content: string; // base64-encoded
+  contentType?: string;
+}
+
 interface SendEmailParams {
   to: string;
   toName?: string;
   subject: string;
   html: string;
+  attachments?: EmailAttachment[];
 }
 
-export async function sendEmail({ to, toName, subject, html }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
+export async function sendEmail({ to, toName, subject, html, attachments }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error('[Email] RESEND_API_KEY not configured. Get your key from https://resend.com/api-keys');
@@ -40,6 +47,15 @@ export async function sendEmail({ to, toName, subject, html }: SendEmailParams):
         to: [to],
         subject,
         html,
+        ...(attachments && attachments.length > 0
+          ? {
+              attachments: attachments.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                ...(a.contentType ? { content_type: a.contentType } : {}),
+              })),
+            }
+          : {}),
       }),
     });
 
@@ -294,8 +310,13 @@ export function tplPaymentFailed(p: { name: string; plan: string; reason?: strin
 
 // ─── Helper: send via Brevo with template ───
 
-export async function sendTemplate(to: string, template: { subject: string; html: string }, toName?: string) {
-  return sendEmail({ to, toName, subject: template.subject, html: template.html });
+export async function sendTemplate(
+  to: string,
+  template: { subject: string; html: string },
+  toName?: string,
+  attachments?: EmailAttachment[]
+) {
+  return sendEmail({ to, toName, subject: template.subject, html: template.html, attachments });
 }
 
 // Legacy compat exports for old code

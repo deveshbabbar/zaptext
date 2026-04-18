@@ -259,6 +259,51 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           </p>
         </div>
       </div>
+
+      <h3 className="text-lg font-semibold border-b border-border pb-2 pt-4">
+        Daily order export{' '}
+        <span className="text-sm font-normal text-muted-foreground">— nightly email with today&apos;s orders/bookings</span>
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="existingSystem">Existing order/booking system (optional)</Label>
+          <Input
+            id="existingSystem"
+            placeholder="e.g., Petpooja, Practo, Fresha, or 'Google Sheet'"
+            value={(data.existingSystem as string) || ''}
+            onChange={(e) => onChange('existingSystem', e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Just the name — we&apos;ll mention it in the email so you know where to paste/import.
+          </p>
+        </div>
+        <div>
+          <Label>Export format</Label>
+          <div className="flex gap-2 mt-1">
+            {(['csv', 'json'] as const).map((fmt) => {
+              const active = ((data.exportFormat as string) || 'csv') === fmt;
+              return (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => onChange('exportFormat', fmt)}
+                  className={`px-4 py-2 rounded-full text-sm font-semibold border transition-colors ${
+                    active
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-secondary text-secondary-foreground border-border hover:border-primary/50'
+                  }`}
+                >
+                  {fmt.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            CSV works everywhere (default). JSON for Zapier / webhooks / custom scripts.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

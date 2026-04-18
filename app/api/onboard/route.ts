@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
       owner_user_id: user.userId,
       upi_id: typeof config.upiId === 'string' ? config.upiId.trim() : '',
       upi_name: typeof config.upiName === 'string' ? config.upiName.trim() : '',
+      existing_system: typeof config.existingSystem === 'string' ? config.existingSystem.trim() : '',
+      export_format: config.exportFormat === 'json' ? 'json' : 'csv',
     };
 
     const existingBotsCount = existingBots.length;

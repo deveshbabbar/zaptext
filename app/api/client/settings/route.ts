@@ -12,6 +12,10 @@ export async function GET() {
   return NextResponse.json({
     systemPrompt: bot.system_prompt,
     knowledgeBase: bot.knowledge_base_json,
+    upiId: bot.upi_id || '',
+    upiName: bot.upi_name || '',
+    existingSystem: bot.existing_system || '',
+    exportFormat: (bot.export_format || 'csv') as 'csv' | 'json',
   });
 }
 
@@ -25,7 +29,10 @@ export async function POST(request: NextRequest) {
     const { field, value } = await request.json();
 
     // Only allow safe fields to be updated by clients
-    const ALLOWED_FIELDS = ['system_prompt', 'knowledge_base_json', 'business_name', 'city', 'whatsapp_number'];
+    const ALLOWED_FIELDS = [
+      'system_prompt', 'knowledge_base_json', 'business_name', 'city', 'whatsapp_number',
+      'upi_id', 'upi_name', 'existing_system', 'export_format',
+    ];
     if (!ALLOWED_FIELDS.includes(field)) {
       return NextResponse.json({ error: 'Field not allowed' }, { status: 403 });
     }

@@ -11,6 +11,8 @@ export interface CommonFields {
   additionalInfo: string;
   upiId?: string;
   upiName?: string;
+  existingSystem?: string;
+  exportFormat?: 'csv' | 'json';
 }
 
 // ─── Business Type Specific Fields ───
@@ -212,6 +214,8 @@ export interface ClientRow {
   owner_user_id: string;
   upi_id?: string;
   upi_name?: string;
+  existing_system?: string;
+  export_format?: 'csv' | 'json';
 }
 
 export interface ConversationRow {

@@ -12,6 +12,14 @@ interface CommonFieldsProps {
 
 const LANGUAGE_OPTIONS = ['Hindi', 'English', 'Hinglish', 'Punjabi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati'];
 
+// Strip +91 / 91 / leading 0 / spaces so only the 10-digit number shows in input
+function phoneWithoutPrefix(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length > 10) return digits.slice(2, 12);
+  if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
+  return digits.slice(0, 10);
+}
+
 interface DaySchedule {
   enabled: boolean;
   open: string;
@@ -126,30 +134,64 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="whatsappNumber">WhatsApp Business Number *</Label>
-          <Input
-            id="whatsappNumber"
-            placeholder="+919876543210"
-            value={(data.whatsappNumber as string) || ''}
-            onChange={(e) => {
-              // Only allow digits, +, and spaces
-              const cleaned = e.target.value.replace(/[^0-9+\s]/g, '');
-              onChange('whatsappNumber', cleaned);
-            }}
-            maxLength={15}
-          />
+          <Label htmlFor="contactNumber">Your Contact Number *</Label>
+          <div className="flex mt-1">
+            <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-border bg-secondary text-sm text-muted-foreground select-none font-medium">
+              +91
+            </span>
+            <Input
+              id="contactNumber"
+              placeholder="9876543210"
+              className="rounded-l-none"
+              value={phoneWithoutPrefix((data.contactNumber as string) || '')}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                onChange('contactNumber', digits ? `+91${digits}` : '');
+              }}
+              maxLength={10}
+            />
+          </div>
           {(() => {
-            const num = (data.whatsappNumber as string) || '';
-            const digits = num.replace(/[^0-9]/g, '');
-            if (num && digits.length < 10) {
-              return <p className="text-xs text-red-500 mt-1">Number too short — need at least 10 digits with country code</p>;
+            const digits = phoneWithoutPrefix((data.contactNumber as string) || '');
+            if (digits && digits.length !== 10) {
+              return <p className="text-xs text-red-500 mt-1">Enter 10 digits (e.g. 9876543210)</p>;
             }
-            if (num && digits.length > 15) {
-              return <p className="text-xs text-red-500 mt-1">Number too long</p>;
-            }
-            return <p className="text-xs text-muted-foreground mt-1">Include country code (e.g., +91 for India)</p>;
+            return <p className="text-xs text-muted-foreground mt-1">📞 Make sure we can reach you here — we may call or send an OTP during bot setup.</p>;
           })()}
         </div>
+        <div>
+          <Label htmlFor="whatsappNumber">WhatsApp Bot Number *</Label>
+          <div className="flex mt-1">
+            <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-border bg-secondary text-sm text-muted-foreground select-none font-medium">
+              +91
+            </span>
+            <Input
+              id="whatsappNumber"
+              placeholder="9876543210"
+              className="rounded-l-none"
+              value={phoneWithoutPrefix((data.whatsappNumber as string) || '')}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                onChange('whatsappNumber', digits ? `+91${digits}` : '');
+              }}
+              maxLength={10}
+            />
+          </div>
+          {(() => {
+            const digits = phoneWithoutPrefix((data.whatsappNumber as string) || '');
+            if (digits && digits.length !== 10) {
+              return <p className="text-xs text-red-500 mt-1">Enter 10 digits (e.g. 9876543210)</p>;
+            }
+            return (
+              <p className="text-xs text-amber-600 mt-1">
+                ⚠️ <strong>Use a fresh number.</strong> This will be registered on WhatsApp Business API and <strong>cannot be used for regular WhatsApp messaging</strong> on your phone.
+              </p>
+            );
+          })()}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
         <div>
           <Label htmlFor="city">City *</Label>
           <Input
@@ -159,16 +201,15 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
             onChange={(e) => onChange('city', e.target.value)}
           />
         </div>
-      </div>
-
-      <div>
-        <Label htmlFor="address">Full Address</Label>
-        <Input
-          id="address"
-          placeholder="e.g., A-12, Green Park Main, New Delhi 110016"
-          value={(data.address as string) || ''}
-          onChange={(e) => onChange('address', e.target.value)}
-        />
+        <div>
+          <Label htmlFor="address">Full Address</Label>
+          <Input
+            id="address"
+            placeholder="e.g., A-12, Green Park Main, New Delhi 110016"
+            value={(data.address as string) || ''}
+            onChange={(e) => onChange('address', e.target.value)}
+          />
+        </div>
       </div>
 
       <div>

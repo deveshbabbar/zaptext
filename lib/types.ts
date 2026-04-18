@@ -3,6 +3,7 @@ export interface CommonFields {
   businessName: string;
   ownerName: string;
   whatsappNumber: string;
+  contactNumber?: string; // personal phone for OTP/calls (separate from WhatsApp bot number)
   city: string;
   address: string;
   workingHours: string;
@@ -258,6 +259,7 @@ export interface ClientRow {
   upi_name?: string;
   existing_system?: string;
   export_format?: 'csv' | 'json';
+  contact_number?: string; // owner personal phone for OTP/calls (distinct from whatsapp_number)
 }
 
 export interface ConversationRow {

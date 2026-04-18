@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       upi_name: typeof config.upiName === 'string' ? config.upiName.trim() : '',
       existing_system: typeof config.existingSystem === 'string' ? config.existingSystem.trim() : '',
       export_format: config.exportFormat === 'json' ? 'json' : 'csv',
+      contact_number: typeof config.contactNumber === 'string' ? formatPhoneNumber(config.contactNumber) : '',
     };
 
     const existingBotsCount = existingBots.length;

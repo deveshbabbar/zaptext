@@ -149,6 +149,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const totalMessages = analytics.reduce((sum, a) => sum + a.total_messages, 0);
   const totalCustomers = new Set(conversations.map((c) => c.customer_phone)).size;
 
+  const kb = (() => {
+    try { return JSON.parse(client.knowledge_base_json || '{}'); } catch { return {}; }
+  })() as Record<string, unknown>;
+  const address = typeof kb.address === 'string' ? kb.address : '';
+  const workingHours = typeof kb.workingHours === 'string' ? kb.workingHours : '';
+  const telHref = (num: string) => `tel:${(num || '').replace(/[^+0-9]/g, '')}`;
+  const waHref = (num: string) => `https://wa.me/${(num || '').replace(/[^0-9]/g, '')}`;
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <a href="/admin/dashboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">
@@ -219,6 +227,74 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       )}
+
+      {/* Client Contact Details — prominently visible for review & ongoing support */}
+      <Card className="mb-8 border-2 border-primary/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <span>📇</span> Client Contact Details
+            <Badge variant="outline" className="ml-2">{meta.label}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Owner Name</p>
+            <p className="font-medium">{client.owner_name || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Business</p>
+            <p className="font-medium">{client.business_name}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              📞 Contact Number <span className="text-[10px] normal-case font-normal text-muted-foreground">(call owner)</span>
+            </p>
+            {client.contact_number ? (
+              <a
+                href={telHref(client.contact_number)}
+                className="font-mono text-lg font-semibold text-primary hover:underline"
+              >
+                {client.contact_number}
+              </a>
+            ) : (
+              <p className="text-sm text-amber-600">Not provided</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              💬 WhatsApp Bot Number <span className="text-[10px] normal-case font-normal text-muted-foreground">(customers message this)</span>
+            </p>
+            {client.whatsapp_number ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-lg font-semibold">{client.whatsapp_number}</span>
+                <a
+                  href={waHref(client.whatsapp_number)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline"
+                >
+                  Open in WhatsApp →
+                </a>
+              </div>
+            ) : (
+              <p className="text-sm text-amber-600">Not provided</p>
+            )}
+          </div>
+          <div className="sm:col-span-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Address</p>
+            <p className="text-sm">
+              {address || '—'}
+              {client.city ? <span className="text-muted-foreground"> · {client.city}</span> : null}
+            </p>
+          </div>
+          {workingHours && (
+            <div className="sm:col-span-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Working Hours</p>
+              <p className="text-sm">{workingHours}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

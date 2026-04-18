@@ -183,9 +183,14 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
               return <p className="text-xs text-red-500 mt-1">Enter 10 digits (e.g. 9876543210)</p>;
             }
             return (
-              <p className="text-xs text-amber-600 mt-1">
-                ⚠️ <strong>Use a fresh number.</strong> This will be registered on WhatsApp Business API and <strong>cannot be used for regular WhatsApp messaging</strong> on your phone.
-              </p>
+              <div className="mt-1 space-y-1">
+                <p className="text-xs text-amber-600">
+                  ⚠️ <strong>Use a brand new number that has NEVER been used on WhatsApp</strong> — not even once. If it was ever registered on WhatsApp (personal or business), delete that account first from your phone before giving it to us.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Once we register this on WhatsApp Business API, it <strong>cannot be used for regular WhatsApp messaging</strong> on any phone.
+                </p>
+              </div>
             );
           })()}
         </div>

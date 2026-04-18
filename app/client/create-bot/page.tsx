@@ -67,7 +67,11 @@ export default function CreateBotPage() {
           merged.type = selectedType;
           return merged;
         });
-        toast.success('Data extracted! Review below.');
+        if (data.partial && data.message) {
+          toast.warning(data.message);
+        } else {
+          toast.success('Data extracted! Review and complete any missing fields.');
+        }
       } else {
         toast.error(data.error || 'Could not extract');
       }

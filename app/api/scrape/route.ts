@@ -8,120 +8,213 @@ function isAllowedUrl(input: string): boolean {
   let parsed: URL;
   try { parsed = new URL(input); } catch { return false; }
   if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-  const hostname = parsed.hostname.toLowerCase();
-  const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254',
-    'metadata.google.internal', '::1', '[::1]'];
-  if (blocked.includes(hostname) || hostname.endsWith('.local') || hostname.endsWith('.internal')) return false;
-  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)) return false;
+  const h = parsed.hostname.toLowerCase();
+  if (['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254'].includes(h)) return false;
+  if (h.endsWith('.local') || h.endsWith('.internal')) return false;
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(h)) return false;
   return true;
+}
+
+// JSON-LD structured data — most reliable, not affected by JS rendering
+function extractJsonLd(html: string): object[] {
+  const results: object[] = [];
+  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const p = JSON.parse(m[1]);
+      if (Array.isArray(p)) results.push(...p);
+      else results.push(p);
+    } catch { /* skip */ }
+  }
+  return results;
+}
+
+// Open Graph & meta tags
+function extractMeta(html: string): Record<string, string> {
+  const meta: Record<string, string> = {};
+  const patterns: [RegExp, string][] = [
+    [/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, 'og_title'],
+    [/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i, 'og_title'],
+    [/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, 'og_description'],
+    [/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i, 'meta_description'],
+    [/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i, 'site_name'],
+    [/<title[^>]*>([^<]+)<\/title>/i, 'title'],
+  ];
+  for (const [re, key] of patterns) {
+    if (!meta[key]) {
+      const m = re.exec(html);
+      if (m) meta[key] = m[1].trim();
+    }
+  }
+  return meta;
+}
+
+// Known SPA platforms that block plain fetch
+function detectPlatform(url: string): string | null {
+  const u = url.toLowerCase();
+  if (u.includes('zomato.com')) return 'zomato';
+  if (u.includes('swiggy.com')) return 'swiggy';
+  if (u.includes('instagram.com')) return 'instagram';
+  if (u.includes('justdial.com')) return 'justdial';
+  if (u.includes('practo.com')) return 'practo';
+  if (u.includes('sulekha.com')) return 'sulekha';
+  if (u.includes('dineout.co.in') || u.includes('dineout.com')) return 'dineout';
+  if (u.includes('magicpin.in')) return 'magicpin';
+  return null;
+}
+
+function platformNote(platform: string, url: string): string {
+  const slug = url.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || '';
+  const notes: Record<string, string> = {
+    zomato: `Zomato is a JavaScript app — menu data won't be in raw HTML. Try to infer businessName from URL: "${slug}". Return a restaurant template with empty arrays for menu.`,
+    swiggy: `Swiggy is a JavaScript app. Infer businessName from URL: "${slug}". Return a restaurant template with placeholders.`,
+    instagram: `Instagram blocks scraping. Extract the @username from the URL as instagramHandle and businessName. Return a business template with instagramHandle set.`,
+    practo: `Practo is a JavaScript app. Infer clinic/doctor name from URL: "${slug}". Return a clinic template with placeholders.`,
+    justdial: `JustDial has limited static content. Extract what's available from the content provided, infer businessName from URL: "${slug}".`,
+    sulekha: `Sulekha — infer businessName from URL: "${slug}". Return a template with placeholders.`,
+    dineout: `Dineout is a JavaScript app. Infer businessName from URL: "${slug}". Return a restaurant template.`,
+    magicpin: `Magicpin — infer businessName from URL: "${slug}". Return a template with placeholders.`,
+  };
+  return notes[platform] || '';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { url, businessType } = await request.json() as { url: string; businessType: BusinessType };
+    if (!url) return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    if (!isAllowedUrl(url)) return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
 
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
-    }
+    const platform = detectPlatform(url);
 
-    if (!isAllowedUrl(url)) {
-      return NextResponse.json({ error: 'Invalid or disallowed URL' }, { status: 400 });
-    }
-
-    // Fetch website content
-    let htmlContent = '';
+    let rawHtml = '';
+    let fetchError = false;
     try {
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate',
         },
+        signal: AbortSignal.timeout(12000),
       });
-      htmlContent = await res.text();
+      rawHtml = await res.text();
     } catch {
-      return NextResponse.json({ error: 'Could not fetch the website. Check the URL.' }, { status: 400 });
+      fetchError = true;
     }
 
-    // Clean HTML - remove scripts, styles, keep text content
-    const cleanedText = htmlContent
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+    // Priority 1: JSON-LD structured data (best quality)
+    const jsonLd = rawHtml ? extractJsonLd(rawHtml) : [];
+    const meta = rawHtml ? extractMeta(rawHtml) : {};
+
+    // Priority 2: Visible text
+    const visibleText = rawHtml
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+      .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[\s\S]*?<\/footer>/gi, '')
       .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&#\d+;/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 15000); // Limit to 15k chars for Gemini
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&#\d+;/g, '').replace(/\s+/g, ' ').trim();
 
-    if (cleanedText.length < 50) {
-      return NextResponse.json({ error: 'Could not extract meaningful content from this website.' }, { status: 400 });
+    const hasContent = jsonLd.length > 0 || visibleText.length > 150;
+    const isPartial = platform !== null || fetchError || !hasContent;
+
+    // Build context for Gemini
+    const parts: string[] = [];
+
+    if (platform && (!hasContent || fetchError)) {
+      parts.push(`PLATFORM NOTE: ${platformNote(platform, url)}`);
+    }
+    if (jsonLd.length > 0) {
+      parts.push(`STRUCTURED DATA (JSON-LD — highest accuracy, prioritize this):\n${JSON.stringify(jsonLd, null, 2).slice(0, 10000)}`);
+    }
+    if (Object.keys(meta).length > 0) {
+      parts.push(`META / OG TAGS:\n${JSON.stringify(meta)}`);
+    }
+    if (visibleText.length > 150) {
+      parts.push(`PAGE TEXT CONTENT:\n${visibleText.slice(0, 15000)}`);
+    }
+    if (parts.length === 0) {
+      parts.push(`Could not fetch content from ${url}. ${platform ? platformNote(platform, url) : 'Return a template with empty fields.'}`);
     }
 
-    // Build Gemini prompt based on business type
-    const extractionPrompt = buildExtractionPrompt(businessType, cleanedText);
+    const prompt = buildPrompt(businessType, parts.join('\n\n'), url);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(extractionPrompt);
-    const responseText = result.response.text();
+    // Try gemini-1.5-flash first, fall back to gemini-pro on error
+    let responseText = '';
+    try {
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const result = await model.generateContent(prompt);
+      responseText = result.response.text();
+    } catch {
+      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const result = await model.generateContent(prompt);
+      responseText = result.response.text();
+    }
 
-    // Parse JSON from Gemini response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    // Strip markdown fences if present
+    const cleaned = responseText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ error: 'AI could not extract structured data from this website.' }, { status: 400 });
+      return NextResponse.json({ error: 'AI could not extract structured data. Please fill manually.' }, { status: 400 });
     }
 
-    const extractedData = JSON.parse(jsonMatch[0]);
+    const extracted = JSON.parse(jsonMatch[0]);
+    return NextResponse.json({
+      success: true,
+      data: extracted,
+      partial: isPartial,
+      message: isPartial
+        ? platform
+          ? `${platform.charAt(0).toUpperCase() + platform.slice(1)} se direct scraping nahi hoti (JavaScript app hai). Template fill hua — baaki details khud add karo.`
+          : 'Kuch fields manually fill karne padenge.'
+        : undefined,
+    });
 
-    return NextResponse.json({ success: true, data: extractedData });
   } catch (error) {
     console.error('Scrape error:', error);
     return NextResponse.json(
-      { error: 'Failed to extract data. Try a different URL or fill manually.' },
+      { error: 'Data extract nahi ho paya. Zomato/Instagram ke bajaay direct website URL try karo, ya manually fill karo.' },
       { status: 500 }
     );
   }
 }
 
-function buildExtractionPrompt(type: BusinessType, websiteText: string): string {
-  const typeInstructions: Record<BusinessType, string> = {
-    clinic: `Extract: businessName, ownerName (doctor name), specialization, qualifications, services (array of {name, price, duration}), consultationFee, appointmentProcess, workingHours, address, city, emergencyNumber, insuranceAccepted (array of strings), phone number as whatsappNumber.`,
-
-    restaurant: `Extract: businessName, cuisineType, menuCategories (array of {category, items: [{name, price, description, isVeg (boolean), isBestseller (boolean)}]}), deliveryAvailable (boolean), deliveryRadius, deliveryCharges, minimumOrder, paymentMethods (array), specialOffers, workingHours, address, city, phone number as whatsappNumber. Try to extract EVERY menu item with correct prices.`,
-
-    coaching: `Extract: businessName, instituteName, coursesOffered (array of {name, targetAudience, duration, fee, schedule, mode}), facultyInfo, batchSize, demoClassAvailable (boolean), admissionProcess, results, studyMaterial, workingHours, address, city, phone number as whatsappNumber.`,
-
-    realestate: `Extract: businessName, agentName, reraNumber, operatingAreas (array), propertyTypes (array), services (array like ["Buy","Sell","Rent"]), currentListings (array of {title, type, price, area, highlights}), siteVisitProcess, homeLoanAssistance (boolean), homeLoanBanks (array), address, city, phone number as whatsappNumber.`,
-
-    salon: `Extract: businessName, salonName, gender ("Unisex"/"Women only"/"Men only"), services (array of {category, items: [{name, price, duration}]}), packages (array of {name, includes, price}), brands (array), bookingRequired (boolean), homeServiceAvailable (boolean), homeServiceCharges, workingHours, address, city, phone number as whatsappNumber.`,
-
-    d2c: `Extract: businessName, brandName, productCategory, products (array of {name, price, description, bestseller (boolean)}), shippingPolicy, returnPolicy, codAvailable (boolean), paymentMethods (array), websiteUrl, instagramHandle, currentOffers, orderTrackingProcess, address, city, phone number as whatsappNumber.`,
-
-    gym: `Extract: businessName, gymName, facilities (array), membershipPlans (array of {name, duration, price, includes}), personalTraining ({available: boolean, pricePerSession, trainerInfo}), groupClasses (array), trialAvailable (boolean), trialDetails, timings, workingHours, address, city, phone number as whatsappNumber.`,
+function buildPrompt(type: BusinessType, context: string, url: string): string {
+  const fields: Record<BusinessType, string> = {
+    restaurant: `businessName, cuisineType, menuCategories (array of {category: string, items: [{name, price, description, isVeg: boolean, isBestseller: boolean}]}), deliveryAvailable (boolean), deliveryRadius, minimumOrder, paymentMethods (array), specialOffers, workingHours, address, city, whatsappNumber`,
+    clinic: `businessName, ownerName (doctor/owner), specialization, qualifications, services (array of {name, price, duration}), consultationFee, appointmentProcess, workingHours, address, city, emergencyNumber, insuranceAccepted (array), whatsappNumber`,
+    salon: `businessName, salonName, gender, services (array of {category, items: [{name, price, duration}]}), packages (array of {name, includes, price}), brands (array), homeServiceAvailable (boolean), homeServiceCharges, workingHours, address, city, whatsappNumber`,
+    gym: `businessName, gymName, facilities (array), membershipPlans (array of {name, duration, price, includes}), personalTraining ({available: boolean, pricePerSession, trainerInfo}), groupClasses (array), trialAvailable (boolean), trialDetails, workingHours, address, city, whatsappNumber`,
+    coaching: `businessName, instituteName, coursesOffered (array of {name, targetAudience, duration, fee, schedule, mode}), facultyInfo, batchSize, demoClassAvailable (boolean), admissionProcess, workingHours, address, city, whatsappNumber`,
+    realestate: `businessName, agentName, reraNumber, operatingAreas (array), propertyTypes (array), services (array), currentListings (array of {title, type, price, area, highlights}), homeLoanAssistance (boolean), address, city, whatsappNumber`,
+    d2c: `businessName, brandName, productCategory, products (array of {name, price, description, bestseller: boolean}), shippingPolicy, returnPolicy, codAvailable (boolean), paymentMethods (array), instagramHandle, currentOffers, address, city, whatsappNumber`,
   };
 
-  return `You are a data extraction AI. Extract business information from the following website content and return it as a valid JSON object.
+  return `You are a business data extraction AI. Extract structured information from the content below and return a valid JSON object.
 
+SOURCE URL: ${url}
 BUSINESS TYPE: ${type}
 
-EXTRACT THESE FIELDS:
-${typeInstructions[type]}
+REQUIRED FIELDS: ${fields[type]}
 
-RULES:
-- Return ONLY a valid JSON object, no other text.
-- If a field is not found, use empty string "" for strings, empty array [] for arrays, false for booleans.
-- For prices, include the currency symbol (₹ or Rs.).
-- Extract as much data as possible — every menu item, every service, every product.
-- For phone numbers, format as +91XXXXXXXXXX if Indian.
-- Be thorough — go through the entire content.
-- Also extract: ownerName, workingHours, address, city, languages (default to ["Hindi","English","Hinglish"]).
+ALSO ALWAYS INCLUDE: ownerName, workingHours, address, city, languages (default: ["Hindi","English","Hinglish"])
 
-WEBSITE CONTENT:
-${websiteText}
+EXTRACTION RULES:
+- Return ONLY a valid JSON object — no markdown fences, no explanation text.
+- Use "" for missing strings, [] for missing arrays, false for missing booleans.
+- Include ₹ prefix for Indian prices (e.g. "₹280").
+- Phone numbers: format as +91XXXXXXXXXX.
+- Extract EVERY menu item / service / product you can find — be thorough.
+- If content is empty or from a JavaScript-rendered platform, still return a valid JSON with empty/placeholder values.
+- Business name: try to infer from URL slug or site name if not explicit.
 
-RESPOND WITH ONLY THE JSON:`;
+CONTENT TO EXTRACT FROM:
+${context}
+
+RETURN ONLY JSON:`;
 }

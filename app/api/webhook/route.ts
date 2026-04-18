@@ -13,6 +13,14 @@ import {
   getPendingPayment,
   clearPendingPayment,
 } from '@/lib/payments';
+import {
+  getActiveInventory,
+  reserveOrder,
+  setStock,
+  adjustStock,
+  findBestMatch,
+  slugify,
+} from '@/lib/inventory';
 import { clerkClient } from '@clerk/nextjs/server';
 
 // WhatsApp webhook verification
@@ -214,6 +222,21 @@ PAYMENT INSTRUCTIONS:
     const orderCapable = ['restaurant', 'd2c'].includes(client.type);
     let orderContext = '';
     if (orderCapable) {
+      // Live inventory snapshot for the bot
+      let stockBlock = '';
+      try {
+        const active = await getActiveInventory(client.client_id);
+        if (active.length > 0) {
+          const lines = active.map((i) => {
+            if (i.stock === 0) return `- ${i.name}: OUT OF STOCK (do not accept orders)`;
+            const priceBit = i.price > 0 ? ` · ₹${i.price}` : '';
+            return `- ${i.name}: ${i.stock} available${priceBit}`;
+          });
+          stockBlock = `\nLIVE STOCK (do not exceed these quantities):\n${lines.join('\n')}\n`;
+        }
+      } catch {
+        // ignore
+      }
       orderContext = `
 
 ORDER INSTRUCTIONS (food / product orders):
@@ -226,7 +249,8 @@ ORDER INSTRUCTIONS (food / product orders):
   Example (dine-in): [ORDER:320:1xMasala Dosa,1xFilter Coffee::table 4]
 - The system records the order, notifies the owner immediately on WhatsApp + email with full item list, and sends your reply to the customer.
 - Use [ORDER:] ONCE per completed order, BEFORE [PAY:]. Typical flow: confirm items -> [ORDER:...] -> [PAY:...].
-- Never emit both with the same content on conflicting lines; just place them in the same reply.`;
+- Never emit both with the same content on conflicting lines; just place them in the same reply.
+- Use EXACT item names as shown in LIVE STOCK below. Never confirm or [ORDER:] an item that shows OUT OF STOCK. If customer insists, politely say it's unavailable and suggest an alternative.${stockBlock}`;
     }
 
     // Generate AI response with booking + payment + order context
@@ -321,6 +345,42 @@ ORDER INSTRUCTIONS (food / product orders):
         return sum + (m ? parseInt(m[1], 10) : 1);
       }, 0);
 
+      // Reserve inventory first — only commits decrements if ALL items are in stock.
+      // If inventory isn't configured (no rows for this client), reservation matches nothing
+      // and we skip this check; bot can still accept the order manually.
+      let reservation: Awaited<ReturnType<typeof reserveOrder>> | null = null;
+      try {
+        const active = await getActiveInventory(client.client_id);
+        if (active.length > 0 && items.length > 0) {
+          reservation = await reserveOrder(client.client_id, items);
+          if (!reservation.success) {
+            // Roll back: tell customer what's short, skip creating the order
+            const problems = reservation.lines
+              .filter((l) => l.shortfall > 0 || !l.matchedSku)
+              .map((l) => {
+                if (!l.matchedSku) return `• "${l.requested}" — not on our menu`;
+                return `• ${l.matchedName}: only ${l.stockBefore} left (you asked for ${l.qtyRequested})`;
+              })
+              .join('\n');
+            const reply =
+              `Sorry boss 🙏 kuch items stock mein nahi:\n${problems}\n\nKya aap quantity kam karna chahenge ya kuch aur try karein?`;
+            await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
+            await addConversationMessage({
+              timestamp: getISTTimestamp(),
+              client_id: client.client_id,
+              customer_phone: customerPhone,
+              direction: 'outgoing',
+              message: reply,
+              message_type: 'text',
+            });
+            finalResponse = finalResponse.replace(/\[ORDER:[^\]]+\]/, '').trim();
+            continue; // skip order + pay for this message
+          }
+        }
+      } catch (e) {
+        console.error('Inventory reservation failed (continuing):', e);
+      }
+
       try {
         const now = new Date();
         const todayIst = getTodayIST();
@@ -344,8 +404,26 @@ ORDER INSTRUCTIONS (food / product orders):
 
         // Real-time WhatsApp to owner
         const itemsList = items.length ? items.map((i) => `  • ${i}`).join('\n') : '  (no items parsed)';
-        const ownerMsg = `🛍️ *New Order!*\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}\n\n🕐 ${timeSlot} · ${todayIst}`;
+        const stockSummary = reservation?.success
+          ? '\n\n📦 Stock updated:\n' +
+            reservation.lines
+              .map((l) => `  • ${l.matchedName}: ${l.stockBefore} → ${l.stockAfter}`)
+              .join('\n')
+          : '';
+        const ownerMsg = `🛍️ *New Order!*\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}${stockSummary}\n\n🕐 ${timeSlot} · ${todayIst}`;
         await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+
+        // Low-stock alerts (separate message so it stands out)
+        if (reservation?.lowStockAlerts?.length) {
+          const alertLines = reservation.lowStockAlerts
+            .map((a) => `• ${a.name}: ${a.stock} left (threshold: ${a.threshold})`)
+            .join('\n');
+          await sendWhatsAppMessage(
+            phoneNumberId,
+            client.whatsapp_number.replace('+', ''),
+            `⚠️ *Low stock alert*\n${alertLines}\n\nText *stock ${reservation.lowStockAlerts[0].sku} <qty>* to set new count.`
+          );
+        }
 
         // Email owner
         try {
@@ -682,9 +760,83 @@ async function handleOwnerCommand(
         `• *pause* — stop AI replies\n` +
         `• *resume* — turn AI back on\n` +
         `• *status* — bot snapshot\n` +
+        `• *stock* — show all inventory\n` +
+        `• *stock <item> <qty>* — set absolute stock (e.g. "stock biryani 50")\n` +
+        `• *stock <item> +N* or *-N* — add/subtract (e.g. "stock biryani -10")\n` +
         `• *help* — this message\n\n` +
         `_Any other message won't trigger commands._`
     );
+    return true;
+  }
+
+  // stock — list all active inventory
+  if (normalized === 'stock' || normalized === 'inventory') {
+    try {
+      const { getActiveInventory } = await import('@/lib/inventory');
+      const active = await getActiveInventory(clientId);
+      if (!active.length) {
+        await sendWhatsAppMessage(
+          phoneNumberId,
+          ownerPhoneDigits,
+          `📦 No inventory yet. Add items in the dashboard (Client app → Inventory).`
+        );
+        return true;
+      }
+      const lines = active
+        .map((i) => `• ${i.name}: *${i.stock}*${i.stock === 0 ? ' (OUT OF STOCK)' : ''}`)
+        .join('\n');
+      await sendWhatsAppMessage(
+        phoneNumberId,
+        ownerPhoneDigits,
+        `📦 *Current stock*\n\n${lines}\n\n` +
+          `Reply *stock <name> <qty>* to set, *stock <name> -N* to subtract.`
+      );
+    } catch {
+      await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, 'Could not load inventory.');
+    }
+    return true;
+  }
+
+  // stock <item> <qty> | stock <item> +N | stock <item> -N
+  const stockMatch = normalized.match(/^stock\s+(.+?)\s+([+-]?\d+)\s*$/);
+  if (stockMatch) {
+    const rawName = stockMatch[1];
+    const numText = stockMatch[2];
+    const isDelta = /^[+-]/.test(numText);
+    const num = parseInt(numText, 10);
+    try {
+      const { getActiveInventory, findBestMatch, setStock, adjustStock, slugify } = await import('@/lib/inventory');
+      const active = await getActiveInventory(clientId);
+      // Prefer exact sku match on the raw name; fall back to fuzzy
+      const bySku = active.find((i) => i.sku === slugify(rawName));
+      const match = bySku || findBestMatch(active, rawName);
+      if (!match) {
+        await sendWhatsAppMessage(
+          phoneNumberId,
+          ownerPhoneDigits,
+          `❌ Couldn't find "${rawName}" in inventory. Text *stock* to see exact names.`
+        );
+        return true;
+      }
+      const before = match.stock;
+      const updated = isDelta
+        ? (await adjustStock(clientId, match.sku, num)).item
+        : await setStock(clientId, match.sku, num);
+      if (!updated) {
+        await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, `❌ Update failed for ${match.name}.`);
+        return true;
+      }
+      await sendWhatsAppMessage(
+        phoneNumberId,
+        ownerPhoneDigits,
+        `✅ *${updated.name}*: ${before} → *${updated.stock}*${
+          updated.stock === 0 ? ' (OUT OF STOCK — bot will refuse new orders)' : ''
+        }`
+      );
+    } catch (e) {
+      console.error('stock cmd error:', e);
+      await sendWhatsAppMessage(phoneNumberId, ownerPhoneDigits, 'Stock update failed.');
+    }
     return true;
   }
 

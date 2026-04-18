@@ -234,6 +234,18 @@ export interface AnalyticsRow {
   unique_customers: number;
 }
 
+export interface InventoryItem {
+  client_id: string;
+  sku: string;
+  name: string;
+  price: number;
+  stock: number;
+  low_stock_threshold: number;
+  is_active: boolean;
+  updated_at: string;
+  notes: string;
+}
+
 // ─── Business Type Metadata ───
 
 export interface BusinessTypeMeta {

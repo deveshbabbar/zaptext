@@ -66,6 +66,11 @@ const TABS: TabSpec[] = [
     headerRange: 'subscriptions!A1:I1',
     headers: ['userId', 'plan', 'status', 'razorpayPaymentId', 'razorpayOrderId', 'amount', 'startDate', 'endDate', 'createdAt'],
   },
+  {
+    name: 'inventory',
+    headerRange: 'inventory!A1:I1',
+    headers: ['client_id', 'sku', 'name', 'price', 'stock', 'low_stock_threshold', 'is_active', 'updated_at', 'notes'],
+  },
 ];
 
 export interface InitReport {

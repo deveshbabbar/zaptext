@@ -171,9 +171,28 @@ PAYMENT INSTRUCTIONS:
 - Use [PAY:] only once per order. If already paid, don't ask again.`;
     }
 
-    // Generate AI response with booking + payment context
+    // Order context: teach bot the [ORDER:] tag for food/product orders (restaurant, D2C, etc.)
+    const orderCapable = ['restaurant', 'd2c'].includes(client.type);
+    let orderContext = '';
+    if (orderCapable) {
+      orderContext = `
+
+ORDER INSTRUCTIONS (food / product orders):
+- When a customer finalizes a menu or product order (confirms items + quantities), include EXACTLY this tag: [ORDER:total:items:address:notes]
+  - total: numeric rupee amount (no currency symbol, no commas)
+  - items: comma-separated quantity×name tokens, e.g. "2xDum Biryani,1xVeg Pulao"
+  - address: delivery address, or empty if pickup/dine-in
+  - notes: optional (e.g. "extra spicy", "no onion")
+  Example: [ORDER:560:2xDum Biryani,1xVeg Pulao:Koramangala 5th Block, Bengaluru:extra spicy]
+  Example (dine-in): [ORDER:320:1xMasala Dosa,1xFilter Coffee::table 4]
+- The system records the order, notifies the owner immediately on WhatsApp + email with full item list, and sends your reply to the customer.
+- Use [ORDER:] ONCE per completed order, BEFORE [PAY:]. Typical flow: confirm items -> [ORDER:...] -> [PAY:...].
+- Never emit both with the same content on conflicting lines; just place them in the same reply.`;
+    }
+
+    // Generate AI response with booking + payment + order context
     const aiResponse = await generateBotResponse(
-      client.system_prompt + availabilityContext + paymentContext,
+      client.system_prompt + availabilityContext + paymentContext + orderContext,
       pastHistory,
       msg.text
     );
@@ -243,6 +262,91 @@ PAYMENT INSTRUCTIONS:
     if (cancelMatch) {
       await cancelBooking(cancelMatch[1]);
       finalResponse = finalResponse.replace(/\[CANCEL:[^\]]+\]/, '').trim();
+    }
+
+    // Order tag: [ORDER:total:items:address:notes]
+    // items = comma-separated "QTYxNAME" tokens e.g. "2xBiryani,1xVeg Pulao"
+    const orderMatch = aiResponse.match(/\[ORDER:(\d+(?:\.\d+)?):([^:\]]*):([^:\]]*):?([^\]]*)\]/);
+    if (orderMatch) {
+      const total = parseFloat(orderMatch[1]);
+      const itemsRaw = (orderMatch[2] || '').slice(0, 300);
+      const address = (orderMatch[3] || '').slice(0, 200);
+      const extraNotes = (orderMatch[4] || '').slice(0, 200);
+
+      const items = itemsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const itemCount = items.reduce((sum, it) => {
+        const m = it.match(/^(\d+)\s*[xX*]/);
+        return sum + (m ? parseInt(m[1], 10) : 1);
+      }, 0);
+
+      try {
+        const now = new Date();
+        const todayIst = getTodayIST();
+        const timeSlot = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const serviceLabel = `ORDER · ${itemCount} item${itemCount === 1 ? '' : 's'} · ₹${total.toFixed(2)}`;
+        const notesParts: string[] = [];
+        if (items.length) notesParts.push(`Items: ${items.join(', ')}`);
+        if (address) notesParts.push(`Address: ${address}`);
+        if (extraNotes) notesParts.push(extraNotes);
+
+        await createBooking({
+          clientId: client.client_id,
+          customerPhone,
+          customerName: customerPhone,
+          date: todayIst,
+          timeSlot,
+          endTime: timeSlot,
+          service: serviceLabel,
+          notes: notesParts.join(' | '),
+        });
+
+        // Real-time WhatsApp to owner
+        const itemsList = items.length ? items.map((i) => `  • ${i}`).join('\n') : '  (no items parsed)';
+        const ownerMsg = `🛍️ *New Order!*\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}\n\n🕐 ${timeSlot} · ${todayIst}`;
+        await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+
+        // Email owner
+        try {
+          const cc = await clerkClient();
+          const owner = await cc.users.getUser(client.owner_user_id);
+          const ownerEmail = owner.emailAddresses[0]?.emailAddress;
+          const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
+          if (ownerEmail) {
+            const itemsHtml = items.length
+              ? `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>`
+              : '<p>(no items parsed)</p>';
+            await sendTemplate(
+              ownerEmail,
+              {
+                subject: `🛍️ New order ₹${total.toFixed(2)} — ${client.business_name}`,
+                html: `
+                  <h2>🛍️ New order received</h2>
+                  <p><strong>Business:</strong> ${client.business_name}</p>
+                  <p><strong>Customer:</strong> ${customerPhone}</p>
+                  <p><strong>Amount:</strong> ₹${total.toFixed(2)}</p>
+                  <p><strong>Items (${itemCount}):</strong></p>
+                  ${itemsHtml}
+                  ${address ? `<p><strong>Delivery address:</strong> ${address}</p>` : ''}
+                  ${extraNotes ? `<p><strong>Notes:</strong> ${extraNotes}</p>` : ''}
+                  <p style="color:#6F6A5F;font-size:13px;margin-top:16px;">
+                    Placed at ${timeSlot} on ${todayIst}. Payment screenshot will follow when the customer pays.
+                  </p>
+                `,
+              },
+              ownerName
+            );
+          }
+        } catch (e) {
+          console.error('Order email failed:', e);
+        }
+      } catch (e) {
+        console.error('Order creation failed:', e);
+      }
+
+      finalResponse = finalResponse.replace(/\[ORDER:[^\]]+\]/, '').trim();
     }
 
     // Payment tag: [PAY:amount:note] — bot asks customer to pay X amount

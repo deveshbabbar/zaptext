@@ -99,7 +99,10 @@ export async function POST(request: NextRequest) {
 async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
-  if (!client) return;
+  if (!client) {
+    console.warn(`[webhook] No client found for phone_number_id="${phoneNumberId}". Check that a client row in the Sheets has this exact phone_number_id.`);
+    return;
+  }
   // Hard-skip for statuses that should receive nothing (rejected/error/pending)
   if (!['active', 'paused'].includes(client.status)) return;
 

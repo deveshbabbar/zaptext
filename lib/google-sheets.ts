@@ -44,6 +44,13 @@ function invalidateCache(key?: string): void {
   else cache.clear();
 }
 
+// Prime the cache with a known-good value. Used after writes to cover
+// Google Sheets' read-after-write replication lag so immediate reads
+// can see the new row without hitting "not found".
+function primeCache<T>(key: string, data: T): void {
+  cache.set(key, { promise: Promise.resolve(data), expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
 const VALID_BIZ_TYPES: ReadonlyArray<BusinessType> = [
   'clinic', 'restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym',
 ];
@@ -140,6 +147,18 @@ export async function addClient(client: ClientRow): Promise<void> {
     },
   });
   invalidateCache('clients');
+
+  // Sheets has a small read-after-write replication lag; if a fresh
+  // read doesn't yet see the new row, patch the cache with the row we
+  // just wrote so getClientById/getAllClients can find it immediately.
+  try {
+    const fresh = await getAllClients();
+    if (!fresh.find((c) => c.client_id === client.client_id)) {
+      primeCache<ClientRow[]>('clients', [...fresh, client]);
+    }
+  } catch {
+    // If the refresh fails, fall through — next read will retry from Sheets.
+  }
 }
 
 export async function updateClientStatus(clientId: string, status: ClientRow['status']): Promise<void> {

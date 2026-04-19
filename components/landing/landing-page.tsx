@@ -294,11 +294,11 @@ const FAQS = [
   },
   {
     q: "How fast can I actually go live?",
-    a: "Median time from sign-up to first customer reply is under 5 minutes on Starter/Growth. Pro and Enterprise involve a 1-hour onboarding call so we can tune voice, integrations, and SLAs.",
+    a: "Onboarding (filling your details and configuring the bot) takes about 5 minutes. After that, WhatsApp Business API verification of your number typically takes 24-48 hours — that's Meta's side, not ours. Once verified, your bot goes live. Pro and Enterprise include a 1-hour onboarding call to tune voice and integrations.",
   },
   {
     q: "Are there any per-conversation charges beyond the plan?",
-    a: "WhatsApp's own conversation fees (Meta's pricing, paise per conversation) are passed through at cost. Starter includes 500 free conversations/month; Growth and above are unlimited at your plan rate. No surprise markup.",
+    a: "WhatsApp's own conversation fees (Meta's pricing, paise per conversation) are passed through at cost. The Starter plan includes 500 conversations/month; Growth and above are unlimited at your plan rate. No surprise markup.",
   },
   {
     q: "Can I cancel or change plans anytime?",
@@ -357,7 +357,7 @@ function Navbar() {
             Sign in
           </Link>
           <Link href="/sign-up" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--ink)] text-[var(--background)] font-semibold text-[14px] hover:-translate-y-px transition">
-            Start free <span aria-hidden>→</span>
+            Get started <span aria-hidden>→</span>
           </Link>
         </div>
       </div>
@@ -414,14 +414,14 @@ function Hero() {
               <span className="zt-serif text-[1.12em] text-[var(--ink)]">
                 &ldquo;order kaha hai, bhaiya?&rdquo;
               </span>{" "}
-              and reply like your best employee — in Hindi, English, or Hinglish. Clinics, restaurants, coaching, salons, real estate, D2C and gyms. 5-minute setup. No code.
+              and reply like your best employee — in Hindi, English, or Hinglish. Clinics, restaurants, coaching, salons, real estate, D2C and gyms. Quick setup. No code.
             </p>
             <div className="flex flex-wrap gap-3 mt-8">
               <Link
                 href="/sign-up"
                 className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[16px] hover:-translate-y-px transition"
               >
-                Set up my bot — free <span>→</span>
+                Set up my bot <span>→</span>
               </Link>
               <a
                 href="#how"
@@ -432,10 +432,10 @@ function Hero() {
             </div>
             <div className="flex flex-wrap gap-5 mt-7 text-[13px] text-[var(--mute)]">
               <span className="inline-flex items-center gap-1.5">
-                <Check /> Free setup (₹4,999 waived)
+                <Check /> ₹0 setup fee (₹4,999 waived)
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check /> Goes live in ~5 min
+                <Check /> Live after WhatsApp verify (~48h)
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Check /> Cancel anytime
@@ -865,7 +865,7 @@ function HowItWorks() {
           <br />
           <span style={{ opacity: 0.6 }}>generating 47 replies…</span>
           <br />
-          ready to go live in <b>0:42</b>
+          ready for WhatsApp verify <b>✓</b>
         </>
       ),
       hot: true,
@@ -879,9 +879,9 @@ function HowItWorks() {
         <>
           number: <b>+91 98XXX XXX12</b>
           <br />
-          status: <b style={{ color: "#1fae4f" }}>● live</b>
+          status: <b style={{ color: "#1fae4f" }}>● verifying</b>
           <br />
-          first message in: <b>2m 14s</b>
+          typically live: <b>24-48h</b>
         </>
       ),
       hot: false,
@@ -895,12 +895,12 @@ function HowItWorks() {
           label="How it works"
           title={
             <>
-              Live in <span className="zt-serif">five minutes.</span>
+              Setup in <span className="zt-serif">five minutes.</span>
               <br />
-              Not five weeks.
+              Live in a day or two.
             </>
           }
-          lead="No code. No agency. No WhatsApp API headaches. Tell us about your business — we handle the number, the training, the going-live."
+          lead="No code. No agency. No WhatsApp API headaches. Tell us about your business — we handle training and WhatsApp Business API onboarding. Meta's verification typically takes 24-48 hours after that."
         />
         <div className="grid md:grid-cols-3" style={{ gap: 18 }}>
           {steps.map((s) => (
@@ -1376,14 +1376,14 @@ function BigCTA() {
             </span>
           </h3>
           <p className="text-[18px] mt-6 mb-8 max-w-[500px]" style={{ color: "#ffffffaa" }}>
-            Spin up your WhatsApp bot in under five minutes. Free setup. First 500 conversations on us.
+            Configure your WhatsApp bot in about five minutes. ₹0 setup fee on launch. WhatsApp verification (~24-48h) handled for you.
           </p>
           <div className="flex gap-2.5 flex-wrap">
             <Link
               href="/sign-up"
               className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] bg-[var(--accent)] text-[var(--accent-2)] font-semibold text-[16px] hover:-translate-y-px transition"
             >
-              Start free — ₹0 setup <span>→</span>
+              Get started — ₹0 setup fee <span>→</span>
             </Link>
             <a
               href="#how"

@@ -17,7 +17,7 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
   const router = useRouter();
   const [formData, setFormData] = useState<Record<string, unknown>>({
     type,
-    languages: ['Hindi', 'English', 'Hinglish'],
+    languages: ['English'],
   });
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [submitting, setSubmitting] = useState(false);

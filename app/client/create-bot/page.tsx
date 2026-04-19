@@ -14,7 +14,7 @@ export default function CreateBotPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedType, setSelectedType] = useState<BusinessType | null>(null);
   const [formData, setFormData] = useState<Record<string, unknown>>({
-    languages: ['Hindi', 'English', 'Hinglish'],
+    languages: ['English'],
   });
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [scraping, setScraping] = useState(false);

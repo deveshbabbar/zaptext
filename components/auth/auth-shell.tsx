@@ -35,7 +35,7 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
               <>
                 Your <span className="zt-serif">first</span> bot,{" "}
                 <span className="bg-[var(--accent)] text-[var(--accent-2)] rounded-[8px]" style={{ padding: "0 .14em" }}>
-                  live in 5 min.
+                  set up today.
                 </span>
               </>
             ) : (
@@ -86,7 +86,7 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
           <h2 className="text-[36px] font-bold tracking-[-0.03em] leading-[1.05] mt-2.5 mb-1.5">
             {isSignUp ? (
               <>
-                Start for <span className="zt-serif">free.</span>
+                Get <span className="zt-serif">started.</span>
               </>
             ) : (
               <>
@@ -95,7 +95,7 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
             )}
           </h2>
           <p className="text-[15px] text-[var(--ink-2)] m-0 mb-7">
-            {isSignUp ? "No credit card. 500 conversations on us." : "Use the same email you onboarded with."}
+            {isSignUp ? "Create your account — no commitment to a plan yet." : "Use the same email you onboarded with."}
           </p>
 
           <div className="zt-clerk">{children}</div>
@@ -112,7 +112,7 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
               <>
                 New here?{" "}
                 <Link href="/sign-up" className="font-semibold border-b border-[var(--ink)] pb-px">
-                  Start free
+                  Get started
                 </Link>
               </>
             )}

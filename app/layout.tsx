@@ -30,7 +30,7 @@ const jetbrainsMono = JetBrains_Mono({
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://zaptext.shop";
 const SITE_NAME = "ZapText";
 const DESCRIPTION =
-  "AI WhatsApp bots that understand Hindi, English & Hinglish. Built for Indian SMBs — clinics, restaurants, coaching, salons, real estate, D2C & gyms. Live in 5 minutes.";
+  "AI WhatsApp bots that understand Hindi, English & Hinglish. Built for Indian SMBs — clinics, restaurants, coaching, salons, real estate, D2C & gyms. Quick setup; WhatsApp Business API verification typically takes 24-48 hours.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

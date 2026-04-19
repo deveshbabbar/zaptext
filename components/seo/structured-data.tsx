@@ -35,7 +35,7 @@ export function SoftwareApplicationJsonLd() {
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
     description:
-      'AI WhatsApp bots that understand Hindi, English & Hinglish. Built for Indian SMBs. Live in 5 minutes.',
+      'AI WhatsApp bots that understand Hindi, English & Hinglish. Built for Indian SMBs. Quick setup; WhatsApp Business API verification typically takes 24-48 hours.',
     url: SITE_URL,
     offers: {
       '@type': 'Offer',

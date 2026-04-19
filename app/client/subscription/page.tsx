@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { PLANS, DURATIONS, computePlanPrice, type PlanKey, type DurationKey } from '@/lib/plans';
+import { PLANS, DURATIONS, computePlanPrice, isTrialPlan, TRIAL_MESSAGE_LIMIT, type PlanKey, type DurationKey } from '@/lib/plans';
 import { toast } from 'sonner';
 import { PageTopbar, PageHead, Panel, StatusPill, MonoLabel } from '@/components/app/primitives';
 
@@ -45,8 +45,28 @@ export default function SubscriptionPage() {
   const [processingPlan, setProcessingPlan] = useState<PlanKey | null>(null);
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [selectedMonths, setSelectedMonths] = useState<Record<PlanKey, DurationKey>>({
-    starter: 1, growth: 1, pro: 1, enterprise: 1,
+    trial: 1, starter: 1, growth: 1, pro: 1, enterprise: 1,
   });
+  const [trialUsage, setTrialUsage] = useState<{ messagesUsed: number; messagesLimit: number } | null>(null);
+  const [startingTrial, setStartingTrial] = useState(false);
+
+  const handleStartTrial = async () => {
+    setStartingTrial(true);
+    try {
+      const res = await fetch('/api/client/start-trial', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success('Free trial activated! Create your first bot to start.');
+        loadSubscriptionData();
+      } else {
+        toast.error(data.message || data.error || 'Could not start trial');
+      }
+    } catch {
+      toast.error('Could not start trial');
+    } finally {
+      setStartingTrial(false);
+    }
+  };
 
   useEffect(() => {
     loadSubscriptionData();
@@ -60,6 +80,7 @@ export default function SubscriptionPage() {
         const data = await res.json();
         setCurrentSub(data.current);
         setHistory(data.history || []);
+        setTrialUsage(data.trialUsage || null);
       }
     } catch (err) {
       console.error('Failed to load subscription:', err);
@@ -205,15 +226,50 @@ export default function SubscriptionPage() {
           ) : (
             <div className="text-center py-6">
               <p className="text-[15px] text-[var(--mute)]">No active plan</p>
-              <p className="text-[13px] text-[var(--mute)] mt-1">Pick a plan below to get started</p>
+              <p className="text-[13px] text-[var(--mute)] mt-1 mb-4">Start with 50 free messages — no credit card needed</p>
+              <button
+                onClick={handleStartTrial}
+                disabled={startingTrial}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-[12px] bg-[var(--accent)] text-[var(--accent-2)] font-semibold text-[14px] hover:-translate-y-px transition disabled:opacity-60"
+              >
+                {startingTrial ? 'Starting…' : `🎁 Start free trial — ${TRIAL_MESSAGE_LIMIT} messages`}
+              </button>
             </div>
           )}
         </Panel>
 
+        {currentSub && isTrialPlan(currentSub.plan) && trialUsage && (
+          <Panel title="Trial usage">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[15px] font-semibold">
+                  {trialUsage.messagesUsed} / {trialUsage.messagesLimit} replies used
+                </span>
+                <span className="text-[12px] text-[var(--mute)]">
+                  {Math.max(0, trialUsage.messagesLimit - trialUsage.messagesUsed)} left
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-[var(--line)] overflow-hidden">
+                <div
+                  className="h-full bg-[var(--accent)]"
+                  style={{
+                    width: `${Math.min(100, (trialUsage.messagesUsed / trialUsage.messagesLimit) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="text-[12px] text-[var(--mute)] m-0 mt-1">
+                Trial covers FAQ auto-reply only — no bookings, payments, or multi-language. Upgrade to a paid plan below to unlock.
+              </p>
+            </div>
+          </Panel>
+        )}
+
         <div>
           <MonoLabel className="mb-4">{currentSub ? '// Upgrade your plan' : '// Choose a plan'}</MonoLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {(Object.entries(PLANS) as [PlanKey, (typeof PLANS)[PlanKey]][]).map(([key, plan]) => {
+            {(Object.entries(PLANS) as [PlanKey, (typeof PLANS)[PlanKey]][])
+              .filter(([, plan]) => !('hidden' in plan && plan.hidden === true))
+              .map(([key, plan]) => {
               const isCurrent = currentSub?.plan === key;
               const highlighted = 'highlighted' in plan && plan.highlighted === true;
               return (

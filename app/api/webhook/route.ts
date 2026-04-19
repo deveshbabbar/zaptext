@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
-import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
+import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
+import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime } from '@/lib/booking';
@@ -105,6 +106,16 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   }
   // Hard-skip for statuses that should receive nothing (rejected/error/pending)
   if (!['active', 'paused'].includes(client.status)) return;
+
+  // Trial gate: count existing outbound replies so we can block further Gemini
+  // calls once the lifetime limit is hit and strip premium tags from AI output.
+  const ownerSubscription = await getActiveSubscription(client.owner_user_id).catch(() => null);
+  const isTrialBot = !!ownerSubscription && isTrialPlan(ownerSubscription.plan);
+  let trialOutboundCount = 0;
+  if (isTrialBot) {
+    const allConvos = await getClientConversations(client.client_id).catch(() => []);
+    trialOutboundCount = allConvos.filter((c) => c.direction === 'outgoing').length;
+  }
 
   const ownerDigits = client.whatsapp_number.replace(/\D/g, '');
 
@@ -337,12 +348,36 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
       }
     } catch { /* ignore */ }
 
+    // Trial lifetime cap: once hit, reply with an upgrade prompt and skip Gemini.
+    if (isTrialBot && trialOutboundCount >= TRIAL_MESSAGE_LIMIT) {
+      const upgradeMsg =
+        `🎉 Free trial limit (${TRIAL_MESSAGE_LIMIT} replies) reached. ` +
+        `The owner needs to upgrade for me to keep helping you. Thanks for trying ZapText! 🙏`;
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, upgradeMsg);
+      await addConversationMessage({
+        timestamp: getISTTimestamp(),
+        client_id: client.client_id,
+        customer_phone: customerPhone,
+        direction: 'outgoing',
+        message: upgradeMsg,
+        message_type: 'text',
+      });
+      trialOutboundCount += 1;
+      continue;
+    }
+
     // Generate AI response with booking + payment + order + staff context
-    const aiResponse = await generateBotResponse(
+    let aiResponse = await generateBotResponse(
       client.system_prompt + availabilityContext + paymentContext + orderContext + staffContext,
       pastHistory,
       msg.text
     );
+
+    // Trial bots: strip premium tags BEFORE tag processing so booking /
+    // payment / order / cancel / stock side effects are never triggered.
+    if (isTrialBot) {
+      aiResponse = aiResponse.replace(/\[(BOOK|PAY|ORDER|CANCEL|STOCK):[^\]]+\]/g, '').trim();
+    }
 
     // Process booking commands from AI response
     let finalResponse = aiResponse;
@@ -609,6 +644,7 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
 
     // Send response via WhatsApp
     await sendWhatsAppMessage(phoneNumberId, customerPhone, finalResponse);
+    if (isTrialBot) trialOutboundCount += 1;
 
     // Log outgoing message
     await addConversationMessage({

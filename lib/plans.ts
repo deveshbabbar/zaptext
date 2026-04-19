@@ -1,6 +1,30 @@
 // ─── Plan Definitions (client-safe, no server-only imports) ───
 
+// Free trial: 50 outbound bot messages (lifetime), FAQ auto-reply only,
+// no bookings/payments/orders, 1 bot, no card required.
+export const TRIAL_MESSAGE_LIMIT = 50;
+
 export const PLANS = {
+  trial: {
+    name: 'Free Trial',
+    price: 0,
+    setupFee: 0,
+    originalSetupFee: 0,
+    bots: 1,
+    numbers: 1,
+    conversations: TRIAL_MESSAGE_LIMIT,
+    messages: TRIAL_MESSAGE_LIMIT,
+    extraBotPrice: null as number | null,
+    hidden: true, // not shown in pricing grid — activated via "Start trial" CTA
+    features: [
+      `${TRIAL_MESSAGE_LIMIT} bot replies (lifetime)`,
+      '1 WhatsApp Bot',
+      'FAQ auto-reply only',
+      'English responses',
+      'No credit card required',
+      'Upgrade anytime for bookings, payments, multi-language',
+    ],
+  },
   starter: {
     name: 'Starter',
     price: 2999,
@@ -110,4 +134,8 @@ export function computePlanPrice(plan: PlanKey, months: DurationKey): number {
 
 export function isDurationKey(v: unknown): v is DurationKey {
   return v === 1 || v === 6 || v === 12;
+}
+
+export function isTrialPlan(plan: PlanKey | string | undefined | null): boolean {
+  return plan === 'trial';
 }

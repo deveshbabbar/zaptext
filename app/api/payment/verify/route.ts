@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { verifyPaymentSignature } from '@/lib/razorpay';
-import { createSubscription, getSubscriptionByPaymentId, PLANS, PlanKey } from '@/lib/subscription';
+import { createSubscription, getSubscriptionByPaymentId, PLANS, PlanKey, DURATIONS, isDurationKey, computePlanPrice } from '@/lib/subscription';
 import { getISTTimestamp } from '@/lib/utils';
 import { sendTemplate, tplSubscriptionStarted, tplAdminNewSubscription } from '@/lib/email';
 import { clerkClient } from '@clerk/nextjs/server';
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       razorpay_signature,
       plan,
     } = body;
+    const monthsRaw = typeof body.months === 'number' ? body.months : 1;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !plan) {
       return NextResponse.json(
@@ -44,7 +45,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (!isDurationKey(monthsRaw)) {
+      return NextResponse.json({ error: 'Invalid duration. Allowed: 1, 6, or 12 months' }, { status: 400 });
+    }
     const validPlan = plan as PlanKey;
+    const months = monthsRaw;
 
     // Verify the payment signature
     const isValid = verifyPaymentSignature(
@@ -73,10 +78,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Calculate subscription dates (30-day cycle)
+    // Calculate subscription dates — end = start + months*30 days
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
+    endDate.setDate(endDate.getDate() + months * 30);
+
+    const planAmount = computePlanPrice(validPlan, months);
 
     // Create subscription record in Google Sheets
     await createSubscription({
@@ -85,14 +92,13 @@ export async function POST(req: NextRequest) {
       status: 'active',
       razorpayPaymentId: razorpay_payment_id,
       razorpayOrderId: razorpay_order_id,
-      amount: PLANS[validPlan].price,
+      amount: planAmount,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       createdAt: getISTTimestamp(),
     });
 
-    const planLabel = PLANS[validPlan].name;
-    const planAmount = PLANS[validPlan].price;
+    const planLabel = `${PLANS[validPlan].name} (${DURATIONS[months].label})`;
 
     try {
       const cc = await clerkClient();

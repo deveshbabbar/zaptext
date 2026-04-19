@@ -118,7 +118,29 @@ export async function getClientByPhoneNumberId(phoneNumberId: string): Promise<C
   return clients.find((c) => c.phone_number_id === phoneNumberId) || null;
 }
 
+export class DuplicateBotError extends Error {
+  readonly code = 'DUPLICATE_BOT' as const;
+  constructor(public field: 'whatsapp_number' | 'phone_number_id', public value: string) {
+    super(`A bot with ${field}="${value}" already exists.`);
+    this.name = 'DuplicateBotError';
+  }
+}
+
 export async function addClient(client: ClientRow): Promise<void> {
+  // Prevent duplicate bots on the same WhatsApp number / phone_number_id —
+  // two rows with the same phone_number_id would cause webhook routing to
+  // hit a non-deterministic client on inbound messages.
+  const existing = await getAllClients();
+  const normalizedPhone = (client.whatsapp_number || '').replace(/\D/g, '');
+  if (normalizedPhone) {
+    const dupPhone = existing.find((c) => c.whatsapp_number.replace(/\D/g, '') === normalizedPhone);
+    if (dupPhone) throw new DuplicateBotError('whatsapp_number', client.whatsapp_number);
+  }
+  if (client.phone_number_id) {
+    const dupId = existing.find((c) => c.phone_number_id === client.phone_number_id);
+    if (dupId) throw new DuplicateBotError('phone_number_id', client.phone_number_id);
+  }
+
   const sheets = getSheets();
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,

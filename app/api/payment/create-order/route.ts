@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { createOrder } from '@/lib/razorpay';
-import { PLANS, PlanKey } from '@/lib/subscription';
+import { PLANS, PlanKey, DURATIONS, isDurationKey, computePlanPrice } from '@/lib/subscription';
 import { generateId } from '@/lib/utils';
 import { rateLimit, getClientKey } from '@/lib/rate-limit';
 
@@ -22,12 +22,17 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const plan = body.plan as PlanKey;
+    const monthsRaw = typeof body.months === 'number' ? body.months : 1;
 
     if (!plan || !PLANS[plan]) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
+    if (!isDurationKey(monthsRaw)) {
+      return NextResponse.json({ error: 'Invalid duration. Allowed: 1, 6, or 12 months' }, { status: 400 });
+    }
+    const months = monthsRaw;
 
-    const amount = PLANS[plan].price;
+    const amount = computePlanPrice(plan, months);
     const receipt = `rcpt_${generateId().slice(0, 8)}`;
 
     const order = await createOrder(amount, 'INR', receipt);
@@ -37,6 +42,8 @@ export async function POST(req: NextRequest) {
       amount: order.amount,
       currency: order.currency,
       plan,
+      months,
+      durationLabel: DURATIONS[months].label,
     });
   } catch (error) {
     console.error('Create order error:', error);

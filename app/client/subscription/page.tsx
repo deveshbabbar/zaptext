@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { PLANS, type PlanKey } from '@/lib/plans';
+import { PLANS, DURATIONS, computePlanPrice, type PlanKey, type DurationKey } from '@/lib/plans';
 import { toast } from 'sonner';
 import { PageTopbar, PageHead, Panel, StatusPill, MonoLabel } from '@/components/app/primitives';
 
@@ -44,6 +44,9 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
   const [processingPlan, setProcessingPlan] = useState<PlanKey | null>(null);
   const [razorpayReady, setRazorpayReady] = useState(false);
+  const [selectedMonths, setSelectedMonths] = useState<Record<PlanKey, DurationKey>>({
+    starter: 1, growth: 1, pro: 1, enterprise: 1,
+  });
 
   useEffect(() => {
     loadSubscriptionData();
@@ -80,7 +83,7 @@ export default function SubscriptionPage() {
     document.body.appendChild(script);
   }
 
-  async function handleSubscribe(plan: PlanKey) {
+  async function handleSubscribe(plan: PlanKey, months: DurationKey) {
     if (!user) return;
     if (!razorpayReady || !window.Razorpay) {
       toast.error('Payment system is still loading. Please wait a moment and try again.');
@@ -91,7 +94,7 @@ export default function SubscriptionPage() {
       const orderRes = await fetch('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, months }),
       });
       if (!orderRes.ok) throw new Error('Failed to create order');
       const orderData = await orderRes.json();
@@ -105,9 +108,9 @@ export default function SubscriptionPage() {
         amount: orderData.amount,
         currency: orderData.currency,
         name: 'ZapText',
-        description: `${PLANS[plan].name} Plan - Monthly Subscription`,
+        description: `${PLANS[plan].name} Plan · ${DURATIONS[months].label}`,
         order_id: orderData.orderId,
-        handler: async (response) => verifyPayment(response, plan),
+        handler: async (response) => verifyPayment(response, plan, months),
         prefill: {
           name: user.fullName || '',
           email: user.emailAddresses[0]?.emailAddress || '',
@@ -124,7 +127,7 @@ export default function SubscriptionPage() {
     }
   }
 
-  async function verifyPayment(response: RazorpayResponse, plan: PlanKey) {
+  async function verifyPayment(response: RazorpayResponse, plan: PlanKey, months: DurationKey) {
     try {
       const verifyRes = await fetch('/api/payment/verify', {
         method: 'POST',
@@ -134,6 +137,7 @@ export default function SubscriptionPage() {
           razorpay_payment_id: response.razorpay_payment_id,
           razorpay_signature: response.razorpay_signature,
           plan,
+          months,
         }),
       });
       if (verifyRes.ok) {
@@ -240,10 +244,40 @@ export default function SubscriptionPage() {
                   <div className="mt-2.5 flex items-baseline gap-1">
                     <span className="text-[36px] font-bold tracking-[-0.03em] leading-none">
                       <span className="zt-serif text-[0.7em]">₹</span>
-                      {plan.price.toLocaleString('en-IN')}
+                      {computePlanPrice(key, selectedMonths[key]).toLocaleString('en-IN')}
                     </span>
-                    <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>/mo</span>
+                    <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>
+                      / {DURATIONS[selectedMonths[key]].label}
+                    </span>
                   </div>
+                  {!isCurrent && (
+                    <div className="flex gap-1 mt-2">
+                      {(Object.keys(DURATIONS) as unknown as DurationKey[]).map((m) => {
+                        const months = Number(m) as DurationKey;
+                        const active = selectedMonths[key] === months;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setSelectedMonths((prev) => ({ ...prev, [key]: months }))}
+                            className={`flex-1 rounded-[8px] border text-[11px] font-semibold transition ${
+                              active
+                                ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]'
+                                : 'bg-[var(--card)] border-[var(--line)] hover:border-[var(--ink)]'
+                            }`}
+                            style={{ padding: '6px 4px' }}
+                          >
+                            {months}M
+                            {DURATIONS[months].savingLabel && (
+                              <div className="text-[9px] opacity-75 mt-0.5">
+                                {DURATIONS[months].savingLabel}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <ul className="flex flex-col gap-1.5 my-3.5 text-[12.5px] list-none p-0 flex-1">
                     {plan.features.map((f) => (
                       <li key={f} className={`${isCurrent ? 'text-white/80' : 'text-[var(--ink-2)]'}`}>
@@ -268,12 +302,12 @@ export default function SubscriptionPage() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => handleSubscribe(key)}
+                      onClick={() => handleSubscribe(key, selectedMonths[key])}
                       disabled={processingPlan === key}
                       className="text-center rounded-[10px] border border-[var(--ink)] font-semibold text-[12.5px] hover:bg-[var(--ink)] hover:text-[var(--background)] disabled:opacity-60"
                       style={{ padding: 10 }}
                     >
-                      {processingPlan === key ? 'Processing…' : 'Subscribe'}
+                      {processingPlan === key ? 'Processing…' : `Subscribe · ${DURATIONS[selectedMonths[key]].label}`}
                     </button>
                   )}
                 </div>

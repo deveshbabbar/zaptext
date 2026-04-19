@@ -34,7 +34,12 @@ export default function AdminDashboard() {
     <>
       <PageTopbar
         crumbs={<><b className="text-foreground">Admin dashboard</b> · {clients.length} clients · {pendingCount} pending</>}
-        actions={<Pill variant="ink" href="/admin/onboard">+ Onboard client</Pill>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Pill variant="ghost" href="/admin/create-client">👤 Create client account</Pill>
+            <Pill variant="ink" href="/admin/onboard">+ Onboard client</Pill>
+          </div>
+        }
       />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead

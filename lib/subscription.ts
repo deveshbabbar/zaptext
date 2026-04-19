@@ -1,9 +1,9 @@
 import { google } from 'googleapis';
 import { getISTTimestamp } from './utils';
-import { PLANS, type PlanKey } from './plans';
+import { PLANS, type PlanKey, DURATIONS, type DurationKey, computePlanPrice, isDurationKey } from './plans';
 
 // Re-export plan definitions for backward compatibility
-export { PLANS, type PlanKey };
+export { PLANS, type PlanKey, DURATIONS, type DurationKey, computePlanPrice, isDurationKey };
 
 export interface SubscriptionRecord {
   userId: string;

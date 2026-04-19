@@ -93,3 +93,21 @@ export const PLANS = {
 } as const;
 
 export type PlanKey = keyof typeof PLANS;
+
+// Subscription duration options.
+// 6-month = 5.5× monthly (≈8% off), 12-month = 10× monthly (≈17% off)
+export const DURATIONS = {
+  1: { months: 1, multiplier: 1, label: '1 month', savingLabel: null as string | null },
+  6: { months: 6, multiplier: 5.5, label: '6 months', savingLabel: 'Save ~8%' as string | null },
+  12: { months: 12, multiplier: 10, label: '12 months', savingLabel: 'Save ~17%' as string | null },
+} as const;
+
+export type DurationKey = keyof typeof DURATIONS;
+
+export function computePlanPrice(plan: PlanKey, months: DurationKey): number {
+  return Math.round(PLANS[plan].price * DURATIONS[months].multiplier);
+}
+
+export function isDurationKey(v: unknown): v is DurationKey {
+  return v === 1 || v === 6 || v === 12;
+}

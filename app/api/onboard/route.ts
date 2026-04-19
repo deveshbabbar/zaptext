@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addClient } from '@/lib/google-sheets';
+import { addClient, DuplicateBotError } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { ClientConfig, ClientRow } from '@/lib/types';
@@ -131,6 +131,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, clientId, status: isAdmin ? 'active' : 'pending' });
   } catch (error) {
+    if (error instanceof DuplicateBotError) {
+      return NextResponse.json(
+        { error: 'DUPLICATE_BOT', field: error.field, message: error.message },
+        { status: 409 }
+      );
+    }
     console.error('Onboard error:', error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

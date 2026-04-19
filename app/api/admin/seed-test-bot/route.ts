@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
-import { addClient } from '@/lib/google-sheets';
+import { addClient, DuplicateBotError } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { setActiveBotId } from '@/lib/active-bot';
 import { GymFields, ClientRow } from '@/lib/types';
@@ -106,6 +106,12 @@ export async function POST(req: NextRequest) {
       adminUrl: `/admin/clients/${clientId}`,
     });
   } catch (err) {
+    if (err instanceof DuplicateBotError) {
+      return NextResponse.json(
+        { error: 'DUPLICATE_BOT', field: err.field, message: err.message },
+        { status: 409 }
+      );
+    }
     console.error('[seed-test-bot] error:', err);
     return NextResponse.json({ error: String(err).slice(0, 300) }, { status: 500 });
   }

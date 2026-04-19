@@ -62,6 +62,39 @@ export default function WorkspacePage() {
   const [granting, setGranting] = useState(false);
   const [grantResult, setGrantResult] = useState<{ name: string; plan: string; validUntil: string } | null>(null);
 
+  // Seed test gym bot state
+  const [seedPhoneNumberId, setSeedPhoneNumberId] = useState('');
+  const [seedWhatsappNumber, setSeedWhatsappNumber] = useState('+15556333873');
+  const [seedingBot, setSeedingBot] = useState(false);
+  const [seedResult, setSeedResult] = useState<{ clientId: string; adminUrl: string } | null>(null);
+
+  const runSeedBot = async () => {
+    if (!seedPhoneNumberId.trim()) { toast.error('phone_number_id required — copy from Meta WhatsApp Manager'); return; }
+    if (!seedWhatsappNumber.trim()) { toast.error('WhatsApp number required'); return; }
+    setSeedingBot(true);
+    setSeedResult(null);
+    try {
+      const res = await fetch('/api/admin/seed-test-bot', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumberId: seedPhoneNumberId.trim(),
+          whatsappNumber: seedWhatsappNumber.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSeedResult({ clientId: data.clientId, adminUrl: data.adminUrl });
+        toast.success('Test gym bot seeded and active!');
+      } else {
+        toast.error(data.error || 'Seed failed');
+      }
+    } catch (e) {
+      toast.error(`Error: ${String(e).slice(0, 200)}`);
+    } finally {
+      setSeedingBot(false);
+    }
+  };
+
   const runGrant = async () => {
     if (!grantEmail.trim()) { toast.error('Email required'); return; }
     setGranting(true);
@@ -290,6 +323,62 @@ export default function WorkspacePage() {
                 <span className="text-[13px]">
                   <b>{grantResult.name}</b> — valid until <b>{grantResult.validUntil}</b>
                 </span>
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title="Seed test gym bot"
+            sub="Quick-create a ready-to-go gym bot with sample data. Use this to test the WhatsApp flow end-to-end with your Meta test number."
+            className="lg:col-span-2"
+            action={
+              <Pill variant="ink" onClick={runSeedBot}>
+                {seedingBot ? 'Seeding…' : '🏋️ Seed gym bot'}
+              </Pill>
+            }
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-[12.5px] font-semibold mb-1.5">phone_number_id</div>
+                <input
+                  type="text"
+                  value={seedPhoneNumberId}
+                  onChange={(e) => setSeedPhoneNumberId(e.target.value)}
+                  placeholder="e.g. 123456789012345"
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                  style={{ padding: '11px 13px' }}
+                />
+                <p className="text-[11.5px] text-[var(--mute)] mt-1.5 m-0">
+                  Meta WhatsApp Manager → API Setup → phone_number_id (numeric, different from the phone number).
+                </p>
+              </div>
+              <div>
+                <div className="text-[12.5px] font-semibold mb-1.5">WhatsApp number</div>
+                <input
+                  type="text"
+                  value={seedWhatsappNumber}
+                  onChange={(e) => setSeedWhatsappNumber(e.target.value)}
+                  placeholder="+15556333873"
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                  style={{ padding: '11px 13px' }}
+                />
+                <p className="text-[11.5px] text-[var(--mute)] mt-1.5 m-0">
+                  The display number customers will message (e.g. Meta test number).
+                </p>
+              </div>
+            </div>
+            {seedResult && (
+              <div className="mt-4 rounded-[10px] border border-green-500/30 bg-green-500/10" style={{ padding: '12px 14px' }}>
+                <div className="text-[13px] font-semibold text-green-700 mb-1">Bot active ✓</div>
+                <div className="text-[12.5px] text-[var(--ink-2)]">
+                  client_id: <span className="zt-mono">{seedResult.clientId}</span>
+                </div>
+                <a
+                  href={seedResult.adminUrl}
+                  className="text-[12.5px] font-semibold text-[var(--ink)] border-b border-[var(--ink)] inline-block mt-1.5"
+                >
+                  Open bot →
+                </a>
               </div>
             )}
           </Panel>

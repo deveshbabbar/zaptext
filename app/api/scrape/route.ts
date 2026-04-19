@@ -1,17 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { BusinessType } from '@/lib/types';
+import { rateLimit, getClientKey } from '@/lib/rate-limit';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split('.').map((n) => parseInt(n, 10));
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return true;
+  const [a, b] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function decodeExoticIPv4(host: string): string | null {
+  if (/^\d+$/.test(host)) {
+    const n = parseInt(host, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) return null;
+    return [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff].join('.');
+  }
+  if (/^[0-9a-fx.]+$/i.test(host) && host.includes('.')) {
+    const parts = host.split('.').map((p) => {
+      if (/^0x/i.test(p)) return parseInt(p, 16);
+      if (/^0\d+$/.test(p)) return parseInt(p, 8);
+      if (/^\d+$/.test(p)) return parseInt(p, 10);
+      return NaN;
+    });
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n) && n >= 0 && n <= 255)) {
+      return parts.join('.');
+    }
+  }
+  return null;
+}
 
 function isAllowedUrl(input: string): boolean {
   let parsed: URL;
   try { parsed = new URL(input); } catch { return false; }
   if (!['http:', 'https:'].includes(parsed.protocol)) return false;
   const h = parsed.hostname.toLowerCase();
-  if (['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254'].includes(h)) return false;
-  if (h.endsWith('.local') || h.endsWith('.internal')) return false;
-  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(h)) return false;
+
+  // IPv6 hosts in URL are bracketed by the URL parser.
+  if (h.startsWith('[')) {
+    const inner = h.replace(/^\[|\]$/g, '');
+    if (inner === '::' || inner === '::1') return false;
+    if (inner.startsWith('fe80:') || inner.startsWith('fc') || inner.startsWith('fd')) return false;
+    if (inner.startsWith('::ffff:')) {
+      const mapped = inner.slice('::ffff:'.length);
+      const decoded = decodeExoticIPv4(mapped) || mapped;
+      if (isPrivateIPv4(decoded)) return false;
+    }
+    if (!/^[23]/.test(inner)) return false;
+  }
+
+  if (['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254', '0'].includes(h)) return false;
+  if (h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localhost')) return false;
+
+  const decoded = decodeExoticIPv4(h);
+  if (decoded && isPrivateIPv4(decoded)) return false;
+
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.|0\.)/.test(h)) return false;
   return true;
 }
 
@@ -80,6 +131,14 @@ function platformNote(platform: string, url: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const rl = rateLimit(getClientKey(request, '/api/scrape'), 10, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many requests. Try again shortly.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil(rl.resetInMs / 1000).toString() } }
+    );
+  }
+
   try {
     const { url, businessType } = await request.json() as { url: string; businessType: BusinessType };
     if (!url) return NextResponse.json({ error: 'URL is required' }, { status: 400 });

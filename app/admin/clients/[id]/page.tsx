@@ -394,7 +394,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       <div className="space-y-2 max-h-96 overflow-y-auto">
                         {msgs.slice(-20).map((msg, i) => (
                           <div
-                            key={i}
+                            key={`${msg.timestamp}|${msg.direction}|${i}`}
                             className={`flex ${msg.direction === 'incoming' ? 'justify-start' : 'justify-end'}`}
                           >
                             <div

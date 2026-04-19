@@ -11,8 +11,17 @@ import { clerkClient } from '@clerk/nextjs/server';
 import { getBotsByOwner } from '@/lib/owner-clients';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
+import { rateLimit, getClientKey } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
+  const rl = rateLimit(getClientKey(request, '/api/onboard'), 5, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many bot creation attempts. Try again shortly.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil(rl.resetInMs / 1000).toString() } }
+    );
+  }
+
   const user = await getUserRole();
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

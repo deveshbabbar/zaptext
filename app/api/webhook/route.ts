@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyWebhook, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
+import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
 import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
@@ -50,7 +50,28 @@ export async function GET(request: NextRequest) {
 // WhatsApp incoming messages
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    // Read raw body ONCE as text so we can HMAC-verify before parsing JSON.
+    const rawBody = await request.text();
+
+    // Verify Meta signed this request. If WHATSAPP_APP_SECRET is unset we
+    // log a warning and accept (to not break existing deploys) — set it in
+    // production to actually enforce the check.
+    if (process.env.WHATSAPP_APP_SECRET) {
+      const sig = request.headers.get('x-hub-signature-256');
+      if (!verifyWebhookSignature(rawBody, sig)) {
+        console.warn('[webhook] HMAC signature mismatch — rejecting request');
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+      }
+    } else {
+      console.warn('[webhook] WHATSAPP_APP_SECRET not set — skipping HMAC verify. SET THIS IN PROD.');
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ status: 'ok' });
+    }
     const payload = parseWebhookPayload(body);
 
     // Always return 200 to WhatsApp immediately
@@ -58,12 +79,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' });
     }
 
-    // Process messages asynchronously (don't block the response)
-    processMessages(payload.phoneNumberId, payload.messages).catch(console.error);
+    // Process messages asynchronously (don't block the response).
+    // Capture context in the error log so we can actually debug failures.
+    processMessages(payload.phoneNumberId, payload.messages).catch((err) => {
+      console.error('[processMessages] failed', {
+        phoneNumberId: payload.phoneNumberId,
+        messageCount: payload.messages.length,
+        error: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
+      });
+    });
 
     return NextResponse.json({ status: 'ok' });
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('[webhook] top-level error', error);
     return NextResponse.json({ status: 'ok' });
   }
 }
@@ -652,17 +680,14 @@ async function handlePaymentScreenshot(
 
   await forwardImageToOwner(phoneNumberId, client, customerPhone, imageId, caption, check);
 
-  let reply: string;
-  if (check?.matchesExpected) {
-    reply = `Payment confirmed ✓ ₹${pending.amount.toFixed(2)} received${
-      check.txnIdDetected ? ` (Txn: ${check.txnIdDetected})` : ''
-    }. Thanks boss! 🙌`;
-    clearPendingPayment(client.client_id, customerPhone);
-  } else if (check) {
-    reply = `Screenshot mila, but verify nahi ho paya 🤔 Owner ko manually check karne bhej diya — thodi der mein confirm ho jayega.`;
-  } else {
-    reply = `Screenshot mil gayi ✓ Owner ko bhej di hai manual check ke liye 🙏`;
-  }
+  // Never auto-confirm payment to customer from AI screenshot check — Gemini
+  // can be fooled by edited/prompt-injected screenshots. Owner must confirm
+  // via the *paid <phone>* command. AI result is only a hint for the owner.
+  const reply = check?.matchesExpected
+    ? `Screenshot mil gayi ✓ Owner confirm kar denge abhi — thodi der mein update milega 🙏`
+    : check
+      ? `Screenshot mila, owner manually check karenge aur confirm karenge 🤔`
+      : `Screenshot mil gayi ✓ Owner ko bhej di hai manual check ke liye 🙏`;
 
   await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
   await addConversationMessage({
@@ -798,6 +823,35 @@ async function handleOwnerCommand(
       phoneNumberId,
       ownerPhoneDigits,
       `✅ Cancelled ${bookingId} and notified ${booking.customer_phone}${reason ? ` (reason: ${reason})` : ''}.`
+    );
+    return true;
+  }
+
+  // paid <customer_phone>
+  // Owner explicitly confirms a payment after viewing the forwarded screenshot.
+  // Clears the pending state and tells the customer.
+  const paidMatch = normalized.match(/^paid\s+(\+?\d{10,15})$/);
+  if (paidMatch) {
+    const custDigits = paidMatch[1].replace(/\D/g, '');
+    const pending = getPendingPayment(clientId, custDigits);
+    if (!pending) {
+      await sendWhatsAppMessage(
+        phoneNumberId,
+        ownerPhoneDigits,
+        `⚠️ No pending payment for ${custDigits}. Maybe already confirmed or expired.`
+      );
+      return true;
+    }
+    clearPendingPayment(clientId, custDigits);
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      custDigits,
+      `Payment confirmed ✓ ₹${pending.amount.toFixed(2)} received. Thanks! 🙌`
+    );
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      ownerPhoneDigits,
+      `✅ Marked paid for ${custDigits} (₹${pending.amount.toFixed(2)}). Customer notified.`
     );
     return true;
   }

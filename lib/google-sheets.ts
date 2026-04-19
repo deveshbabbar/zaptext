@@ -18,25 +18,25 @@ function getSheets() {
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID!;
 
-// ─── Simple in-memory cache (30 second TTL) ───
-// Prevents quota exceeded errors when multiple components call getAllClients()
-// in the same request cycle. Invalidated on writes.
-interface CacheEntry<T> { data: T; expiresAt: number; }
+// ─── In-memory cache with promise coalescing (30 second TTL) ───
+// Parallel callers share the in-flight Sheets RPC — no racing reads,
+// no stale overwrite after invalidation. Invalidated on writes.
+interface CacheEntry<T> { promise: Promise<T>; expiresAt: number; }
 const cache = new Map<string, CacheEntry<unknown>>();
 const CACHE_TTL_MS = 30_000;
 
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(key);
-    return null;
+function getOrFetch<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const entry = cache.get(key) as CacheEntry<T> | undefined;
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.promise;
   }
-  return entry.data as T;
-}
-
-function setCached<T>(key: string, data: T): void {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+  const promise = fetcher().catch((err) => {
+    // Don't cache failures — next caller retries fresh.
+    cache.delete(key);
+    throw err;
+  });
+  cache.set(key, { promise, expiresAt: Date.now() + CACHE_TTL_MS });
+  return promise;
 }
 
 function invalidateCache(key?: string): void {
@@ -44,39 +44,61 @@ function invalidateCache(key?: string): void {
   else cache.clear();
 }
 
+const VALID_BIZ_TYPES: ReadonlyArray<BusinessType> = [
+  'clinic', 'restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym',
+];
+const VALID_STATUSES: ReadonlyArray<ClientRow['status']> = [
+  'active', 'pending', 'paused', 'rejected', 'error',
+];
+
 // ─── Clients ───
 
 export async function getAllClients(): Promise<ClientRow[]> {
-  const cached = getCached<ClientRow[]>('clients');
-  if (cached) return cached;
-
-  const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A2:Q',
+  return getOrFetch('clients', async () => {
+    const sheets = getSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'clients!A2:Q',
+    });
+    const rows = res.data.values || [];
+    return rows.map((row) => {
+      const rawType = row[2] || '';
+      const rawStatus = row[9] || 'active';
+      const type = (VALID_BIZ_TYPES as ReadonlyArray<string>).includes(rawType)
+        ? (rawType as BusinessType)
+        : ('clinic' as BusinessType);
+      if (rawType && type !== rawType) {
+        console.warn(`[clients] unknown business type "${rawType}" for ${row[0]} — defaulting to clinic`);
+      }
+      const status = (VALID_STATUSES as ReadonlyArray<string>).includes(rawStatus)
+        ? (rawStatus as ClientRow['status'])
+        : ('error' as ClientRow['status']);
+      if (rawStatus && status !== rawStatus) {
+        console.warn(`[clients] unknown status "${rawStatus}" for ${row[0]} — treating as error`);
+      }
+      const rawExportFormat = row[15] || 'csv';
+      const exportFormat: 'csv' | 'json' = rawExportFormat === 'json' ? 'json' : 'csv';
+      return {
+        client_id: row[0] || '',
+        business_name: row[1] || '',
+        type,
+        owner_name: row[3] || '',
+        whatsapp_number: row[4] || '',
+        phone_number_id: row[5] || '',
+        city: row[6] || '',
+        system_prompt: row[7] || '',
+        knowledge_base_json: row[8] || '',
+        status,
+        created_at: row[10] || '',
+        owner_user_id: row[11] || '',
+        upi_id: row[12] || '',
+        upi_name: row[13] || '',
+        existing_system: row[14] || '',
+        export_format: exportFormat,
+        contact_number: row[16] || '',
+      };
+    });
   });
-  const rows = res.data.values || [];
-  const result = rows.map((row) => ({
-    client_id: row[0] || '',
-    business_name: row[1] || '',
-    type: (row[2] || '') as BusinessType,
-    owner_name: row[3] || '',
-    whatsapp_number: row[4] || '',
-    phone_number_id: row[5] || '',
-    city: row[6] || '',
-    system_prompt: row[7] || '',
-    knowledge_base_json: row[8] || '',
-    status: (row[9] || 'active') as ClientRow['status'],
-    created_at: row[10] || '',
-    owner_user_id: row[11] || '',
-    upi_id: row[12] || '',
-    upi_name: row[13] || '',
-    existing_system: row[14] || '',
-    export_format: ((row[15] || 'csv') as 'csv' | 'json'),
-    contact_number: row[16] || '',
-  }));
-  setCached('clients', result);
-  return result;
 }
 
 export async function getClientById(clientId: string): Promise<ClientRow | null> {
@@ -221,25 +243,27 @@ export async function addConversationMessage(msg: ConversationRow): Promise<void
 }
 
 async function getAllConversations(): Promise<ConversationRow[]> {
-  const cached = getCached<ConversationRow[]>('conversations');
-  if (cached) return cached;
-
-  const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'conversations!A2:F',
+  return getOrFetch('conversations', async () => {
+    const sheets = getSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'conversations!A2:F',
+    });
+    const rows = res.data.values || [];
+    return rows.map((row) => {
+      const rawDir = row[3] || '';
+      const direction: ConversationRow['direction'] =
+        rawDir === 'incoming' || rawDir === 'outgoing' ? rawDir : 'incoming';
+      return {
+        timestamp: row[0] || '',
+        client_id: row[1] || '',
+        customer_phone: row[2] || '',
+        direction,
+        message: row[4] || '',
+        message_type: row[5] || 'text',
+      };
+    });
   });
-  const rows = res.data.values || [];
-  const result = rows.map((row) => ({
-    timestamp: row[0] || '',
-    client_id: row[1] || '',
-    customer_phone: row[2] || '',
-    direction: (row[3] || '') as ConversationRow['direction'],
-    message: row[4] || '',
-    message_type: row[5] || 'text',
-  }));
-  setCached('conversations', result);
-  return result;
 }
 
 export async function getClientConversations(clientId: string): Promise<ConversationRow[]> {

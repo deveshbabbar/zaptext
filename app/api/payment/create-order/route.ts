@@ -3,8 +3,17 @@ import { getUserRole } from '@/lib/auth';
 import { createOrder } from '@/lib/razorpay';
 import { PLANS, PlanKey } from '@/lib/subscription';
 import { generateId } from '@/lib/utils';
+import { rateLimit, getClientKey } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(getClientKey(req, '/api/payment/create-order'), 10, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many order attempts. Try again shortly.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil(rl.resetInMs / 1000).toString() } }
+    );
+  }
+
   try {
     const user = await getUserRole();
     if (!user) {

@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 const WHATSAPP_API_URL = 'https://graph.facebook.com/v21.0';
 
 export async function sendWhatsAppMessage(
@@ -83,6 +85,27 @@ export function verifyWebhook(
     return challenge;
   }
   return null;
+}
+
+// Verifies Meta's X-Hub-Signature-256 header against a raw request body.
+// Returns true only when HMAC-SHA256(body, WHATSAPP_APP_SECRET) matches the header.
+// A missing app secret returns false (never silently pass).
+export function verifyWebhookSignature(
+  rawBody: string,
+  signatureHeader: string | null
+): boolean {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret) return false;
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
+
+  const expected = 'sha256=' + crypto
+    .createHmac('sha256', appSecret)
+    .update(rawBody, 'utf8')
+    .digest('hex');
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(signatureHeader, 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 export interface WhatsAppMessage {

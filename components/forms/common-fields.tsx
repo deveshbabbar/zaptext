@@ -12,12 +12,15 @@ interface CommonFieldsProps {
 
 const LANGUAGE_OPTIONS = ['Hindi', 'English', 'Hinglish', 'Punjabi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati'];
 
-// Strip +91 / 91 / leading 0 / spaces so only the 10-digit number shows in input
+// Strip +91 / 91 / leading 0 / spaces so only the 10-digit number shows in input.
+// If the input doesn't match an Indian-mobile pattern, return raw digits
+// unchanged — the UI's length-mismatch warning then fires so nothing is
+// silently truncated.
 function phoneWithoutPrefix(raw: string): string {
   const digits = (raw || '').replace(/\D/g, '');
-  if (digits.startsWith('91') && digits.length > 10) return digits.slice(2, 12);
+  if (digits.startsWith('91') && digits.length === 12) return digits.slice(2);
   if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
-  return digits.slice(0, 10);
+  return digits;
 }
 
 interface DaySchedule {

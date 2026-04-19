@@ -109,8 +109,20 @@ function wrap(title: string, body: string, ctaUrl?: string, ctaLabel?: string): 
   `.trim();
 }
 
+// Escape user-controlled strings before injecting into email HTML.
+// Prevents stored-XSS via business names, customer notes, error messages, etc.
+function esc(s: string | number | undefined | null): string {
+  if (s === undefined || s === null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function infoBox(rows: Array<{ label: string; value: string }>): string {
-  const items = rows.map((r) => `<div style="margin-bottom:8px;"><strong>${r.label}:</strong> ${r.value}</div>`).join('');
+  const items = rows.map((r) => `<div style="margin-bottom:8px;"><strong>${esc(r.label)}:</strong> ${esc(r.value)}</div>`).join('');
   return `<div style="background:#F3EDE3;border-radius:8px;padding:14px 16px;margin:16px 0;">${items}</div>`;
 }
 
@@ -118,8 +130,8 @@ function infoBox(rows: Array<{ label: string; value: string }>): string {
 
 export function tplNewBooking(p: { ownerName: string; businessName: string; customerName: string; customerPhone: string; date: string; time: string; service?: string; }) {
   const body = `
-    <p>Hi <strong>${p.ownerName}</strong>,</p>
-    <p>A new booking just came in via your WhatsApp bot for <strong>${p.businessName}</strong>.</p>
+    <p>Hi <strong>${esc(p.ownerName)}</strong>,</p>
+    <p>A new booking just came in via your WhatsApp bot for <strong>${esc(p.businessName)}</strong>.</p>
     ${infoBox([
       { label: 'Customer', value: p.customerName },
       { label: 'Phone', value: p.customerPhone },
@@ -133,8 +145,8 @@ export function tplNewBooking(p: { ownerName: string; businessName: string; cust
 
 export function tplBookingCancelled(p: { ownerName: string; businessName: string; customerName: string; date: string; time: string; }) {
   const body = `
-    <p>Hi <strong>${p.ownerName}</strong>,</p>
-    <p>A booking at <strong>${p.businessName}</strong> was cancelled.</p>
+    <p>Hi <strong>${esc(p.ownerName)}</strong>,</p>
+    <p>A booking at <strong>${esc(p.businessName)}</strong> was cancelled.</p>
     ${infoBox([
       { label: 'Customer', value: p.customerName },
       { label: 'Date', value: p.date },
@@ -148,10 +160,10 @@ export function tplBookingCancelled(p: { ownerName: string; businessName: string
 export function tplDailyMorningSummary(p: { ownerName: string; businessName: string; date: string; bookings: Array<{ time: string; customer: string; service?: string }>; }) {
   const list = p.bookings.length === 0
     ? '<p style="color:#5a6b5d;">No bookings today. Enjoy a free day!</p>'
-    : `<ul style="padding-left:20px;margin:12px 0;">${p.bookings.map((b) => `<li style="margin-bottom:6px;"><strong>${b.time}</strong> — ${b.customer}${b.service ? ` (${b.service})` : ''}</li>`).join('')}</ul>`;
+    : `<ul style="padding-left:20px;margin:12px 0;">${p.bookings.map((b) => `<li style="margin-bottom:6px;"><strong>${esc(b.time)}</strong> — ${esc(b.customer)}${b.service ? ` (${esc(b.service)})` : ''}</li>`).join('')}</ul>`;
   const body = `
-    <p>Good morning <strong>${p.ownerName}</strong>!</p>
-    <p>Here&apos;s your day at <strong>${p.businessName}</strong> (${p.date}):</p>
+    <p>Good morning <strong>${esc(p.ownerName)}</strong>!</p>
+    <p>Here&apos;s your day at <strong>${esc(p.businessName)}</strong> (${esc(p.date)}):</p>
     ${list}
   `;
   return { subject: `Today's bookings at ${p.businessName} — ${p.bookings.length} scheduled`, html: wrap("Today's Schedule", body, `${process.env.NEXT_PUBLIC_APP_URL}/client/calendar`, 'View Calendar') };
@@ -160,10 +172,10 @@ export function tplDailyMorningSummary(p: { ownerName: string; businessName: str
 export function tplDailyEveningSummary(p: { ownerName: string; businessName: string; tomorrowDate: string; bookings: Array<{ time: string; customer: string; service?: string }>; }) {
   const list = p.bookings.length === 0
     ? '<p style="color:#5a6b5d;">No bookings tomorrow yet.</p>'
-    : `<ul style="padding-left:20px;margin:12px 0;">${p.bookings.map((b) => `<li style="margin-bottom:6px;"><strong>${b.time}</strong> — ${b.customer}${b.service ? ` (${b.service})` : ''}</li>`).join('')}</ul>`;
+    : `<ul style="padding-left:20px;margin:12px 0;">${p.bookings.map((b) => `<li style="margin-bottom:6px;"><strong>${esc(b.time)}</strong> — ${esc(b.customer)}${b.service ? ` (${esc(b.service)})` : ''}</li>`).join('')}</ul>`;
   const body = `
-    <p>Hi <strong>${p.ownerName}</strong>,</p>
-    <p>Tomorrow at <strong>${p.businessName}</strong> (${p.tomorrowDate}):</p>
+    <p>Hi <strong>${esc(p.ownerName)}</strong>,</p>
+    <p>Tomorrow at <strong>${esc(p.businessName)}</strong> (${esc(p.tomorrowDate)}):</p>
     ${list}
     <p>Good night!</p>
   `;
@@ -174,8 +186,8 @@ export function tplDailyEveningSummary(p: { ownerName: string; businessName: str
 
 export function tplCustomerReminder(p: { customerName: string; businessName: string; date: string; time: string; service?: string; address?: string; }) {
   const body = `
-    <p>Hi <strong>${p.customerName}</strong>,</p>
-    <p>This is a reminder for your appointment tomorrow at <strong>${p.businessName}</strong>.</p>
+    <p>Hi <strong>${esc(p.customerName)}</strong>,</p>
+    <p>This is a reminder for your appointment tomorrow at <strong>${esc(p.businessName)}</strong>.</p>
     ${infoBox([
       { label: 'Date', value: p.date },
       { label: 'Time', value: p.time },
@@ -209,6 +221,9 @@ export function tplAdminNewBot(p: { businessName: string; type: string; ownerNam
       { label: 'Owner', value: `${p.ownerName} (${p.ownerEmail})` },
     ])}
   `;
+  // Subject is plain text (not HTML) so ZeptoMail escaping handles it;
+  // still pass through as-is — the XSS vector was the HTML body above,
+  // which is now fully escaped by esc() in infoBox.
   return { subject: `New bot created: ${p.businessName}`, html: wrap('New Bot Created', body, `${process.env.NEXT_PUBLIC_APP_URL}/admin/clients`, 'View Clients') };
 }
 
@@ -238,8 +253,8 @@ export function tplAdminFailedPayment(p: { ownerName: string; ownerEmail: string
 
 export function tplAdminBotError(p: { businessName: string; errorMessage: string; }) {
   const body = `
-    <p>An error occurred for bot <strong>${p.businessName}</strong>:</p>
-    <pre style="background:#F3EDE3;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;">${p.errorMessage}</pre>
+    <p>An error occurred for bot <strong>${esc(p.businessName)}</strong>:</p>
+    <pre style="background:#F3EDE3;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;">${esc(p.errorMessage)}</pre>
   `;
   return { subject: `Bot error: ${p.businessName}`, html: wrap('Bot Error', body) };
 }
@@ -248,7 +263,7 @@ export function tplAdminBotError(p: { businessName: string; errorMessage: string
 
 export function tplWelcome(p: { name: string; }) {
   const body = `
-    <p>Welcome <strong>${p.name}</strong>!</p>
+    <p>Welcome <strong>${esc(p.name)}</strong>!</p>
     <p>You&apos;re all set to create your first AI-powered WhatsApp bot. Here&apos;s what to do next:</p>
     <ol style="padding-left:20px;line-height:1.8;">
       <li>Create your first bot from the dashboard</li>
@@ -263,8 +278,8 @@ export function tplWelcome(p: { name: string; }) {
 
 export function tplSubscriptionStarted(p: { name: string; plan: string; amount: number; nextBilling: string; }) {
   const body = `
-    <p>Hi <strong>${p.name}</strong>,</p>
-    <p>Your <strong>${p.plan}</strong> subscription is now active.</p>
+    <p>Hi <strong>${esc(p.name)}</strong>,</p>
+    <p>Your <strong>${esc(p.plan)}</strong> subscription is now active.</p>
     ${infoBox([
       { label: 'Plan', value: p.plan },
       { label: 'Amount', value: `Rs.${p.amount.toLocaleString('en-IN')} / month` },
@@ -277,8 +292,8 @@ export function tplSubscriptionStarted(p: { name: string; plan: string; amount: 
 
 export function tplTrialEndingSoon(p: { name: string; daysLeft: number; }) {
   const body = `
-    <p>Hi <strong>${p.name}</strong>,</p>
-    <p>Your free trial ends in <strong>${p.daysLeft} day${p.daysLeft !== 1 ? 's' : ''}</strong>.</p>
+    <p>Hi <strong>${esc(p.name)}</strong>,</p>
+    <p>Your free trial ends in <strong>${esc(p.daysLeft)} day${p.daysLeft !== 1 ? 's' : ''}</strong>.</p>
     <p>To keep your bots active, upgrade to a paid plan now. Plans start at Rs.999/month.</p>
   `;
   return { subject: `Trial ending in ${p.daysLeft} days — upgrade to keep bots active`, html: wrap('Trial Ending Soon', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/subscription`, 'Choose a Plan') };
@@ -286,8 +301,8 @@ export function tplTrialEndingSoon(p: { name: string; daysLeft: number; }) {
 
 export function tplRenewalReminder(p: { name: string; plan: string; amount: number; renewalDate: string; }) {
   const body = `
-    <p>Hi <strong>${p.name}</strong>,</p>
-    <p>Your <strong>${p.plan}</strong> subscription will auto-renew on <strong>${p.renewalDate}</strong>.</p>
+    <p>Hi <strong>${esc(p.name)}</strong>,</p>
+    <p>Your <strong>${esc(p.plan)}</strong> subscription will auto-renew on <strong>${esc(p.renewalDate)}</strong>.</p>
     ${infoBox([
       { label: 'Plan', value: p.plan },
       { label: 'Amount', value: `Rs.${p.amount.toLocaleString('en-IN')}` },
@@ -300,9 +315,9 @@ export function tplRenewalReminder(p: { name: string; plan: string; amount: numb
 
 export function tplPaymentFailed(p: { name: string; plan: string; reason?: string; }) {
   const body = `
-    <p>Hi <strong>${p.name}</strong>,</p>
-    <p>We couldn&apos;t process your payment for the <strong>${p.plan}</strong> plan.</p>
-    ${p.reason ? `<p style="color:#dc2626;">Reason: ${p.reason}</p>` : ''}
+    <p>Hi <strong>${esc(p.name)}</strong>,</p>
+    <p>We couldn&apos;t process your payment for the <strong>${esc(p.plan)}</strong> plan.</p>
+    ${p.reason ? `<p style="color:#dc2626;">Reason: ${esc(p.reason)}</p>` : ''}
     <p>Please update your payment method to keep your bots active.</p>
   `;
   return { subject: `Payment failed — action needed`, html: wrap('Payment Failed', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/subscription`, 'Update Payment') };

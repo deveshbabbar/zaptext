@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { verifyPaymentSignature } from '@/lib/razorpay';
-import { createSubscription, PLANS, PlanKey } from '@/lib/subscription';
+import { createSubscription, getSubscriptionByPaymentId, PLANS, PlanKey } from '@/lib/subscription';
 import { getISTTimestamp } from '@/lib/utils';
 import { sendTemplate, tplSubscriptionStarted, tplAdminNewSubscription } from '@/lib/email';
 import { clerkClient } from '@clerk/nextjs/server';
+import { rateLimit, getClientKey } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(getClientKey(req, '/api/payment/verify'), 5, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many verify attempts. Try again shortly.' },
+      { status: 429, headers: { 'Retry-After': Math.ceil(rl.resetInMs / 1000).toString() } }
+    );
+  }
+
   try {
     const user = await getUserRole();
     if (!user) {
@@ -49,6 +58,19 @@ export async function POST(req: NextRequest) {
         { error: 'Invalid payment signature' },
         { status: 400 }
       );
+    }
+
+    // Idempotency: if this payment_id already produced a subscription,
+    // return it instead of creating a second row (double-click / retry safe).
+    const existing = await getSubscriptionByPaymentId(razorpay_payment_id);
+    if (existing) {
+      return NextResponse.json({
+        success: true,
+        message: 'Subscription already active for this payment',
+        plan: existing.plan,
+        endDate: existing.endDate,
+        duplicate: true,
+      });
     }
 
     // Calculate subscription dates (30-day cycle)

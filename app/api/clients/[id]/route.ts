@@ -32,6 +32,18 @@ export async function GET(
 
 const ADMIN_ALLOWED_FIELDS = ['status', 'system_prompt', 'knowledge_base_json', 'phone_number_id', 'business_name', 'city'];
 
+// Google Sheets cell limit is 50,000 chars — anything longer is silently
+// truncated. Cap per-field so callers get a clear 400 instead of a silent
+// corrupting write.
+const FIELD_MAX_LEN: Record<string, number> = {
+  system_prompt: 50_000,
+  knowledge_base_json: 50_000,
+  status: 50,
+  phone_number_id: 100,
+  business_name: 200,
+  city: 100,
+};
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -52,6 +64,18 @@ export async function PATCH(
 
     if (!ADMIN_ALLOWED_FIELDS.includes(field)) {
       return NextResponse.json({ error: 'Field not allowed' }, { status: 403 });
+    }
+
+    if (typeof value !== 'string') {
+      return NextResponse.json({ error: 'Value must be a string' }, { status: 400 });
+    }
+
+    const maxLen = FIELD_MAX_LEN[field] ?? 5_000;
+    if (value.length > maxLen) {
+      return NextResponse.json(
+        { error: `Value too long for ${field} (${value.length} > ${maxLen} chars).` },
+        { status: 400 }
+      );
     }
 
     await updateClientField(id, field, value);

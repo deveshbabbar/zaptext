@@ -76,6 +76,41 @@ export async function getActiveSubscription(
   }
 }
 
+// Idempotency helper: look up a subscription by its Razorpay payment_id so
+// a double-click / retry on /api/payment/verify doesn't create two rows.
+export async function getSubscriptionByPaymentId(
+  paymentId: string
+): Promise<SubscriptionRecord | null> {
+  if (!paymentId) return null;
+  try {
+    const sheets = getSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'subscriptions!A2:I',
+    });
+    const rows = res.data.values || [];
+    for (const row of rows) {
+      if (row[3] === paymentId) {
+        return {
+          userId: row[0],
+          plan: row[1] as PlanKey,
+          status: row[2] as SubscriptionRecord['status'],
+          razorpayPaymentId: row[3],
+          razorpayOrderId: row[4],
+          amount: parseInt(row[5] || '0', 10),
+          startDate: row[6],
+          endDate: row[7],
+          createdAt: row[8],
+        };
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('getSubscriptionByPaymentId error:', error);
+    return null;
+  }
+}
+
 export async function createSubscription(
   record: SubscriptionRecord
 ): Promise<void> {

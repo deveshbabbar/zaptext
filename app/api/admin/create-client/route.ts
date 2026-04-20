@@ -181,6 +181,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const missingPhoneNumberId = !clientRow.phone_number_id;
+
     return NextResponse.json({
       success: true,
       userId: newUserId,
@@ -193,6 +195,9 @@ export async function POST(req: NextRequest) {
       amount: planAmount,
       endDate: end.toISOString(),
       adminUrl: `/admin/clients/${clientId}`,
+      warnings: missingPhoneNumberId
+        ? ['phone_number_id is empty — this bot cannot receive WhatsApp messages until a Phone Number ID is set in bot settings.']
+        : [],
     });
   } catch (err) {
     if (err instanceof DuplicateBotError) {

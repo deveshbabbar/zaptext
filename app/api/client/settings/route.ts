@@ -9,6 +9,18 @@ function parseKb(raw: string): Record<string, unknown> {
   try { return JSON.parse(raw || '{}'); } catch { return {}; }
 }
 
+// Returns true only if the raw string is valid JSON (or empty).
+function isValidJson(raw: string): boolean {
+  if (!raw || !raw.trim()) return true;
+  try { JSON.parse(raw); return true; } catch { return false; }
+}
+
+// Detects when parseKb silently fell back to {} due to corruption.
+// If original was non-empty but returned empty, the JSON is corrupt.
+function isKbCorrupted(original: string, parsed: Record<string, unknown>): boolean {
+  return !!original && original.trim().length > 0 && Object.keys(parsed).length === 0;
+}
+
 export async function GET() {
   const user = await getUserRole();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -57,6 +69,12 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'languages must be a non-empty string array' }, { status: 400 });
         }
         const kb = parseKb(bot.knowledge_base_json);
+        if (isKbCorrupted(bot.knowledge_base_json, kb)) {
+          return NextResponse.json(
+            { error: 'Bot configuration is corrupted — contact support or re-submit the onboarding form to reset it.' },
+            { status: 422 }
+          );
+        }
         kb.languages = langs;
         writes.knowledge_base_json = JSON.stringify(kb);
         const regeneratedPrompt = generateSystemPrompt(kb as unknown as ClientConfig);
@@ -96,6 +114,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'languages must be a non-empty string array' }, { status: 400 });
       }
       const kb = parseKb(bot.knowledge_base_json);
+      if (isKbCorrupted(bot.knowledge_base_json, kb)) {
+        return NextResponse.json(
+          { error: 'Bot configuration is corrupted — contact support or re-submit the onboarding form to reset it.' },
+          { status: 422 }
+        );
+      }
       kb.languages = value;
       const updatedConfig = kb as unknown as ClientConfig;
       const newPrompt = generateSystemPrompt(updatedConfig);
@@ -117,6 +141,12 @@ export async function POST(request: NextRequest) {
     ];
     if (!ALLOWED_FIELDS.includes(field)) {
       return NextResponse.json({ error: 'Field not allowed' }, { status: 403 });
+    }
+
+    // Prevent storing invalid JSON in knowledge_base_json — a corrupted value
+    // would silently break all AI responses and the inventory sync for this bot.
+    if (field === 'knowledge_base_json' && !isValidJson(value)) {
+      return NextResponse.json({ error: 'Invalid JSON in knowledge_base_json' }, { status: 400 });
     }
 
     await updateClientField(bot.client_id, field, value);

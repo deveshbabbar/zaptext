@@ -525,19 +525,20 @@ export async function getClientAnalytics(clientId: string, days: number = 7): Pr
 export async function initializeSheets(): Promise<void> {
   const sheets = getSheets();
 
-  // Check if headers exist
+  // clients sheet — A:R (18 cols, including opt_in_accepted in col R)
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'clients!A1:Q1',
+      range: 'clients!A1:R1',
     });
-    if (!res.data.values || res.data.values.length === 0) {
+    const header = res.data.values?.[0] ?? [];
+    if (header.length < 18) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
-        range: 'clients!A1:Q1',
+        range: 'clients!A1:R1',
         valueInputOption: 'RAW',
         requestBody: {
-          values: [['client_id', 'business_name', 'type', 'owner_name', 'whatsapp_number', 'phone_number_id', 'city', 'system_prompt', 'knowledge_base_json', 'status', 'created_at', 'owner_user_id', 'upi_id', 'upi_name', 'existing_system', 'export_format', 'contact_number']],
+          values: [['client_id', 'business_name', 'type', 'owner_name', 'whatsapp_number', 'phone_number_id', 'city', 'system_prompt', 'knowledge_base_json', 'status', 'created_at', 'owner_user_id', 'upi_id', 'upi_name', 'existing_system', 'export_format', 'contact_number', 'opt_in_accepted']],
         },
       });
     }
@@ -545,6 +546,7 @@ export async function initializeSheets(): Promise<void> {
     // Sheet might not exist yet
   }
 
+  // conversations sheet — A:F
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
@@ -564,6 +566,27 @@ export async function initializeSheets(): Promise<void> {
     // Sheet might not exist yet
   }
 
+  // inventory sheet — A:L
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'inventory!A1:L1',
+    });
+    if (!res.data.values || res.data.values.length === 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'inventory!A1:L1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['client_id', 'sku', 'name', 'price', 'stock', 'low_stock_threshold', 'is_active', 'updated_at', 'notes', 'available_from', 'available_to', 'available_days']],
+        },
+      });
+    }
+  } catch {
+    // Sheet might not exist yet
+  }
+
+  // analytics sheet — A:D
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,

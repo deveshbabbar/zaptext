@@ -18,6 +18,7 @@ interface CreateResult {
   amount: number;
   endDate: string;
   adminUrl: string;
+  warnings?: string[];
 }
 
 export default function AdminCreateClientPage() {
@@ -197,7 +198,10 @@ export default function AdminCreateClientPage() {
             <Field label="Business name *" value={businessName} onChange={setBusinessName} placeholder="Sharma Ji Ka Dhaba" />
             <Field label="Owner name (bot persona)" value={ownerName} onChange={setOwnerName} placeholder="Rahul Sharma" />
             <Field label="WhatsApp bot number *" value={whatsappNumber} onChange={setWhatsappNumber} placeholder="+919876543210" />
-            <Field label="phone_number_id (Meta)" value={phoneNumberId} onChange={setPhoneNumberId} placeholder="1041750202362657" />
+            <div>
+              <Field label="phone_number_id (Meta) *" value={phoneNumberId} onChange={setPhoneNumberId} placeholder="1041750202362657" />
+              <p className="text-[11px] text-amber-600 mt-1 m-0">Required — without this, the bot cannot receive WhatsApp messages.</p>
+            </div>
             <Field label="City" value={city} onChange={setCity} placeholder="Delhi" />
             <Field label="Address" value={address} onChange={setAddress} placeholder="Connaught Place" />
           </div>
@@ -241,6 +245,14 @@ export default function AdminCreateClientPage() {
               )}
               {result.welcomeEmailSent && (
                 <div className="text-[12.5px] text-[var(--mute)]">📧 Welcome email sent.</div>
+              )}
+              {result.warnings && result.warnings.length > 0 && (
+                <div className="rounded-[10px] bg-amber-500/10 border border-amber-500/30 mt-2" style={{ padding: '10px 14px' }}>
+                  <div className="font-bold text-amber-700 text-[12.5px] mb-1">⚠️ Action required</div>
+                  {result.warnings.map((w, i) => (
+                    <div key={i} className="text-[12.5px] text-amber-800">{w}</div>
+                  ))}
+                </div>
               )}
             </div>
           </Panel>

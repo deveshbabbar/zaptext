@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | ZapText',
-  description: 'How ZapText collects, uses, and protects your personal data.',
+  description: 'How ZapText collects, uses, stores, and protects personal data, including WhatsApp conversations and customer data.',
 };
 
 export default function PrivacyPage() {
@@ -14,129 +14,156 @@ export default function PrivacyPage() {
       </header>
 
       <section className="space-y-4 text-muted-foreground leading-relaxed">
+        <h2 className="text-2xl font-bold text-foreground pt-2">1. Overview</h2>
         <p>
-          This Privacy Policy describes how ZapText (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) collects, uses,
-          stores, and discloses information about you when you use our WhatsApp AI chatbot platform
-          at <span className="text-foreground">zaptext.shop</span> and related services (the &quot;Service&quot;).
-          We comply with the Digital Personal Data Protection Act, 2023 (DPDP Act) of India.
+          This Privacy Policy explains how ZapText (&quot;we&quot;, &quot;us&quot;) collects,
+          uses, shares, retains, and protects personal data when you use our AI WhatsApp bot
+          platform at <span className="text-foreground">zaptext.shop</span> and related services
+          (the &quot;Service&quot;). ZapText is based in India; our Service complies with India&apos;s
+          Digital Personal Data Protection Act, 2023 (DPDP), and we apply comparable protections
+          for users outside India.
         </p>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">1. Who We Are</h2>
-        <p>
-          ZapText is a Software-as-a-Service platform based in India that provides AI-powered
-          WhatsApp chatbots to small and medium businesses. For any privacy questions, contact us
-          at <span className="text-foreground">support@zaptext.shop</span>.
-        </p>
-
-        <h2 className="text-2xl font-bold text-foreground pt-4">2. Information We Collect</h2>
-        <h3 className="text-xl font-semibold text-foreground">Account information</h3>
-        <p>
-          When you register, we collect your name, email address, phone number, business name,
-          business type, and WhatsApp Business number.
-        </p>
-        <h3 className="text-xl font-semibold text-foreground">Bot configuration data</h3>
-        <p>
-          Menu items, services, FAQs, pricing, business hours, location, and any other content you
-          enter to configure your chatbot.
-        </p>
-        <h3 className="text-xl font-semibold text-foreground">Payment information</h3>
-        <p>
-          All payments are processed by Razorpay. We do not store card numbers, UPI IDs, or banking
-          credentials. We retain only transaction IDs, amounts, invoice dates, and subscription status.
-        </p>
-        <h3 className="text-xl font-semibold text-foreground">Conversation data</h3>
-        <p>
-          We store WhatsApp messages exchanged between your bot and your end customers so that your
-          bot can maintain context and you can view conversation history in your dashboard.
-        </p>
-        <h3 className="text-xl font-semibold text-foreground">Usage and technical data</h3>
-        <p>
-          IP address, browser type, device information, pages visited, and timestamps. This is used
-          to secure the Service and improve performance.
-        </p>
-
-        <h2 className="text-2xl font-bold text-foreground pt-4">3. How We Use Your Information</h2>
+        <h2 className="text-2xl font-bold text-foreground pt-4">2. Two Roles: Controller and Processor</h2>
         <ul className="list-disc pl-6 space-y-2">
-          <li>To provide, operate, and maintain the Service.</li>
-          <li>To process subscriptions and generate invoices.</li>
-          <li>To respond to support requests and communicate service-related updates.</li>
-          <li>To train and operate the AI logic that powers your bot&apos;s replies.</li>
-          <li>To monitor fraud, abuse, and security incidents.</li>
-          <li>To produce aggregated, anonymised analytics about Service usage.</li>
+          <li>
+            <b>For our customer accounts</b> (the business owners who sign up at zaptext.shop), we
+            act as the <b>Data Controller</b>. We decide what data we collect from you and why.
+          </li>
+          <li>
+            <b>For end-customer data</b> that flows through your bot (your customers&apos; phone
+            numbers, messages, booking details), <b>you are the Data Controller and we are the Data
+            Processor</b>. We process this data only on your documented instructions to operate
+            your bot. You are responsible for lawful basis and responding to end-customer data
+            requests.
+          </li>
         </ul>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">4. Third-Party Services</h2>
-        <p>
-          We share limited data with trusted processors strictly to run the Service:
-        </p>
+        <h2 className="text-2xl font-bold text-foreground pt-4">3. What We Collect</h2>
+        <h3 className="text-lg font-semibold text-foreground pt-2">From you (the account holder)</h3>
         <ul className="list-disc pl-6 space-y-2">
-          <li><span className="text-foreground">Google Gemini</span> — to generate AI bot responses.</li>
-          <li><span className="text-foreground">Google Sheets / Google Cloud</span> — to store and sync configuration.</li>
-          <li><span className="text-foreground">Meta / WhatsApp Business API</span> — to send and receive messages.</li>
-          <li><span className="text-foreground">Razorpay</span> — to process subscription payments.</li>
-          <li><span className="text-foreground">Brevo</span> — to send transactional and notification emails.</li>
-          <li><span className="text-foreground">Clerk</span> — for authentication and session management.</li>
+          <li>Name, email, password (via Clerk)</li>
+          <li>Business name, address, city, WhatsApp bot number, personal contact number</li>
+          <li>Payment details (processed by Razorpay — we store only the payment ID, not card data)</li>
+          <li>Product configuration you upload (menu, services, pricing, FAQs)</li>
+          <li>Opt-in attestation timestamp for WhatsApp compliance</li>
+          <li>Usage logs (IP, user-agent, actions) for security and debugging</li>
+        </ul>
+        <h3 className="text-lg font-semibold text-foreground pt-2">From your customers (processed on your behalf)</h3>
+        <ul className="list-disc pl-6 space-y-2">
+          <li>WhatsApp phone number</li>
+          <li>Inbound and outbound message text and media</li>
+          <li>Booking / order details provided in conversation</li>
+          <li>Payment screenshots (for UPI verification), processed and then discarded</li>
+        </ul>
+
+        <h2 className="text-2xl font-bold text-foreground pt-4">4. How We Use It</h2>
+        <ul className="list-disc pl-6 space-y-2">
+          <li>To provide the Service: route WhatsApp messages, generate AI replies, manage bookings and orders.</li>
+          <li>To bill you via Razorpay and keep your subscription active.</li>
+          <li>To send you service notifications, security alerts, and product emails via ZeptoMail (Zoho).</li>
+          <li>To debug and improve the platform with aggregated, non-identifying usage data.</li>
+          <li>To comply with law and enforce our Terms.</li>
+          <li>We do <b>not</b> sell personal data. We do not use your customer conversations to train AI models.</li>
+        </ul>
+
+        <h2 className="text-2xl font-bold text-foreground pt-4">5. Sub-processors and Third Parties</h2>
+        <p>We share data only with the sub-processors required to operate the Service:</p>
+        <ul className="list-disc pl-6 space-y-2">
+          <li><b>Clerk</b> (authentication)</li>
+          <li><b>Google (Workspace + Sheets + Gemini API)</b> — stores customer/bot data and generates AI replies</li>
+          <li><b>Meta / WhatsApp Business Platform</b> — delivers messages to end customers</li>
+          <li><b>Razorpay</b> — processes subscription payments</li>
+          <li><b>ZeptoMail (Zoho)</b> — sends transactional email</li>
+          <li><b>Vercel</b> — hosts the web application</li>
         </ul>
         <p>
-          Each processor has its own privacy policy. We do not sell your personal data to any third
-          party.
+          Each sub-processor has its own privacy policy. We select providers that offer comparable
+          data-protection commitments.
         </p>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">5. Cookies</h2>
+        <h2 className="text-2xl font-bold text-foreground pt-4">6. International Transfer</h2>
         <p>
-          We use essential cookies for authentication and session management, and optional analytics
-          cookies to understand Service usage. You can control cookies through your browser settings;
-          disabling essential cookies may break sign-in.
+          Some sub-processors (Vercel, Google, Clerk) may store or process data outside India,
+          including in the United States. Where data leaves India, we rely on standard data
+          transfer mechanisms and the providers&apos; equivalent safeguards. By using the Service
+          you consent to this transfer.
         </p>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">6. Data Storage and Location</h2>
-        <p>
-          Data is primarily stored in India and on Google Cloud infrastructure, which may replicate
-          data across secure facilities. We apply encryption in transit (TLS) and at rest where
-          supported by the underlying provider.
-        </p>
-
-        <h2 className="text-2xl font-bold text-foreground pt-4">7. Data Retention</h2>
-        <p>
-          We retain account and configuration data for as long as your subscription is active. After
-          cancellation, data is retained for 90 days to allow reactivation, then permanently deleted.
-          Invoice records are retained for up to 8 years as required by Indian tax law.
-        </p>
+        <h2 className="text-2xl font-bold text-foreground pt-4">7. Retention</h2>
+        <ul className="list-disc pl-6 space-y-2">
+          <li><b>Account + bot configuration:</b> retained while your subscription is active.</li>
+          <li><b>Conversation history:</b> retained for 12 months from the message date, then archived.</li>
+          <li><b>After subscription termination:</b> data is retained for up to 90 days to allow recovery, then permanently deleted from live systems. Backup copies may persist up to 180 days before being overwritten.</li>
+          <li><b>Billing records:</b> retained for 7 years as required under Indian law.</li>
+        </ul>
 
         <h2 className="text-2xl font-bold text-foreground pt-4">8. Your Rights</h2>
-        <p>Under the DPDP Act, 2023 you have the right to:</p>
+        <p>You have the right to:</p>
         <ul className="list-disc pl-6 space-y-2">
-          <li>Access the personal data we hold about you.</li>
-          <li>Request correction of inaccurate data.</li>
-          <li>Request deletion of your account and personal data.</li>
-          <li>Withdraw consent for optional processing at any time.</li>
-          <li>Nominate another person to exercise these rights in the event of your death or incapacity.</li>
-          <li>File a grievance with us and, if unresolved, with the Data Protection Board of India.</li>
+          <li>Access a copy of the personal data we hold about you.</li>
+          <li>Correct inaccurate or incomplete data.</li>
+          <li>Delete your data (subject to legal retention requirements).</li>
+          <li>Restrict or object to specific processing.</li>
+          <li>Port your data in a portable format.</li>
+          <li>Withdraw consent where consent is the lawful basis — this won&apos;t affect earlier processing.</li>
+          <li>Lodge a complaint with the Data Protection Board of India.</li>
         </ul>
         <p>
-          To exercise any of these rights, email <span className="text-foreground">support@zaptext.shop</span>
-          from your registered email address.
+          To exercise any right, email <a href="mailto:support@zaptext.shop" className="text-foreground underline">support@zaptext.shop</a>. We respond within 30 days.
+        </p>
+        <p>
+          For requests from <b>end customers</b> (i.e., people who messaged a bot on our platform),
+          you should contact the <b>business that owns the bot</b> first — they are the Data
+          Controller for that data. We will assist them to fulfil your request.
         </p>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">9. Children</h2>
+        <h2 className="text-2xl font-bold text-foreground pt-4">9. Security</h2>
+        <ul className="list-disc pl-6 space-y-2">
+          <li>TLS encryption in transit for all connections.</li>
+          <li>Authentication via Clerk with industry-standard password storage.</li>
+          <li>HMAC-SHA256 verification on all inbound WhatsApp webhooks (when configured).</li>
+          <li>Timing-safe signature comparison on Razorpay callbacks.</li>
+          <li>Rate limiting on sensitive endpoints.</li>
+          <li>Admin access is limited and audited.</li>
+        </ul>
         <p>
-          The Service is not directed to children under 18. We do not knowingly collect personal
-          data from minors. If you believe a minor has created an account, contact us and we will
-          delete it.
+          No security is perfect. If we learn of a material breach affecting your data, we will
+          notify you without undue delay as required by law.
         </p>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">10. Changes to This Policy</h2>
+        <h2 className="text-2xl font-bold text-foreground pt-4">10. Children</h2>
         <p>
-          We may update this Policy from time to time. Material changes will be notified by email or
-          via a dashboard banner at least 15 days before taking effect. The &quot;Last updated&quot; date at
-          the top reflects the latest revision.
+          ZapText is for businesses and is not directed at anyone under 18. We do not knowingly
+          collect personal data from children. If you believe a minor has signed up, email us and
+          we will delete the account.
         </p>
 
-        <h2 className="text-2xl font-bold text-foreground pt-4">11. Contact Us</h2>
+        <h2 className="text-2xl font-bold text-foreground pt-4">11. WhatsApp-specific Notes</h2>
         <p>
-          For privacy concerns, data subject requests, or grievances:<br />
-          Email: <span className="text-foreground">support@zaptext.shop</span><br />
-          Website: <span className="text-foreground">zaptext.shop</span>
+          WhatsApp messages between a bot and its end customer are delivered by Meta&apos;s
+          WhatsApp Business Platform. Messages routed via the Business API are <b>not</b>
+          end-to-end encrypted in the traditional consumer-WhatsApp sense — this is how Meta&apos;s
+          platform is designed. We recommend your bot&apos;s welcome message informs customers
+          that they are chatting with an AI assistant and not a human.
+        </p>
+
+        <h2 className="text-2xl font-bold text-foreground pt-4">12. Cookies</h2>
+        <p>
+          We use cookies only for essential functions: session authentication (Clerk) and
+          active-bot selection. We do not use third-party advertising cookies.
+        </p>
+
+        <h2 className="text-2xl font-bold text-foreground pt-4">13. Changes to This Policy</h2>
+        <p>
+          We may update this policy. Material changes will be notified via email or in-product
+          banner at least 15 days before taking effect.
+        </p>
+
+        <h2 className="text-2xl font-bold text-foreground pt-4">14. Contact</h2>
+        <p>
+          For privacy questions, contact our Data Protection point-of-contact at{' '}
+          <a href="mailto:support@zaptext.shop" className="text-foreground underline">support@zaptext.shop</a>.
         </p>
       </section>
     </article>

@@ -17,6 +17,7 @@ function getSheets() {
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID!;
 
 function rowToItem(row: string[]): InventoryItem {
+  const daysRaw = (row[11] || '').trim();
   return {
     client_id: row[0] || '',
     sku: row[1] || '',
@@ -27,6 +28,11 @@ function rowToItem(row: string[]): InventoryItem {
     is_active: (row[6] || 'TRUE').toUpperCase() !== 'FALSE',
     updated_at: row[7] || '',
     notes: row[8] || '',
+    available_from: row[9] || '',
+    available_to: row[10] || '',
+    available_days: daysRaw
+      ? daysRaw.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean)
+      : [],
   };
 }
 
@@ -41,7 +47,72 @@ function itemToRow(item: InventoryItem): string[] {
     item.is_active ? 'TRUE' : 'FALSE',
     item.updated_at,
     item.notes || '',
+    item.available_from || '',
+    item.available_to || '',
+    (item.available_days || []).join(','),
   ];
+}
+
+// Check if an item is available at a specific IST moment. An item with no
+// time window (both available_from/to empty) is always available. Time
+// windows support wrap-around midnight (e.g. from=22:00, to=02:00).
+// available_days empty/absent = available every day of the week.
+const DOW: readonly string[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+export function isItemAvailableNow(item: InventoryItem, now: Date = new Date()): boolean {
+  // Convert to IST for the day-of-week + HH:MM check.
+  const istFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = istFormatter.formatToParts(now);
+  const weekday = parts.find((p) => p.type === 'weekday')?.value?.toLowerCase().slice(0, 3) || '';
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  const minsNow = parseInt(hour, 10) * 60 + parseInt(minute, 10);
+
+  // Day-of-week check
+  if (item.available_days && item.available_days.length > 0 && !item.available_days.includes(weekday)) {
+    return false;
+  }
+
+  // Time window check (empty = always available)
+  const from = (item.available_from || '').trim();
+  const to = (item.available_to || '').trim();
+  if (!from && !to) return true;
+  const parseHHMM = (s: string): number | null => {
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = parseInt(m[1], 10);
+    const mn = parseInt(m[2], 10);
+    if (h < 0 || h > 23 || mn < 0 || mn > 59) return null;
+    return h * 60 + mn;
+  };
+  const fromMins = from ? parseHHMM(from) : 0;
+  const toMins = to ? parseHHMM(to) : 24 * 60;
+  if (fromMins === null || toMins === null) return true; // malformed — fail open
+
+  if (fromMins <= toMins) {
+    return minsNow >= fromMins && minsNow < toMins;
+  }
+  // Wrap around midnight (e.g. 22:00 → 02:00)
+  return minsNow >= fromMins || minsNow < toMins;
+}
+
+export function formatAvailabilityHuman(item: InventoryItem): string {
+  const from = (item.available_from || '').trim();
+  const to = (item.available_to || '').trim();
+  const days = item.available_days || [];
+  const hasWindow = from || to;
+  const hasDays = days.length > 0 && days.length < 7;
+  if (!hasWindow && !hasDays) return 'always available';
+  const parts: string[] = [];
+  if (hasWindow) parts.push(`${from || '00:00'}–${to || '24:00'}`);
+  if (hasDays) parts.push(days.map((d) => d[0].toUpperCase() + d.slice(1)).join('/'));
+  return parts.join(' · ');
 }
 
 export function slugify(name: string): string {
@@ -60,7 +131,7 @@ async function fetchAllRows(): Promise<{ rowIndex: number; item: InventoryItem }
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'inventory!A2:I',
+      range: 'inventory!A2:L',
     });
     const rows = res.data.values || [];
     return rows.map((row, i) => ({ rowIndex: i + 2, item: rowToItem(row) }));
@@ -111,14 +182,14 @@ export async function upsertItem(
   if (existing) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `inventory!A${existing.rowIndex}:I${existing.rowIndex}`,
+      range: `inventory!A${existing.rowIndex}:L${existing.rowIndex}`,
       valueInputOption: 'RAW',
       requestBody: { values: [itemToRow(item)] },
     });
   } else {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'inventory!A:I',
+      range: 'inventory!A:L',
       valueInputOption: 'RAW',
       requestBody: { values: [itemToRow(item)] },
     });

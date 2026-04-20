@@ -279,6 +279,10 @@ export interface InventoryItem {
   is_active: boolean;
   updated_at: string;
   notes: string;
+  // Time-based availability. Empty / absent = available all day, every day.
+  available_from?: string; // 'HH:MM' 24h
+  available_to?: string;   // 'HH:MM' 24h
+  available_days?: string[]; // lowercase day names: mon, tue, wed, thu, fri, sat, sun
 }
 
 // ─── Business Type Metadata ───

@@ -16,6 +16,8 @@ import {
 } from '@/lib/payments';
 import {
   getActiveInventory,
+  isItemAvailableNow,
+  formatAvailabilityHuman,
   reserveOrder,
   setStock,
   adjustStock,
@@ -296,12 +298,28 @@ PAYMENT INSTRUCTIONS:
       try {
         const active = await getActiveInventory(client.client_id);
         if (active.length > 0) {
+          const now = new Date();
+          const istNow = new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }).format(now);
           const lines = active.map((i) => {
             if (i.stock === 0) return `- ${i.name}: OUT OF STOCK (do not accept orders)`;
             const priceBit = i.price > 0 ? ` · ₹${i.price}` : '';
-            return `- ${i.name}: ${i.stock} available${priceBit}`;
+            const availableNow = isItemAvailableNow(i, now);
+            const windowNote = formatAvailabilityHuman(i);
+            if (!availableNow) {
+              return `- ${i.name}: NOT AVAILABLE RIGHT NOW (only ${windowNote}; do not accept orders now)`;
+            }
+            const winSuffix = windowNote === 'always available' ? '' : ` (${windowNote})`;
+            return `- ${i.name}: ${i.stock} available${priceBit}${winSuffix}`;
           });
-          stockBlock = `\nLIVE STOCK (do not exceed these quantities):\n${lines.join('\n')}\n`;
+          stockBlock =
+            `\nCURRENT IST TIME: ${istNow}` +
+            `\nLIVE STOCK (respect quantities AND time windows — do not order items marked NOT AVAILABLE RIGHT NOW):\n${lines.join('\n')}\n`;
         }
       } catch {
         // ignore

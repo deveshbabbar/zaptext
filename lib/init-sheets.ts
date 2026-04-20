@@ -69,8 +69,11 @@ const TABS: TabSpec[] = [
   },
   {
     name: 'inventory',
-    headerRange: 'inventory!A1:I1',
-    headers: ['client_id', 'sku', 'name', 'price', 'stock', 'low_stock_threshold', 'is_active', 'updated_at', 'notes'],
+    headerRange: 'inventory!A1:L1',
+    headers: [
+      'client_id', 'sku', 'name', 'price', 'stock', 'low_stock_threshold', 'is_active', 'updated_at', 'notes',
+      'available_from', 'available_to', 'available_days',
+    ],
   },
   {
     name: 'staff',

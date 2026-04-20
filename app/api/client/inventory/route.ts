@@ -54,6 +54,25 @@ export async function POST(req: NextRequest) {
     // default: upsert
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
+
+    // Validate time format (HH:MM 24h) — empty string means "always available".
+    const validTime = (v: unknown): string | undefined => {
+      if (typeof v !== 'string') return undefined;
+      const t = v.trim();
+      if (!t) return '';
+      return /^\d{1,2}:\d{2}$/.test(t) ? t : undefined;
+    };
+    const fromVal = validTime(body.available_from);
+    const toVal = validTime(body.available_to);
+
+    const VALID_DAYS = new Set(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+    const daysVal = Array.isArray(body.available_days)
+      ? (body.available_days as unknown[])
+          .filter((d): d is string => typeof d === 'string')
+          .map((d) => d.trim().toLowerCase())
+          .filter((d) => VALID_DAYS.has(d))
+      : undefined;
+
     const item = await upsertItem({
       client_id: bot.client_id,
       name,
@@ -64,6 +83,9 @@ export async function POST(req: NextRequest) {
         typeof body.low_stock_threshold === 'number' ? body.low_stock_threshold : undefined,
       is_active: typeof body.is_active === 'boolean' ? body.is_active : undefined,
       notes: typeof body.notes === 'string' ? body.notes : undefined,
+      available_from: fromVal,
+      available_to: toVal,
+      available_days: daysVal,
     });
     return NextResponse.json({ ok: true, item });
   } catch (err) {

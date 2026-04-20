@@ -28,6 +28,29 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState('');
   const [approving, setApproving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteBot = async () => {
+    const ok = window.confirm(
+      'Delete this bot permanently? The client row AND all its conversation history will be removed from Google Sheets. This cannot be undone.'
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Bot deleted');
+        window.location.href = '/admin/dashboard';
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || 'Failed to delete');
+      }
+    } catch {
+      toast.error('Failed to delete');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     fetch(`/api/clients/${id}`)
@@ -189,6 +212,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               {client.status === 'active' ? 'Pause Bot' : 'Activate Bot'}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={handleDeleteBot}
+            disabled={deleting}
+            className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+          >
+            {deleting ? 'Deleting…' : '🗑 Delete bot'}
+          </Button>
         </div>
       </div>
 

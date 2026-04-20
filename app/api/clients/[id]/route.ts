@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientById, updateClientField, getClientConversations, getClientAnalytics } from '@/lib/google-sheets';
+import { getClientById, updateClientField, deleteClient, getClientConversations, getClientAnalytics } from '@/lib/google-sheets';
 import { getUserRole } from '@/lib/auth';
 
 export async function GET(
@@ -83,5 +83,27 @@ export async function PATCH(
   } catch (error) {
     console.error('Error updating client:', error);
     return NextResponse.json({ error: 'Failed to update client' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getUserRole();
+  if (!user || user.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized — admin only' }, { status: 401 });
+  }
+
+  try {
+    const { id } = await params;
+    const ok = await deleteClient(id);
+    if (!ok) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, clientId: id });
+  } catch (error) {
+    console.error('Error deleting client:', error);
+    return NextResponse.json({ error: 'Failed to delete client' }, { status: 500 });
   }
 }

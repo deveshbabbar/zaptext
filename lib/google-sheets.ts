@@ -142,10 +142,16 @@ export async function addClient(client: ClientRow): Promise<void> {
   }
 
   const sheets = getSheets();
+  // CRITICAL: insertDataOption='INSERT_ROWS' forces Sheets to INSERT a new row
+  // instead of overwriting whatever row it thinks is "after the table". The
+  // default (OVERWRITE) can silently clobber an existing bot row when the
+  // sheet's table boundary is miscalculated (blank columns, out-of-order rows)
+  // — that's the "bot disappeared after some time" symptom.
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: 'clients!A:Q',
     valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [[
         client.client_id,
@@ -181,6 +187,88 @@ export async function addClient(client: ClientRow): Promise<void> {
   } catch {
     // If the refresh fails, fall through — next read will retry from Sheets.
   }
+}
+
+// Hard-delete a client row from the `clients` sheet. Also drops its
+// conversations rows so the dashboard doesn't show ghost history.
+// Returns true if a row was deleted, false if the clientId wasn't found.
+export async function deleteClient(clientId: string): Promise<boolean> {
+  const sheets = getSheets();
+
+  // Find client row in `clients` sheet
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'clients!A2:A',
+  });
+  const rows = res.data.values || [];
+  const rowIndex = rows.findIndex((row) => row[0] === clientId);
+  if (rowIndex === -1) return false;
+
+  // Resolve sheetIds — batchUpdate needs numeric sheetId, not name
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+  const clientsSheet = (meta.data.sheets || []).find((s) => s.properties?.title === 'clients');
+  const convosSheet = (meta.data.sheets || []).find((s) => s.properties?.title === 'conversations');
+  if (!clientsSheet?.properties?.sheetId) return false;
+
+  // Delete the client row. rowIndex is 0-based within A2:A, so sheet row = rowIndex + 1
+  // in 0-based dimension terms (header is row 0, first data row is row 1).
+  const deleteRequests: Array<{ deleteDimension: { range: { sheetId: number; dimension: 'ROWS'; startIndex: number; endIndex: number } } }> = [
+    {
+      deleteDimension: {
+        range: {
+          sheetId: clientsSheet.properties.sheetId,
+          dimension: 'ROWS',
+          startIndex: rowIndex + 1,
+          endIndex: rowIndex + 2,
+        },
+      },
+    },
+  ];
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: { requests: deleteRequests },
+  });
+
+  // Purge conversations rows for this client_id (best-effort; don't fail the
+  // main delete if this step hiccups).
+  try {
+    if (convosSheet?.properties?.sheetId) {
+      const conv = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'conversations!A2:B',
+      });
+      const convRows = conv.data.values || [];
+      // Collect indices (0-based within A2:B) where client_id column B matches.
+      // Delete bottom-up so earlier indices stay valid.
+      const convDeleteReqs = convRows
+        .map((row, i) => ({ row, i }))
+        .filter(({ row }) => row[1] === clientId)
+        .reverse()
+        .map(({ i }) => ({
+          deleteDimension: {
+            range: {
+              sheetId: convosSheet.properties!.sheetId!,
+              dimension: 'ROWS' as const,
+              startIndex: i + 1,
+              endIndex: i + 2,
+            },
+          },
+        }));
+      if (convDeleteReqs.length > 0) {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: { requests: convDeleteReqs },
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[deleteClient] conversations cleanup failed:', e);
+  }
+
+  invalidateCache('clients');
+  invalidateCache('conversations');
+  return true;
 }
 
 export async function updateClientStatus(clientId: string, status: ClientRow['status']): Promise<void> {

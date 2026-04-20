@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { addClient, DuplicateBotError } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
 import { setActiveBotId } from '@/lib/active-bot';
 import { GymFields, RestaurantFields, SalonFields, ClientConfig, ClientRow, BusinessType } from '@/lib/types';
 import { generateId, getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
@@ -258,6 +259,14 @@ export async function POST(req: NextRequest) {
     // If we seeded on behalf of another user, don't clobber the admin's UI.
     if (ownerUserId === user.userId) {
       await setActiveBotId(clientId);
+    }
+
+    // Auto-sync sample products into inventory so the seeded bot is
+    // immediately explorable (menu / services / plans populated).
+    try {
+      await syncProductsFromConfig(clientId, config);
+    } catch (e) {
+      console.error('[seed-test-bot] auto-sync products failed:', e);
     }
 
     return NextResponse.json({

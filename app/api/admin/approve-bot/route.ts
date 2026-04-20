@@ -5,6 +5,8 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { formatPhoneNumber } from '@/lib/utils';
 import { sendTemplate } from '@/lib/email';
 import { clerkClient } from '@clerk/nextjs/server';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
+import { ClientConfig } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   const user = await getUserRole();
@@ -27,6 +29,19 @@ export async function POST(req: NextRequest) {
     if (action === 'approve') {
       // Activate the bot
       await updateClientField(clientId, 'status', 'active');
+
+      // Auto-sync products from the onboarding form into inventory so the
+      // client sees their menu/services/plans available immediately.
+      // Best-effort — if this fails, approval still succeeds and the user
+      // can rerun the sync manually from /client/inventory.
+      try {
+        const config = JSON.parse(client.knowledge_base_json || '{}') as ClientConfig;
+        if (config && config.type) {
+          await syncProductsFromConfig(clientId, config);
+        }
+      } catch (e) {
+        console.error('[approve-bot] auto-sync products failed:', e);
+      }
 
       // Send WhatsApp activation message to bot owner
       if (client.phone_number_id && client.whatsapp_number) {

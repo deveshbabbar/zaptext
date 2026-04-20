@@ -20,11 +20,30 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [syncingForm, setSyncingForm] = useState(false);
 
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
   const [newStock, setNewStock] = useState('');
   const [newThreshold, setNewThreshold] = useState('');
+
+  const runSyncFromForm = async () => {
+    setSyncingForm(true);
+    try {
+      const res = await fetch('/api/client/inventory/sync-from-form', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Synced');
+        await load();
+      } else {
+        toast.error(data.error || data.message || 'Sync failed');
+      }
+    } catch {
+      toast.error('Sync failed');
+    } finally {
+      setSyncingForm(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -163,15 +182,20 @@ export default function InventoryPage() {
       <PageTopbar
         crumbs={
           <>
-            <b className="text-foreground">Inventory</b> · {active.length} active ·{' '}
+            <b className="text-foreground">Products &amp; Inventory</b> · {active.length} active ·{' '}
             {lowStock.length > 0 ? `${lowStock.length} low-stock` : 'all good'}
           </>
+        }
+        actions={
+          <Pill variant="ghost" onClick={runSyncFromForm}>
+            {syncingForm ? 'Syncing…' : '📥 Sync products from form'}
+          </Pill>
         }
       />
       <div style={{ padding: '28px 32px 60px' }} className="max-w-5xl">
         <PageHead
-          title={<>Your <span className="zt-serif">stock.</span></>}
-          sub="Bot auto-decrements on every order. Adjust manually anytime — changes go live instantly."
+          title={<>Your <span className="zt-serif">products.</span></>}
+          sub="Menu / services / plans from your onboarding form auto-sync here. Bot auto-decrements on every order. Adjust stock or mark items unavailable anytime."
         />
 
         <Panel title="Add new item" sub="Price + stock optional. Set a low-stock threshold to get alerts.">

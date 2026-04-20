@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { addClient, DuplicateBotError } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
 import { createSubscription, PLANS, isDurationKey, computePlanPrice, type PlanKey } from '@/lib/subscription';
 import { sendTemplate, tplWelcome } from '@/lib/email';
 import { ClientConfig, ClientRow, BusinessType } from '@/lib/types';
@@ -141,6 +142,14 @@ export async function POST(req: NextRequest) {
     };
 
     await addClient(clientRow);
+
+    // Auto-sync products so the client sees their menu / services / plans
+    // already populated in Inventory when they first log in.
+    try {
+      await syncProductsFromConfig(clientId, config);
+    } catch (e) {
+      console.error('[admin/create-client] auto-sync products failed:', e);
+    }
 
     // ─── 3. Create subscription record ───
     const now = new Date();

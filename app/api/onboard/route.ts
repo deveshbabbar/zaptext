@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addClient, DuplicateBotError } from '@/lib/google-sheets';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { ClientConfig, ClientRow } from '@/lib/types';
@@ -117,6 +118,16 @@ export async function POST(request: NextRequest) {
 
     await addClient(client);
     await setActiveBotId(clientId);
+
+    // Admin-created bots activate immediately → auto-sync products into inventory.
+    // For client-created (pending) bots, the sync happens in /api/admin/approve-bot.
+    if (isAdmin) {
+      try {
+        await syncProductsFromConfig(clientId, config);
+      } catch (e) {
+        console.error('[onboard] auto-sync products failed:', e);
+      }
+    }
 
     try {
       const cc = await clerkClient();

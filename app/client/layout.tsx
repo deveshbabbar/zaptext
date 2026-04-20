@@ -139,7 +139,28 @@ export default async function ClientLayout({ children }: { children: React.React
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto bg-background">{children}</main>
+      <main className="flex-1 overflow-auto bg-background">
+        {user.activeBot && (
+          <div
+            className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--card)]/90 backdrop-blur flex items-center gap-2 text-[12.5px]"
+            style={{ padding: '8px 20px' }}
+          >
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--accent)]/25 text-[var(--ink)] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+              Editing: {user.activeBot.business_name || '(unnamed bot)'}
+            </span>
+            <span className="text-[var(--mute)]">
+              {user.activeBot.type} · {user.activeBot.whatsapp_number || 'no number'}
+            </span>
+            {user.allBots.length > 1 && (
+              <span className="ml-auto text-[11px] text-[var(--mute)]">
+                Switch bots from the sidebar ↖
+              </span>
+            )}
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

@@ -18,8 +18,14 @@ export default function ClientSettingsPage() {
   const [upiId, setUpiId] = useState('');
   const [upiName, setUpiName] = useState('');
   const [languages, setLanguages] = useState<string[]>(['English']);
+  const [botName, setBotName] = useState('');
+  const [botType, setBotType] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Track whether the user has edited the prompt manually after last load/save.
+  // If they did, we preserve their edit on save. Otherwise, saving languages
+  // regenerates the prompt server-side and we accept that result.
+  const [promptDirty, setPromptDirty] = useState(false);
 
   useEffect(() => {
     fetch('/api/client/settings', { cache: 'no-store' })
@@ -31,9 +37,12 @@ export default function ClientSettingsPage() {
         setExportFormat((data.exportFormat as Format) || 'csv');
         setUpiId(data.upiId || '');
         setUpiName(data.upiName || '');
+        setBotName(data.botName || '');
+        setBotType(data.botType || '');
         if (Array.isArray(data.languages) && data.languages.length > 0) {
           setLanguages(data.languages);
         }
+        setPromptDirty(false);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -56,88 +65,37 @@ export default function ClientSettingsPage() {
     });
   };
 
-  const handleSaveLanguages = async () => {
-    setSaving('languages');
+  const handleSaveAll = async () => {
+    setSaving(true);
     try {
+      const bulk: Record<string, unknown> = {
+        languages,
+        upi_id: upiId.trim(),
+        upi_name: upiName.trim(),
+        existing_system: existingSystem.trim(),
+        export_format: exportFormat,
+      };
+      // Only send system_prompt if the user actually edited it — otherwise let
+      // the server regenerate from the (possibly new) languages array.
+      if (promptDirty) bulk.system_prompt = prompt;
+
       const res = await fetch('/api/client/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field: 'languages', value: languages }),
+        body: JSON.stringify({ bulk }),
       });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.success) {
         if (data.systemPrompt) setPrompt(data.systemPrompt);
-        toast.success('Bot languages updated — system prompt regenerated');
+        setPromptDirty(false);
+        toast.success('Saved — all changes applied');
       } else {
-        toast.error(data.error || 'Failed to save languages');
+        toast.error(data.error || 'Failed to save');
       }
     } catch {
-      toast.error('Failed to save languages');
+      toast.error('Failed to save');
     } finally {
-      setSaving(null);
-    }
-  };
-
-  const saveField = async (field: string, value: string, label: string) => {
-    setSaving(field);
-    try {
-      const res = await fetch('/api/client/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field, value }),
-      });
-      if (res.ok) toast.success(`${label} saved!`);
-      else toast.error(`Failed to save ${label}`);
-    } catch {
-      toast.error(`Failed to save ${label}`);
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleSavePrompt = () => saveField('system_prompt', prompt, 'System prompt');
-  const handleSaveExport = async () => {
-    setSaving('export');
-    try {
-      await Promise.all([
-        fetch('/api/client/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: 'existing_system', value: existingSystem }),
-        }),
-        fetch('/api/client/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: 'export_format', value: exportFormat }),
-        }),
-      ]);
-      toast.success('Export preferences saved!');
-    } catch {
-      toast.error('Failed to save export preferences');
-    } finally {
-      setSaving(null);
-    }
-  };
-  const handleSaveUpi = async () => {
-    setSaving('upi');
-    try {
-      await Promise.all([
-        fetch('/api/client/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: 'upi_id', value: upiId.trim() }),
-        }),
-        fetch('/api/client/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: 'upi_name', value: upiName.trim() }),
-        }),
-      ]);
-      toast.success('UPI settings saved!');
-    } catch {
-      toast.error('Failed to save UPI settings');
-    } finally {
-      setSaving(null);
+      setSaving(false);
     }
   };
 
@@ -152,10 +110,15 @@ export default function ClientSettingsPage() {
   return (
     <>
       <PageTopbar
-        crumbs={<><b className="text-foreground">Bot settings</b> · voice, payments & export</>}
+        crumbs={
+          <>
+            <b className="text-foreground">Bot settings</b>
+            {botName && <> · editing <b className="text-foreground">{botName}</b>{botType ? <> <span className="text-[var(--mute)]">({botType})</span></> : null}</>}
+          </>
+        }
         actions={
-          <Pill variant="ink" onClick={handleSavePrompt}>
-            {saving === 'system_prompt' ? 'Saving…' : 'Save prompt'}
+          <Pill variant="ink" onClick={handleSaveAll}>
+            {saving ? 'Saving…' : '💾 Save all changes'}
           </Pill>
         }
       />
@@ -171,15 +134,7 @@ export default function ClientSettingsPage() {
           <div className="flex flex-col gap-4">
             <Panel
               title="Bot languages"
-              sub="Pick every language your bot should understand and reply in. The first one is the default fallback when the customer's language isn't clear."
-              action={
-                <button
-                  onClick={handleSaveLanguages}
-                  className="text-[var(--ink)] border-b border-[var(--ink)] font-semibold"
-                >
-                  {saving === 'languages' ? 'Saving…' : 'Save'}
-                </button>
-              }
+              sub="Pick every language your bot should understand and reply in. The first one is the default fallback when the customer's language isn't clear. Hit Save at the top when done."
             >
               <div className="flex flex-wrap gap-2 mb-3">
                 {LANGUAGE_OPTIONS.map((lang) => {
@@ -220,13 +175,15 @@ export default function ClientSettingsPage() {
                   </div>
                 </div>
               )}
-              <p className="text-[11.5px] text-[var(--mute)] m-0">Saving regenerates the system prompt so the bot actually uses these languages.</p>
+              <p className="text-[11.5px] text-[var(--mute)] m-0">
+                Saving regenerates the system prompt automatically — unless you&apos;ve manually edited it below.
+              </p>
             </Panel>
 
             <Panel title="System prompt" sub="The instructions your bot follows. Edit carefully.">
               <textarea
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={(e) => { setPrompt(e.target.value); setPromptDirty(true); }}
                 rows={18}
                 className="w-full rounded-[12px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none zt-mono text-[12.5px]"
                 style={{ padding: '12px 14px', resize: 'vertical' }}
@@ -236,14 +193,6 @@ export default function ClientSettingsPage() {
             <Panel
               title="Payments (UPI)"
               sub="Bot will send UPI payment links to customers using these details."
-              action={
-                <button
-                  onClick={handleSaveUpi}
-                  className="text-[var(--ink)] border-b border-[var(--ink)] font-semibold"
-                >
-                  {saving === 'upi' ? 'Saving…' : 'Save'}
-                </button>
-              }
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -276,14 +225,6 @@ export default function ClientSettingsPage() {
             <Panel
               title="Daily order export"
               sub="Every night, we email you today's orders. Import into your existing system."
-              action={
-                <button
-                  onClick={handleSaveExport}
-                  className="text-[var(--ink)] border-b border-[var(--ink)] font-semibold"
-                >
-                  {saving === 'export' ? 'Saving…' : 'Save'}
-                </button>
-              }
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>

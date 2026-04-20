@@ -57,7 +57,6 @@ function itemToRow(item: InventoryItem): string[] {
 // time window (both available_from/to empty) is always available. Time
 // windows support wrap-around midnight (e.g. from=22:00, to=02:00).
 // available_days empty/absent = available every day of the week.
-const DOW: readonly string[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 export function isItemAvailableNow(item: InventoryItem, now: Date = new Date()): boolean {
   // Convert to IST for the day-of-week + HH:MM check.
@@ -216,6 +215,72 @@ export async function adjustStock(
     item.low_stock_threshold > 0 && previous > item.low_stock_threshold && next <= item.low_stock_threshold;
   const updated = await upsertItem({ ...item, stock: next });
   return { item: updated, previous, crossedLowThreshold };
+}
+
+// Batch-upsert: reads the sheet ONCE, appends all new rows in a single call,
+// then updates existing rows individually. Avoids the N×fetchAllRows() pattern
+// that causes rate-limit failures when syncing 10–20 items at once.
+export async function batchUpsertItems(
+  inputs: Array<Partial<InventoryItem> & { client_id: string; name: string }>
+): Promise<{ written: number; skipped: number }> {
+  if (!inputs.length) return { written: 0, skipped: 0 };
+  const sheets = getSheets();
+  const all = await fetchAllRows();
+  const now = new Date().toISOString();
+
+  const toAppend: string[][] = [];
+  const toUpdate: Array<{ rowIndex: number; row: string[] }> = [];
+  let skipped = 0;
+
+  for (const input of inputs) {
+    try {
+      const sku = input.sku && input.sku.trim() ? slugify(input.sku) : slugify(input.name);
+      const existing = all.find((x) => x.item.client_id === input.client_id && x.item.sku === sku);
+      const item: InventoryItem = {
+        client_id: input.client_id,
+        sku,
+        name: input.name.trim(),
+        price: typeof input.price === 'number' ? input.price : existing?.item.price ?? 0,
+        stock: typeof input.stock === 'number' ? Math.max(0, Math.floor(input.stock)) : existing?.item.stock ?? 0,
+        low_stock_threshold:
+          typeof input.low_stock_threshold === 'number'
+            ? Math.max(0, Math.floor(input.low_stock_threshold))
+            : existing?.item.low_stock_threshold ?? 0,
+        is_active: typeof input.is_active === 'boolean' ? input.is_active : existing?.item.is_active ?? true,
+        updated_at: now,
+        notes: typeof input.notes === 'string' ? input.notes : existing?.item.notes ?? '',
+      };
+      if (existing) {
+        toUpdate.push({ rowIndex: existing.rowIndex, row: itemToRow(item) });
+      } else {
+        toAppend.push(itemToRow(item));
+      }
+    } catch {
+      skipped++;
+    }
+  }
+
+  // Single batch append for all new items
+  if (toAppend.length > 0) {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'inventory!A:L',
+      valueInputOption: 'RAW',
+      requestBody: { values: toAppend },
+    });
+  }
+
+  // Sequential updates for existing items (usually 0 on first sync)
+  for (const { rowIndex, row } of toUpdate) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `inventory!A${rowIndex}:L${rowIndex}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [row] },
+    });
+  }
+
+  return { written: toAppend.length + toUpdate.length, skipped };
 }
 
 export async function deleteItem(clientId: string, sku: string): Promise<boolean> {

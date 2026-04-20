@@ -1,5 +1,5 @@
 import { ClientConfig, InventoryItem } from './types';
-import { upsertItem, getInventory } from './inventory';
+import { batchUpsertItems, getInventory } from './inventory';
 
 // Extract a numeric price from user-entered strings like "₹280", "Rs. 1,200",
 // "300/-", "1499 INR". Returns 0 if no number found.
@@ -116,29 +116,25 @@ export async function syncProductsFromConfig(
     return true;
   });
 
-  // Preserve existing stock on re-sync: upsertItem keeps existing.stock if we
-  // don't pass a stock value, so only set stock=0 for brand-new items.
+  // Preserve existing stock on re-sync: batchUpsertItems keeps existing.stock
+  // if we don't pass a stock value, so only set stock=0 for brand-new items.
   const existing = await getInventory(clientId).catch(() => [] as InventoryItem[]);
   const existingNames = new Set(existing.map((e) => e.name.trim().toLowerCase()));
 
-  const names: string[] = [];
-  let skipped = 0;
-  for (const it of unique) {
-    try {
-      const isNew = !existingNames.has(it.name.trim().toLowerCase());
-      await upsertItem({
-        client_id: clientId,
-        name: it.name.trim(),
-        price: it.price,
-        notes: it.notes,
-        is_active: true,
-        ...(isNew ? { stock: 0, low_stock_threshold: 0 } : {}),
-      });
-      names.push(it.name);
-    } catch {
-      skipped += 1;
-    }
-  }
+  const inputs = unique.map((it) => {
+    const isNew = !existingNames.has(it.name.trim().toLowerCase());
+    return {
+      client_id: clientId,
+      name: it.name.trim(),
+      price: it.price,
+      notes: it.notes,
+      is_active: true as const,
+      ...(isNew ? { stock: 0, low_stock_threshold: 0 } : {}),
+    };
+  });
 
-  return { count: names.length, names, skipped };
+  const { written, skipped } = await batchUpsertItems(inputs);
+  const names = inputs.slice(0, written).map((i) => i.name);
+
+  return { count: written, names, skipped };
 }

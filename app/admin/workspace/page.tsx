@@ -65,6 +65,7 @@ export default function WorkspacePage() {
   // Seed test gym bot state
   const [seedPhoneNumberId, setSeedPhoneNumberId] = useState('');
   const [seedWhatsappNumber, setSeedWhatsappNumber] = useState('+15556333873');
+  const [seedBusinessType, setSeedBusinessType] = useState<'gym' | 'restaurant' | 'salon'>('gym');
   const [seedingBot, setSeedingBot] = useState(false);
   const [seedResult, setSeedResult] = useState<{ clientId: string; adminUrl: string } | null>(null);
 
@@ -79,6 +80,7 @@ export default function WorkspacePage() {
         body: JSON.stringify({
           phoneNumberId: seedPhoneNumberId.trim(),
           whatsappNumber: seedWhatsappNumber.trim(),
+          businessType: seedBusinessType,
         }),
       });
       const data = await res.json();
@@ -333,10 +335,37 @@ export default function WorkspacePage() {
             className="lg:col-span-2"
             action={
               <Pill variant="ink" onClick={runSeedBot}>
-                {seedingBot ? 'Seeding…' : '🏋️ Seed gym bot'}
+                {seedingBot
+                  ? 'Seeding…'
+                  : seedBusinessType === 'gym'
+                    ? '🏋️ Seed gym bot'
+                    : seedBusinessType === 'restaurant'
+                      ? '🍽️ Seed restaurant bot'
+                      : '💇 Seed salon bot'}
               </Pill>
             }
           >
+            <div className="flex gap-2 mb-4">
+              {(['gym', 'restaurant', 'salon'] as const).map((t) => {
+                const active = seedBusinessType === t;
+                const label = t === 'gym' ? '🏋️ Gym' : t === 'restaurant' ? '🍽️ Restaurant' : '💇 Salon';
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setSeedBusinessType(t)}
+                    className={`rounded-[10px] border text-[13px] font-semibold transition ${
+                      active
+                        ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]'
+                        : 'bg-[var(--card)] border-[var(--line)] hover:border-[var(--ink)]'
+                    }`}
+                    style={{ padding: '8px 14px' }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="text-[12.5px] font-semibold mb-1.5">phone_number_id</div>

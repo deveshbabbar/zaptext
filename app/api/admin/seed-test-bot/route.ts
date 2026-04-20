@@ -3,8 +3,123 @@ import { getUserRole } from '@/lib/auth';
 import { addClient, DuplicateBotError } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { setActiveBotId } from '@/lib/active-bot';
-import { GymFields, ClientRow } from '@/lib/types';
+import { GymFields, RestaurantFields, SalonFields, ClientConfig, ClientRow, BusinessType } from '@/lib/types';
 import { generateId, getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
+
+const SUPPORTED_SEED_TYPES: BusinessType[] = ['gym', 'restaurant', 'salon'];
+
+function buildRestaurantConfig(whatsappNumber: string): RestaurantFields {
+  return {
+    type: 'restaurant',
+    businessName: 'ZapText Test Dhaba',
+    ownerName: 'Test Owner',
+    whatsappNumber,
+    contactNumber: whatsappNumber,
+    city: 'Delhi',
+    address: 'Shop 14, Connaught Place, New Delhi 110001',
+    workingHours: 'Mon-Sun: 11 AM to 11 PM',
+    languages: ['English'],
+    welcomeMessage: 'Welcome to ZapText Test Dhaba! How can I help you today?',
+    additionalInfo: 'Demo restaurant bot for testing orders, menu lookup, and delivery flows.',
+    cuisineType: 'North Indian, Chinese, Mughlai',
+    menuCategories: [
+      {
+        category: 'Starters',
+        items: [
+          { name: 'Paneer Tikka', price: '₹260', description: 'Cottage cheese marinated in spices, grilled in tandoor', isVeg: true, isBestseller: true, foodType: 'veg' },
+          { name: 'Chicken 65', price: '₹280', description: 'Crispy fried chicken in south-Indian spices', isVeg: false, isBestseller: true, foodType: 'non-veg' },
+          { name: 'Veg Spring Roll', price: '₹180', description: 'Crispy rolls with mixed vegetable filling', isVeg: true, isBestseller: false, foodType: 'veg' },
+        ],
+      },
+      {
+        category: 'Main Course',
+        items: [
+          { name: 'Butter Chicken', price: '₹340', description: 'Creamy tomato gravy, tender chicken pieces', isVeg: false, isBestseller: true, foodType: 'non-veg' },
+          { name: 'Paneer Butter Masala', price: '₹290', description: 'Cottage cheese in rich tomato gravy', isVeg: true, isBestseller: true, foodType: 'veg' },
+          { name: 'Dal Makhani', price: '₹240', description: 'Slow-cooked black lentils with cream', isVeg: true, isBestseller: false, foodType: 'veg' },
+          { name: 'Mutton Rogan Josh', price: '₹420', description: 'Kashmiri-style slow-cooked lamb curry', isVeg: false, isBestseller: false, foodType: 'non-veg' },
+        ],
+      },
+      {
+        category: 'Biryani',
+        items: [
+          { name: 'Chicken Biryani', price: '₹300', description: 'Hyderabadi dum biryani, serves 1', isVeg: false, isBestseller: true, foodType: 'non-veg' },
+          { name: 'Veg Biryani', price: '₹240', description: 'Aromatic basmati with mixed veggies', isVeg: true, isBestseller: false, foodType: 'veg' },
+        ],
+      },
+      {
+        category: 'Breads & Rice',
+        items: [
+          { name: 'Butter Naan', price: '₹60', description: '', isVeg: true, isBestseller: false, foodType: 'veg' },
+          { name: 'Garlic Naan', price: '₹80', description: '', isVeg: true, isBestseller: false, foodType: 'veg' },
+          { name: 'Jeera Rice', price: '₹140', description: '', isVeg: true, isBestseller: false, foodType: 'veg' },
+        ],
+      },
+    ],
+    deliveryAvailable: true,
+    deliveryRadius: '5 km',
+    deliveryCharges: 'Free above ₹500, else ₹40',
+    minimumOrder: '₹200',
+    paymentMethods: ['Cash', 'UPI', 'Card'],
+    specialOffers: '10% off on first order. Free dessert on orders above ₹800.',
+    zomatoSwiggyLinks: '',
+  };
+}
+
+function buildSalonConfig(whatsappNumber: string): SalonFields {
+  return {
+    type: 'salon',
+    businessName: 'ZapText Test Salon',
+    ownerName: 'Test Owner',
+    whatsappNumber,
+    contactNumber: whatsappNumber,
+    city: 'Mumbai',
+    address: 'Shop 5, Linking Road, Bandra West, Mumbai 400050',
+    workingHours: 'Tue-Sun: 10 AM to 9 PM (Closed Monday)',
+    languages: ['English'],
+    welcomeMessage: 'Welcome to ZapText Test Salon! How can I help you today?',
+    additionalInfo: 'Demo salon bot for testing bookings, price lookup, and package recommendations.',
+    salonName: 'ZapText Test Salon',
+    gender: 'Unisex',
+    services: [
+      {
+        category: 'Hair',
+        items: [
+          { name: 'Haircut (Women)', price: '₹800', duration: '45 min' },
+          { name: 'Haircut (Men)', price: '₹400', duration: '30 min' },
+          { name: 'Hair Spa', price: '₹1,200', duration: '60 min' },
+          { name: 'Hair Colour (Global)', price: '₹2,500', duration: '90 min' },
+          { name: 'Keratin Treatment', price: '₹5,500', duration: '180 min' },
+        ],
+      },
+      {
+        category: 'Skin',
+        items: [
+          { name: 'Classic Facial', price: '₹1,200', duration: '60 min' },
+          { name: 'Gold Facial', price: '₹2,000', duration: '75 min' },
+          { name: 'Clean-up', price: '₹600', duration: '30 min' },
+        ],
+      },
+      {
+        category: 'Nails',
+        items: [
+          { name: 'Manicure', price: '₹500', duration: '30 min' },
+          { name: 'Pedicure', price: '₹700', duration: '45 min' },
+          { name: 'Gel Polish', price: '₹900', duration: '45 min' },
+        ],
+      },
+    ],
+    packages: [
+      { name: 'Bridal Package', includes: 'Makeup, Hair Styling, Saree Draping, Mehendi', price: '₹12,000' },
+      { name: 'Pre-Wedding Glow', includes: 'Gold Facial, Body Polish, Manicure, Pedicure', price: '₹4,500' },
+      { name: 'Party-ready', includes: 'Blow-dry, Makeup, Manicure', price: '₹2,500' },
+    ],
+    brands: ["L'Oréal", 'Matrix', 'Schwarzkopf', 'Olaplex', 'VLCC'],
+    bookingRequired: true,
+    homeServiceAvailable: true,
+    homeServiceCharges: 'Additional ₹300 travel fee',
+  };
+}
 
 function buildGymConfig(whatsappNumber: string): GymFields {
   return {
@@ -71,15 +186,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const bizTypeRaw = typeof body.businessType === 'string' ? body.businessType : 'gym';
+    if (!SUPPORTED_SEED_TYPES.includes(bizTypeRaw as BusinessType)) {
+      return NextResponse.json(
+        { error: `Unsupported businessType. Allowed: ${SUPPORTED_SEED_TYPES.join(', ')}` },
+        { status: 400 }
+      );
+    }
+    const bizType = bizTypeRaw as BusinessType;
+
     const whatsappNumber = formatPhoneNumber(rawPhoneNumber);
-    const config = buildGymConfig(whatsappNumber);
+    const config: ClientConfig =
+      bizType === 'restaurant'
+        ? buildRestaurantConfig(whatsappNumber)
+        : bizType === 'salon'
+          ? buildSalonConfig(whatsappNumber)
+          : buildGymConfig(whatsappNumber);
     const systemPrompt = generateSystemPrompt(config);
     const clientId = generateId();
 
     const client: ClientRow = {
       client_id: clientId,
       business_name: config.businessName,
-      type: 'gym',
+      type: bizType,
       owner_name: config.ownerName,
       whatsapp_number: whatsappNumber,
       phone_number_id: phoneNumberId,

@@ -53,10 +53,29 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { config, phoneNumberId } = body as { config: ClientConfig; phoneNumberId: string };
+    const { config, phoneNumberId, optInAccepted } = body as {
+      config: ClientConfig;
+      phoneNumberId: string;
+      optInAccepted?: boolean;
+    };
 
     if (!config || !config.type || !config.businessName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // COMPLIANCE: WhatsApp Business Messaging Policy requires the business
+    // owner to have opt-in consent from their customers before sending any
+    // business-initiated messages. We make the owner attest to this at
+    // onboarding time and record it per bot (column R).
+    if (optInAccepted !== true) {
+      return NextResponse.json(
+        {
+          error: 'OPT_IN_REQUIRED',
+          message:
+            'You must confirm you have valid opt-in consent from your customers per WhatsApp Business Messaging Policy before creating a bot.',
+        },
+        { status: 400 }
+      );
     }
 
     // Validate WhatsApp number
@@ -91,6 +110,7 @@ export async function POST(request: NextRequest) {
       existing_system: typeof config.existingSystem === 'string' ? config.existingSystem.trim() : '',
       export_format: config.exportFormat === 'json' ? 'json' : 'csv',
       contact_number: typeof config.contactNumber === 'string' ? formatPhoneNumber(config.contactNumber) : '',
+      opt_in_accepted: true,
     };
 
     const existingBotsCount = existingBots.length;

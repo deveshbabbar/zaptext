@@ -20,6 +20,7 @@ export default function CreateBotPage() {
   const [scraping, setScraping] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [hasActivePlan, setHasActivePlan] = useState<boolean | null>(null);
+  const [optInAccepted, setOptInAccepted] = useState(false);
 
   useEffect(() => {
     fetch('/api/client/subscription')
@@ -88,12 +89,16 @@ export default function CreateBotPage() {
       toast.error('Fill Business Name, Owner Name, and WhatsApp Number');
       return;
     }
+    if (!optInAccepted) {
+      toast.error('Please confirm you have opt-in consent from your customers before creating a bot.');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch('/api/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: formData, phoneNumberId: '' }),
+        body: JSON.stringify({ config: formData, phoneNumberId: '', optInAccepted }),
       });
       const data = await res.json();
       if (data.success) {
@@ -235,6 +240,26 @@ export default function CreateBotPage() {
             <Panel>
               <TypeFieldsForm type={selectedType} data={formData} onChange={onChange} />
             </Panel>
+
+            <div className="rounded-[12px] border border-[var(--line)] bg-[var(--card)] p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={optInAccepted}
+                  onChange={(e) => setOptInAccepted(e.target.checked)}
+                  className="mt-1 accent-[var(--ink)] w-4 h-4"
+                  required
+                />
+                <span className="text-[13px] leading-[1.5]">
+                  <b>I confirm I have valid opt-in consent</b> from every customer whose number my bot
+                  will message, per WhatsApp Business Messaging Policy. I will not send unsolicited
+                  messages, will honor opt-outs, and will not use this bot for prohibited categories
+                  (healthcare, firearms, cryptocurrency, adult, gambling, etc.).
+                  <br />
+                  <a href="/terms" target="_blank" className="text-[var(--ink)] underline">View terms</a>
+                </span>
+              </label>
+            </div>
 
             <div className="flex justify-between">
               <Pill onClick={() => setStep(1)}>← Back</Pill>

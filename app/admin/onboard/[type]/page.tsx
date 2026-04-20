@@ -52,7 +52,8 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
       const res = await fetch('/api/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: formData, phoneNumberId }),
+        // Admin self-onboard: admin is trusted to have verified opt-in for their own customers.
+        body: JSON.stringify({ config: formData, phoneNumberId, optInAccepted: true }),
       });
       const data = await res.json();
       if (data.success) {

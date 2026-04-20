@@ -136,6 +136,8 @@ export async function POST(req: NextRequest) {
       existing_system: '',
       export_format: 'csv',
       contact_number: contactNum,
+      // Admin attests opt-in on behalf of the client they're onboarding.
+      opt_in_accepted: true,
     };
 
     await addClient(clientRow);

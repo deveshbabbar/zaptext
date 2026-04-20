@@ -65,7 +65,7 @@ export async function getAllClients(): Promise<ClientRow[]> {
     const sheets = getSheets();
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'clients!A2:Q',
+      range: 'clients!A2:R',
     });
     const rows = res.data.values || [];
     return rows.map((row) => {
@@ -103,6 +103,7 @@ export async function getAllClients(): Promise<ClientRow[]> {
         existing_system: row[14] || '',
         export_format: exportFormat,
         contact_number: row[16] || '',
+        opt_in_accepted: String(row[17] || '').toUpperCase() === 'TRUE',
       };
     });
   });
@@ -149,7 +150,7 @@ export async function addClient(client: ClientRow): Promise<void> {
   // — that's the "bot disappeared after some time" symptom.
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A:Q',
+    range: 'clients!A:R',
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: {
@@ -171,6 +172,7 @@ export async function addClient(client: ClientRow): Promise<void> {
         client.existing_system || '',
         client.export_format || 'csv',
         client.contact_number || '',
+        client.opt_in_accepted ? 'TRUE' : 'FALSE',
       ]],
     },
   });
@@ -304,6 +306,7 @@ export async function updateClientField(clientId: string, field: string, value: 
     existing_system: 'O',
     export_format: 'P',
     contact_number: 'Q',
+    opt_in_accepted: 'R',
   };
   const col = fieldToCol[field];
   if (!col) return;

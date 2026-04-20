@@ -25,12 +25,12 @@ interface TabSpec {
 const TABS: TabSpec[] = [
   {
     name: 'clients',
-    headerRange: 'clients!A1:Q1',
+    headerRange: 'clients!A1:R1',
     headers: [
       'client_id', 'business_name', 'type', 'owner_name', 'whatsapp_number',
       'phone_number_id', 'city', 'system_prompt', 'knowledge_base_json', 'status',
       'created_at', 'owner_user_id', 'upi_id', 'upi_name', 'existing_system',
-      'export_format', 'contact_number',
+      'export_format', 'contact_number', 'opt_in_accepted',
     ],
   },
   {

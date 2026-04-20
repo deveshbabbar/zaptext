@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
       existing_system: '',
       export_format: 'csv',
       contact_number: whatsappNumber,
+      opt_in_accepted: true,
     };
 
     await addClient(client);

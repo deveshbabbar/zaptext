@@ -250,6 +250,7 @@ export interface ClientRow {
   existing_system?: string;
   export_format?: 'csv' | 'json';
   contact_number?: string; // owner personal phone for OTP/calls (distinct from whatsapp_number)
+  opt_in_accepted?: boolean; // owner confirmed they have WhatsApp opt-in consent from their customers
 }
 
 export interface ConversationRow {

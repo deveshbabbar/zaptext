@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
-import { updateClientField } from '@/lib/google-sheets';
+import { updateClientField, updateClientFields } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 
@@ -50,8 +50,13 @@ export async function POST(request: NextRequest) {
       const updatedConfig = kb as unknown as ClientConfig;
       const newPrompt = generateSystemPrompt(updatedConfig);
       const newKbJson = JSON.stringify(kb);
-      await updateClientField(bot.client_id, 'knowledge_base_json', newKbJson);
-      await updateClientField(bot.client_id, 'system_prompt', newPrompt);
+      // Atomic batch write: 1 Sheets read + 1 batchUpdate instead of 2+2.
+      // Prevents half-completed saves when the client's fetch() times out
+      // (the old sequential path could leave prompt + languages out of sync).
+      await updateClientFields(bot.client_id, {
+        knowledge_base_json: newKbJson,
+        system_prompt: newPrompt,
+      });
       return NextResponse.json({ success: true, systemPrompt: newPrompt });
     }
 

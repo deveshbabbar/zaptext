@@ -291,23 +291,63 @@ export async function updateClientStatus(clientId: string, status: ClientRow['st
   invalidateCache('clients');
 }
 
+const CLIENT_FIELD_TO_COL: Record<string, string> = {
+  business_name: 'B',
+  owner_name: 'D',
+  whatsapp_number: 'E',
+  phone_number_id: 'F',
+  city: 'G',
+  system_prompt: 'H',
+  knowledge_base_json: 'I',
+  status: 'J',
+  upi_id: 'M',
+  upi_name: 'N',
+  existing_system: 'O',
+  export_format: 'P',
+  contact_number: 'Q',
+  opt_in_accepted: 'R',
+};
+
+// Batch-update several fields on the same client row in ONE Sheets API call.
+// Each sequential updateClientField() costs 1 read + 1 write (~2s on slow
+// networks); this does 1 read + 1 batchUpdate regardless of field count.
+// Critical when callers need to keep system_prompt + knowledge_base_json
+// in sync without the client's fetch() timing out mid-save.
+export async function updateClientFields(
+  clientId: string,
+  fields: Record<string, string>
+): Promise<void> {
+  const entries = Object.entries(fields).filter(
+    ([k, v]) => CLIENT_FIELD_TO_COL[k] && typeof v === 'string'
+  );
+  if (entries.length === 0) return;
+
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'clients!A2:A',
+  });
+  const rows = res.data.values || [];
+  const rowIndex = rows.findIndex((row) => row[0] === clientId);
+  if (rowIndex === -1) return;
+  const sheetRow = rowIndex + 2;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      valueInputOption: 'RAW',
+      data: entries.map(([field, value]) => ({
+        range: `clients!${CLIENT_FIELD_TO_COL[field]}${sheetRow}`,
+        values: [[value]],
+      })),
+    },
+  });
+
+  invalidateCache('clients');
+}
+
 export async function updateClientField(clientId: string, field: string, value: string): Promise<void> {
-  const fieldToCol: Record<string, string> = {
-    business_name: 'B',
-    owner_name: 'D',
-    whatsapp_number: 'E',
-    phone_number_id: 'F',
-    city: 'G',
-    system_prompt: 'H',
-    knowledge_base_json: 'I',
-    status: 'J',
-    upi_id: 'M',
-    upi_name: 'N',
-    existing_system: 'O',
-    export_format: 'P',
-    contact_number: 'Q',
-    opt_in_accepted: 'R',
-  };
+  const fieldToCol = CLIENT_FIELD_TO_COL;
   const col = fieldToCol[field];
   if (!col) return;
 

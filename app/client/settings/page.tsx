@@ -22,7 +22,7 @@ export default function ClientSettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/client/settings')
+    fetch('/api/client/settings', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         setPrompt(data.systemPrompt || '');

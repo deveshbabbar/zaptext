@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBookingsForTomorrow, getDateOffset, getTodayIST } from '@/lib/booking';
 import { getClientById } from '@/lib/google-sheets';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendWhatsAppTemplate, TEMPLATE_NAMES } from '@/lib/whatsapp-templates';
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -21,12 +21,29 @@ export async function GET(request: NextRequest) {
     try {
       const client = await getClientById(b.client_id);
       if (!client) continue;
-      const customerMsg = `🔔 Reminder: Aapka appointment kal hai!\n\n📅 ${b.date}\n🕐 ${b.time_slot}\n📍 ${client.business_name}\n${b.service ? `💼 ${b.service}\n` : ''}\nKoi change ho toh reply karein.`;
-      if (client.phone_number_id && b.customer_phone) {
-        await sendWhatsAppMessage(client.phone_number_id, b.customer_phone, customerMsg);
+      if (!client.phone_number_id || !b.customer_phone) continue;
+
+      // COMPLIANCE: reminders fire outside the 24h customer-service window,
+      // so MUST use an approved WhatsApp template — never free-form text.
+      // The `booking_reminder` template must exist and be APPROVED in Meta
+      // Business Manager (Category: UTILITY). Expected body:
+      //   "Reminder: your appointment at {{1}} is on {{2}} at {{3}}.
+      //    Reply to this message to reschedule."
+      const result = await sendWhatsAppTemplate(
+        client.phone_number_id,
+        b.customer_phone,
+        TEMPLATE_NAMES.BOOKING_REMINDER,
+        [
+          client.business_name || 'us',
+          b.date,
+          b.time_slot,
+        ]
+      );
+      if (result.success) {
         smsSent++;
+      } else {
+        errors.push(`Booking ${b.booking_id}: template send failed — ${result.error}`);
       }
-      // TODO: send customer email when we capture it
     } catch (e) {
       errors.push(`Booking ${b.booking_id} failed: ${e}`);
     }

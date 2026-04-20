@@ -44,12 +44,14 @@ export function Pill({
   href,
   onClick,
   type,
+  disabled,
 }: {
   variant?: "ink" | "accent" | "ghost";
   children: React.ReactNode;
   href?: string;
   onClick?: () => void;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   const cls =
     variant === "ink"
@@ -67,7 +69,12 @@ export function Pill({
     );
   }
   return (
-    <button type={type || "button"} onClick={onClick} className={`${base} ${cls}`}>
+    <button
+      type={type || "button"}
+      onClick={onClick}
+      disabled={disabled}
+      className={`${base} ${cls} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0`}
+    >
       {children}
     </button>
   );

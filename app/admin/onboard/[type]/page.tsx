@@ -43,6 +43,10 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (testing) {
+      toast.error('Wait for the test to finish before creating the bot.');
+      return;
+    }
     if (!formData.businessName || !formData.ownerName || !formData.whatsappNumber) {
       toast.error('Please fill in all required fields');
       return;
@@ -112,10 +116,12 @@ export default function OnboardTypePage({ params }: { params: Promise<{ type: st
     if (!testMessage.trim()) return;
     setTesting(true);
     setTestResponse('');
+    // Capture formData NOW — before any await — so the test uses
+    // the state at the moment the button was clicked, not a stale closure.
+    const capturedFormData = formData;
     try {
-      // We create a temporary prompt to test
       const { generateSystemPrompt } = await import('@/lib/prompt-generator');
-      const prompt = generateSystemPrompt(formData as never);
+      const prompt = generateSystemPrompt(capturedFormData as never);
       const res = await fetch('/api/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

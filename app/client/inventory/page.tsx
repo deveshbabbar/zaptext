@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PageTopbar, PageHead, Panel, Pill, StatusPill } from '@/components/app/primitives';
 
@@ -66,8 +66,12 @@ export default function InventoryPage() {
   const [importPreview, setImportPreview] = useState<ImportedProduct[] | null>(null);
   const [importFilename, setImportFilename] = useState('');
   const [importWarning, setImportWarning] = useState('');
+  // Monotonic counter — each new file pick increments it; stale fetch responses
+  // (from a previously selected file) are ignored when the ID no longer matches.
+  const importSeqRef = useRef(0);
 
   const handleFilePick = async (file: File) => {
+    const seq = ++importSeqRef.current;
     setImporting(true);
     setImportPreview(null);
     setImportWarning('');
@@ -76,6 +80,7 @@ export default function InventoryPage() {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/client/inventory/import', { method: 'POST', body: fd });
+      if (importSeqRef.current !== seq) return; // stale — a newer file was picked
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || 'Import failed');
@@ -86,9 +91,9 @@ export default function InventoryPage() {
       setImportWarning(data.warning || '');
       setImportOpen(true);
     } catch {
-      toast.error('Upload failed');
+      if (importSeqRef.current === seq) toast.error('Upload failed');
     } finally {
-      setImporting(false);
+      if (importSeqRef.current === seq) setImporting(false);
     }
   };
 
@@ -242,6 +247,7 @@ export default function InventoryPage() {
   };
 
   const updateStock = async (sku: string, nextStock: number) => {
+    const previousStock = items.find((i) => i.sku === sku)?.stock ?? 0;
     setSaving(sku);
     try {
       const res = await fetch('/api/client/inventory', {
@@ -255,8 +261,13 @@ export default function InventoryPage() {
         );
         toast.success('Stock updated');
       } else {
+        // Revert optimistic local value so UI matches server state
+        setItems((prev) => prev.map((i) => (i.sku === sku ? { ...i, stock: previousStock } : i)));
         toast.error('Update failed');
       }
+    } catch {
+      setItems((prev) => prev.map((i) => (i.sku === sku ? { ...i, stock: previousStock } : i)));
+      toast.error('Update failed');
     } finally {
       setSaving(null);
     }
@@ -367,7 +378,8 @@ export default function InventoryPage() {
               placeholder="Name (e.g. Dum Biryani)"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+              disabled={saving === 'add'}
+              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
               style={{ padding: '10px 12px' }}
             />
             <input
@@ -376,7 +388,8 @@ export default function InventoryPage() {
               min={0}
               value={newPrice}
               onChange={(e) => setNewPrice(e.target.value)}
-              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+              disabled={saving === 'add'}
+              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
               style={{ padding: '10px 12px' }}
             />
             <input
@@ -385,7 +398,8 @@ export default function InventoryPage() {
               min={0}
               value={newStock}
               onChange={(e) => setNewStock(e.target.value)}
-              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+              disabled={saving === 'add'}
+              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
               style={{ padding: '10px 12px' }}
             />
             <input
@@ -394,10 +408,11 @@ export default function InventoryPage() {
               min={0}
               value={newThreshold}
               onChange={(e) => setNewThreshold(e.target.value)}
-              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+              disabled={saving === 'add'}
+              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
               style={{ padding: '10px 12px' }}
             />
-            <Pill variant="ink" onClick={addItem}>
+            <Pill variant="ink" onClick={addItem} disabled={saving === 'add'}>
               {saving === 'add' ? 'Adding…' : '+ Add'}
             </Pill>
           </div>
@@ -520,10 +535,11 @@ export default function InventoryPage() {
                               </button>
                               <button
                                 onClick={() => toggleActive(it)}
-                                className="rounded-[8px] border border-[var(--line)] hover:border-[var(--ink)] font-semibold text-[11.5px] mr-1.5"
+                                disabled={saving === it.sku}
+                                className="rounded-[8px] border border-[var(--line)] hover:border-[var(--ink)] font-semibold text-[11.5px] mr-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                 style={{ padding: '5px 9px' }}
                               >
-                                Pause
+                                {saving === it.sku ? 'Saving…' : 'Pause'}
                               </button>
                               <button
                                 onClick={() => deleteItem(it.sku, it.name)}
@@ -544,7 +560,8 @@ export default function InventoryPage() {
                                       type="time"
                                       value={draftFrom}
                                       onChange={(e) => setDraftFrom(e.target.value)}
-                                      className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] text-[13px]"
+                                      disabled={saving === it.sku}
+                                      className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] text-[13px] disabled:opacity-50"
                                       style={{ padding: '6px 8px' }}
                                     />
                                   </div>
@@ -554,7 +571,8 @@ export default function InventoryPage() {
                                       type="time"
                                       value={draftTo}
                                       onChange={(e) => setDraftTo(e.target.value)}
-                                      className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] text-[13px]"
+                                      disabled={saving === it.sku}
+                                      className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] text-[13px] disabled:opacity-50"
                                       style={{ padding: '6px 8px' }}
                                     />
                                   </div>
@@ -568,7 +586,8 @@ export default function InventoryPage() {
                                             key={d.key}
                                             type="button"
                                             onClick={() => toggleDraftDay(d.key)}
-                                            className={`text-[11px] font-semibold rounded-[6px] border ${
+                                            disabled={saving === it.sku}
+                                            className={`text-[11px] font-semibold rounded-[6px] border disabled:opacity-50 ${
                                               on
                                                 ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]'
                                                 : 'bg-[var(--card)] border-[var(--line)] hover:border-[var(--ink)]'
@@ -584,7 +603,7 @@ export default function InventoryPage() {
                                   <button
                                     onClick={() => saveAvailability(it)}
                                     disabled={saving === it.sku}
-                                    className="rounded-[8px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[12px]"
+                                    className="rounded-[8px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[12px] disabled:opacity-50"
                                     style={{ padding: '8px 14px' }}
                                   >
                                     {saving === it.sku ? 'Saving…' : 'Save hours'}
@@ -593,7 +612,8 @@ export default function InventoryPage() {
                                     onClick={() => {
                                       setDraftFrom(''); setDraftTo(''); setDraftDays(new Set());
                                     }}
-                                    className="text-[11.5px] text-[var(--mute)] hover:text-[var(--ink)] underline"
+                                    disabled={saving === it.sku}
+                                    className="text-[11.5px] text-[var(--mute)] hover:text-[var(--ink)] underline disabled:opacity-50"
                                   >
                                     Clear (24×7)
                                   </button>
@@ -685,8 +705,9 @@ export default function InventoryPage() {
                       <tr key={i}>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>
                           <input
-                            className="w-full bg-transparent border-b border-transparent hover:border-[var(--line)] focus:border-[var(--ink)] focus:outline-none"
+                            className="w-full bg-transparent border-b border-transparent hover:border-[var(--line)] focus:border-[var(--ink)] focus:outline-none disabled:opacity-50"
                             value={p.name}
+                            disabled={importing}
                             onChange={(e) => {
                               const next = [...importPreview];
                               next[i] = { ...next[i], name: e.target.value };
@@ -698,8 +719,9 @@ export default function InventoryPage() {
                           <input
                             type="number"
                             min={0}
-                            className="w-20 bg-transparent border-b border-transparent hover:border-[var(--line)] focus:border-[var(--ink)] focus:outline-none"
+                            className="w-20 bg-transparent border-b border-transparent hover:border-[var(--line)] focus:border-[var(--ink)] focus:outline-none disabled:opacity-50"
                             value={p.price ?? 0}
+                            disabled={importing}
                             onChange={(e) => {
                               const next = [...importPreview];
                               next[i] = { ...next[i], price: parseFloat(e.target.value) || 0 };
@@ -711,8 +733,9 @@ export default function InventoryPage() {
                           <input
                             type="number"
                             min={0}
-                            className="w-20 bg-transparent border-b border-transparent hover:border-[var(--line)] focus:border-[var(--ink)] focus:outline-none"
+                            className="w-20 bg-transparent border-b border-transparent hover:border-[var(--line)] focus:border-[var(--ink)] focus:outline-none disabled:opacity-50"
                             value={p.stock ?? 0}
+                            disabled={importing}
                             onChange={(e) => {
                               const next = [...importPreview];
                               next[i] = { ...next[i], stock: parseInt(e.target.value, 10) || 0 };
@@ -726,7 +749,8 @@ export default function InventoryPage() {
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid var(--line)', textAlign: 'right' }}>
                           <button
                             onClick={() => setImportPreview(importPreview.filter((_, j) => j !== i))}
-                            className="text-[11px] text-red-500 hover:underline"
+                            disabled={importing}
+                            className="text-[11px] text-red-500 hover:underline disabled:opacity-50"
                           >
                             Remove
                           </button>

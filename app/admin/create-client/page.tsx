@@ -41,6 +41,7 @@ export default function AdminCreateClientPage() {
   const [result, setResult] = useState<CreateResult | null>(null);
 
   const submit = async () => {
+    if (creating) return;
     if (!email || !businessName || !whatsappNumber) {
       toast.error('Email, business name, and WhatsApp number are required');
       return;
@@ -211,7 +212,7 @@ export default function AdminCreateClientPage() {
         </Panel>
 
         <div className="flex items-center justify-end gap-2">
-          <Pill variant="ink" onClick={submit}>
+          <Pill variant="ink" onClick={submit} disabled={creating || !email || !businessName || !whatsappNumber}>
             {creating ? 'Creating…' : 'Create & handover →'}
           </Pill>
         </div>

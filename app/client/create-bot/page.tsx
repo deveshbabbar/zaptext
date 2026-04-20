@@ -51,12 +51,15 @@ export default function CreateBotPage() {
       toast.error('Enter a URL');
       return;
     }
+    // Capture selectedType NOW before any await — prevents stale closure if
+    // user changes type selector while the scrape request is in-flight.
+    const typeForScrape = selectedType;
     setScraping(true);
     try {
       const res = await fetch('/api/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: websiteUrl, businessType: selectedType }),
+        body: JSON.stringify({ url: websiteUrl, businessType: typeForScrape }),
       });
       const data = await res.json();
       if (data.success && data.data) {
@@ -65,7 +68,7 @@ export default function CreateBotPage() {
           for (const [key, value] of Object.entries(data.data)) {
             if (value && (!(key in prev) || prev[key] === '' || prev[key] === undefined)) merged[key] = value;
           }
-          merged.type = selectedType;
+          merged.type = typeForScrape;
           return merged;
         });
         if (data.partial && data.message) {
@@ -221,7 +224,7 @@ export default function CreateBotPage() {
                   className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
                   style={{ padding: '11px 13px' }}
                 />
-                <Pill variant="ink" type="button" onClick={handleAutoFill}>
+                <Pill variant="ink" type="button" onClick={handleAutoFill} disabled={scraping}>
                   {scraping ? 'Extracting…' : '🔍 Extract'}
                 </Pill>
               </div>
@@ -263,7 +266,7 @@ export default function CreateBotPage() {
 
             <div className="flex justify-between">
               <Pill onClick={() => setStep(1)}>← Back</Pill>
-              <Pill variant="ink" type="submit">
+              <Pill variant="ink" type="submit" disabled={submitting}>
                 {submitting ? 'Creating…' : 'Create my bot 🚀'}
               </Pill>
             </div>

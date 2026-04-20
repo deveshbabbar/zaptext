@@ -13,14 +13,17 @@ interface CommonFieldsProps {
 const LANGUAGE_OPTIONS = ['Hindi', 'English', 'Hinglish', 'Punjabi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati'];
 
 // Strip +91 / 91 / leading 0 / spaces so only the 10-digit number shows in input.
-// If the input doesn't match an Indian-mobile pattern, return raw digits
-// unchanged — the UI's length-mismatch warning then fires so nothing is
-// silently truncated.
+// The stored form is `+91<10 digits>`; as the user types a single digit D the
+// stored value passes through `+91D`. We MUST strip the leading 91 regardless
+// of total length, otherwise typing "9" displays as "919" (the bug where a
+// single keystroke produces "9191919…").
 function phoneWithoutPrefix(raw: string): string {
   const digits = (raw || '').replace(/\D/g, '');
-  if (digits.startsWith('91') && digits.length === 12) return digits.slice(2);
-  if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
-  return digits;
+  // Country-coded (starts with 91) — strip, clamp to at most 10 remaining digits.
+  if (digits.startsWith('91')) return digits.slice(2, 12);
+  // Leading-zero Indian format (e.g. 09876543210) — strip, clamp to 10.
+  if (digits.startsWith('0') && digits.length >= 11) return digits.slice(1, 11);
+  return digits.slice(0, 10);
 }
 
 interface DaySchedule {

@@ -60,28 +60,56 @@ export async function POST(request: NextRequest) {
       const bulk = body.bulk as Record<string, unknown>;
       const writes: Record<string, string> = {};
 
-      // Languages → also regenerates system_prompt
-      if (Array.isArray(bulk.languages)) {
-        const langs = (bulk.languages as unknown[]).filter(
-          (v): v is string => typeof v === 'string' && v.trim().length > 0
-        );
-        if (langs.length === 0) {
-          return NextResponse.json({ error: 'languages must be a non-empty string array' }, { status: 400 });
-        }
-        const kb = parseKb(bot.knowledge_base_json);
-        if (isKbCorrupted(bot.knowledge_base_json, kb)) {
+      // Knowledge base + languages both touch the same JSON cell. Process them
+      // together so the final KB has both the user's edits AND the language
+      // selection merged in, then regenerate the system_prompt from the result.
+      const hasKbEdit = typeof bulk.knowledge_base_json === 'string';
+      const hasLangChange = Array.isArray(bulk.languages);
+
+      if (hasKbEdit || hasLangChange) {
+        const currentKb = parseKb(bot.knowledge_base_json);
+        if (isKbCorrupted(bot.knowledge_base_json, currentKb)) {
           return NextResponse.json(
             { error: 'Bot configuration is corrupted — contact support or re-submit the onboarding form to reset it.' },
             { status: 422 }
           );
         }
-        kb.languages = langs;
-        writes.knowledge_base_json = JSON.stringify(kb);
-        const regeneratedPrompt = generateSystemPrompt(kb as unknown as ClientConfig);
-        // If the caller ALSO sent an edited system_prompt, their edit wins
-        // (they may have tweaked it manually); otherwise use the regenerated one.
+
+        let nextKb: Record<string, unknown>;
+        if (hasKbEdit) {
+          const rawKb = bulk.knowledge_base_json as string;
+          if (!isValidJson(rawKb)) {
+            return NextResponse.json(
+              { error: 'Business knowledge must be valid JSON. Fix the syntax and try again.' },
+              { status: 400 }
+            );
+          }
+          const parsed = JSON.parse(rawKb || '{}');
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return NextResponse.json(
+              { error: 'Business knowledge must be a JSON object (starts with { and ends with }).' },
+              { status: 400 }
+            );
+          }
+          nextKb = parsed as Record<string, unknown>;
+        } else {
+          nextKb = { ...currentKb };
+        }
+
+        if (hasLangChange) {
+          const langs = (bulk.languages as unknown[]).filter(
+            (v): v is string => typeof v === 'string' && v.trim().length > 0
+          );
+          if (langs.length === 0) {
+            return NextResponse.json({ error: 'languages must be a non-empty string array' }, { status: 400 });
+          }
+          nextKb.languages = langs;
+        }
+
+        writes.knowledge_base_json = JSON.stringify(nextKb);
+        // Caller's manual system_prompt edit always wins; otherwise regenerate.
         if (typeof bulk.system_prompt !== 'string') {
-          writes.system_prompt = regeneratedPrompt;
+          writes.system_prompt = generateSystemPrompt(nextKb as unknown as ClientConfig);
         }
       }
 

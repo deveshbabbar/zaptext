@@ -26,13 +26,25 @@ export default function ClientSettingsPage() {
   // If they did, we preserve their edit on save. Otherwise, saving languages
   // regenerates the prompt server-side and we accept that result.
   const [promptDirty, setPromptDirty] = useState(false);
+  const [kbDirty, setKbDirty] = useState(false);
+  const [kbError, setKbError] = useState('');
+  const [syncingInv, setSyncingInv] = useState(false);
 
   useEffect(() => {
     fetch('/api/client/settings', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         setPrompt(data.systemPrompt || '');
-        setConfig(data.knowledgeBase || '');
+        // Pretty-print on load so the textarea is readable. If the stored value
+        // is invalid JSON (corrupted), show it raw so the user can fix it.
+        const rawKb = data.knowledgeBase || '';
+        let prettyKb = rawKb;
+        try {
+          prettyKb = rawKb ? JSON.stringify(JSON.parse(rawKb), null, 2) : '';
+        } catch {
+          prettyKb = rawKb;
+        }
+        setConfig(prettyKb);
         setExistingSystem(data.existingSystem || '');
         setExportFormat((data.exportFormat as Format) || 'csv');
         setUpiId(data.upiId || '');
@@ -43,10 +55,59 @@ export default function ClientSettingsPage() {
           setLanguages(data.languages);
         }
         setPromptDirty(false);
+        setKbDirty(false);
+        setKbError('');
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
+
+  const validateKb = (raw: string): string => {
+    if (!raw.trim()) return 'Business knowledge cannot be empty.';
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return 'Must be a JSON object — start with { and end with }.';
+      }
+      return '';
+    } catch (e) {
+      return `Invalid JSON: ${String(e).replace('SyntaxError: ', '').slice(0, 120)}`;
+    }
+  };
+
+  const onKbChange = (next: string) => {
+    setConfig(next);
+    setKbDirty(true);
+    setKbError(validateKb(next));
+  };
+
+  const formatKb = () => {
+    try {
+      const pretty = JSON.stringify(JSON.parse(config), null, 2);
+      setConfig(pretty);
+      setKbDirty(true);
+      setKbError('');
+    } catch {
+      setKbError('Cannot format — fix the JSON syntax first.');
+    }
+  };
+
+  const syncInventoryFromForm = async () => {
+    setSyncingInv(true);
+    try {
+      const res = await fetch('/api/client/inventory/sync-from-form', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Products synced to inventory.');
+      } else {
+        toast.error(data.error || data.message || 'Sync failed');
+      }
+    } catch {
+      toast.error('Sync failed');
+    } finally {
+      setSyncingInv(false);
+    }
+  };
 
   const toggleLanguage = (lang: string) => {
     setLanguages((prev) => {
@@ -66,6 +127,17 @@ export default function ClientSettingsPage() {
   };
 
   const handleSaveAll = async () => {
+    // Block save if KB is dirty and invalid — prevents writing broken JSON
+    // that would corrupt the bot config (422 error on next language change).
+    if (kbDirty) {
+      const err = validateKb(config);
+      if (err) {
+        setKbError(err);
+        toast.error('Fix business knowledge JSON before saving.');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const bulk: Record<string, unknown> = {
@@ -76,8 +148,9 @@ export default function ClientSettingsPage() {
         export_format: exportFormat,
       };
       // Only send system_prompt if the user actually edited it — otherwise let
-      // the server regenerate from the (possibly new) languages array.
+      // the server regenerate from the (possibly new) languages array / KB.
       if (promptDirty) bulk.system_prompt = prompt;
+      if (kbDirty) bulk.knowledge_base_json = config;
 
       const res = await fetch('/api/client/settings', {
         method: 'POST',
@@ -88,7 +161,13 @@ export default function ClientSettingsPage() {
       if (res.ok && data.success) {
         if (data.systemPrompt) setPrompt(data.systemPrompt);
         setPromptDirty(false);
-        toast.success('Saved — all changes applied');
+        setKbDirty(false);
+        setKbError('');
+        if (kbDirty) {
+          toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
+        } else {
+          toast.success('Saved — all changes applied');
+        }
       } else {
         toast.error(data.error || 'Failed to save');
       }
@@ -98,14 +177,6 @@ export default function ClientSettingsPage() {
       setSaving(false);
     }
   };
-
-  const prettyConfig = (() => {
-    try {
-      return JSON.stringify(JSON.parse(config), null, 2);
-    } catch {
-      return config;
-    }
-  })();
 
   return (
     <>
@@ -265,13 +336,52 @@ export default function ClientSettingsPage() {
               </div>
             </Panel>
 
-            <Panel title="Business knowledge" sub="Parsed from onboarding. Read-only for now.">
-              <pre
-                className="zt-mono whitespace-pre-wrap text-[12.5px] bg-[var(--bg-2)] rounded-[10px] overflow-y-auto m-0"
-                style={{ padding: 14, maxHeight: 400 }}
-              >
-                {prettyConfig}
-              </pre>
+            <Panel
+              title="Business knowledge"
+              sub="Edit your bot's menu, delivery info, offers, etc. Must be valid JSON. Changes here re-generate the system prompt when you hit Save at the top (unless you've manually edited it)."
+            >
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={formatKb}
+                  disabled={saving}
+                  className="text-[12px] font-semibold rounded-[8px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-50"
+                  style={{ padding: '5px 10px' }}
+                >
+                  ⚙ Format JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={syncInventoryFromForm}
+                  disabled={syncingInv || saving || kbDirty}
+                  title={kbDirty ? 'Save knowledge first, then sync' : 'Copy menu / products into the inventory sheet'}
+                  className="text-[12px] font-semibold rounded-[8px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ padding: '5px 10px' }}
+                >
+                  {syncingInv ? 'Syncing…' : '📥 Sync to inventory'}
+                </button>
+                {kbDirty && !kbError && (
+                  <span className="text-[11.5px] text-[#E89A1C] font-semibold">● Unsaved changes</span>
+                )}
+                {kbError && (
+                  <span className="text-[11.5px] text-red-500 font-semibold">⚠ {kbError}</span>
+                )}
+              </div>
+              <textarea
+                value={config}
+                onChange={(e) => onKbChange(e.target.value)}
+                rows={22}
+                spellCheck={false}
+                className={`w-full rounded-[10px] border bg-[var(--bg-2)] focus:outline-none zt-mono text-[12.5px] ${
+                  kbError
+                    ? 'border-red-500/60 focus:border-red-500'
+                    : 'border-[var(--line)] focus:border-[var(--ink)]'
+                }`}
+                style={{ padding: 14, resize: 'vertical' }}
+              />
+              <p className="text-[11.5px] text-[var(--mute)] mt-2 m-0">
+                Tip: if you add / remove menu items here, click <b>Sync to inventory</b> after saving to push them into the Products &amp; Inventory sheet. Existing stock is preserved.
+              </p>
             </Panel>
           </div>
         )}

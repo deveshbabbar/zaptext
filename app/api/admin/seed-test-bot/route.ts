@@ -5,6 +5,7 @@ import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { setActiveBotId } from '@/lib/active-bot';
 import { GymFields, RestaurantFields, SalonFields, ClientConfig, ClientRow, BusinessType } from '@/lib/types';
 import { generateId, getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
+import { clerkClient } from '@clerk/nextjs/server';
 
 const SUPPORTED_SEED_TYPES: BusinessType[] = ['gym', 'restaurant', 'salon'];
 
@@ -195,6 +196,32 @@ export async function POST(req: NextRequest) {
     }
     const bizType = bizTypeRaw as BusinessType;
 
+    // Optional: seed the bot onto a different user's account (by email).
+    // Defaults to the admin's own userId for backwards compat.
+    const targetEmailRaw = typeof body.targetEmail === 'string' ? body.targetEmail.trim() : '';
+    let ownerUserId = user.userId;
+    let ownerEmailForReport = user.email || '';
+    if (targetEmailRaw) {
+      try {
+        const cc = await clerkClient();
+        const found = await cc.users.getUserList({ emailAddress: [targetEmailRaw], limit: 5 });
+        const target = found.data[0];
+        if (!target) {
+          return NextResponse.json(
+            { error: `No Clerk user found with email ${targetEmailRaw}` },
+            { status: 404 }
+          );
+        }
+        ownerUserId = target.id;
+        ownerEmailForReport = targetEmailRaw;
+      } catch (e) {
+        return NextResponse.json(
+          { error: `Clerk lookup failed: ${String(e).slice(0, 200)}` },
+          { status: 500 }
+        );
+      }
+    }
+
     const whatsappNumber = formatPhoneNumber(rawPhoneNumber);
     const config: ClientConfig =
       bizType === 'restaurant'
@@ -217,7 +244,7 @@ export async function POST(req: NextRequest) {
       knowledge_base_json: JSON.stringify(config),
       status: 'active',
       created_at: getISTTimestamp(),
-      owner_user_id: user.userId,
+      owner_user_id: ownerUserId,
       upi_id: '',
       upi_name: '',
       existing_system: '',
@@ -227,11 +254,16 @@ export async function POST(req: NextRequest) {
     };
 
     await addClient(client);
-    await setActiveBotId(clientId);
+    // Only auto-switch the admin's own active-bot cookie if the bot is for them.
+    // If we seeded on behalf of another user, don't clobber the admin's UI.
+    if (ownerUserId === user.userId) {
+      await setActiveBotId(clientId);
+    }
 
     return NextResponse.json({
       success: true,
       clientId,
+      ownerEmail: ownerEmailForReport,
       message: 'Test gym bot seeded. Send a WhatsApp message to the test number to try it.',
       adminUrl: `/admin/clients/${clientId}`,
     });

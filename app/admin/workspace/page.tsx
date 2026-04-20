@@ -66,6 +66,7 @@ export default function WorkspacePage() {
   const [seedPhoneNumberId, setSeedPhoneNumberId] = useState('');
   const [seedWhatsappNumber, setSeedWhatsappNumber] = useState('+15556333873');
   const [seedBusinessType, setSeedBusinessType] = useState<'gym' | 'restaurant' | 'salon'>('gym');
+  const [seedTargetEmail, setSeedTargetEmail] = useState('');
   const [seedingBot, setSeedingBot] = useState(false);
   const [seedResult, setSeedResult] = useState<{ clientId: string; adminUrl: string } | null>(null);
 
@@ -81,6 +82,7 @@ export default function WorkspacePage() {
           phoneNumberId: seedPhoneNumberId.trim(),
           whatsappNumber: seedWhatsappNumber.trim(),
           businessType: seedBusinessType,
+          targetEmail: seedTargetEmail.trim(),
         }),
       });
       const data = await res.json();
@@ -365,6 +367,21 @@ export default function WorkspacePage() {
                   </button>
                 );
               })}
+            </div>
+
+            <div className="mb-4">
+              <div className="text-[12.5px] font-semibold mb-1.5">Seed on behalf of user (optional)</div>
+              <input
+                type="email"
+                value={seedTargetEmail}
+                onChange={(e) => setSeedTargetEmail(e.target.value)}
+                placeholder="dbabbar09@gmail.com (leave empty to seed on own admin account)"
+                className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                style={{ padding: '11px 13px' }}
+              />
+              <p className="text-[11.5px] text-[var(--mute)] mt-1.5 m-0">
+                If set, the bot&apos;s owner_user_id is that user&apos;s Clerk id — useful for testing multi-bot switching from a client account.
+              </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

@@ -344,28 +344,39 @@ export async function updateClientFields(
   });
 
   invalidateCache('clients');
+
+  // Sheets has small read-after-write replication lag; a fresh read just
+  // after the batchUpdate can return the OLD cell values, which would then
+  // get cached and resurface on the next GET (e.g., settings page reload
+  // showing the pre-save language). Prime the cache with the known-updated
+  // row so subsequent reads see our writes immediately.
+  try {
+    const fresh = await getAllClients();
+    const idx = fresh.findIndex((c) => c.client_id === clientId);
+    if (idx >= 0) {
+      const updated = { ...fresh[idx] } as ClientRow & Record<string, unknown>;
+      for (const [field, value] of entries) {
+        if (field === 'opt_in_accepted') {
+          updated.opt_in_accepted = String(value).toUpperCase() === 'TRUE';
+        } else if (field === 'export_format') {
+          updated.export_format = value === 'json' ? 'json' : 'csv';
+        } else {
+          (updated as Record<string, unknown>)[field] = value;
+        }
+      }
+      const merged = [...fresh];
+      merged[idx] = updated as ClientRow;
+      primeCache<ClientRow[]>('clients', merged);
+    }
+  } catch {
+    // If the refresh fails, the next read will retry from Sheets directly.
+  }
 }
 
 export async function updateClientField(clientId: string, field: string, value: string): Promise<void> {
-  const fieldToCol = CLIENT_FIELD_TO_COL;
-  const col = fieldToCol[field];
-  if (!col) return;
-
-  const sheets = getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'clients!A2:A',
-  });
-  const rows = res.data.values || [];
-  const rowIndex = rows.findIndex((row) => row[0] === clientId);
-  if (rowIndex === -1) return;
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `clients!${col}${rowIndex + 2}`,
-    valueInputOption: 'RAW',
-    requestBody: { values: [[value]] },
-  });
-  invalidateCache('clients');
+  // Delegate to the batch helper so the same cache-priming / read-after-write
+  // handling applies uniformly to single- and multi-field updates.
+  await updateClientFields(clientId, { [field]: value });
 }
 
 // ─── Conversations ───

@@ -54,6 +54,16 @@ export default function ConversationsPage() {
             <b className="text-foreground">Conversations</b> · {phones.length} total · {totalMessages} messages
           </>
         }
+        actions={
+          <a
+            href="/api/client/conversations/export"
+            download
+            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--line)] bg-[var(--card)] hover:border-[var(--ink)] text-[12.5px] font-semibold transition"
+            style={{ padding: '7px 13px' }}
+          >
+            ⬇ Export
+          </a>
+        }
       />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead

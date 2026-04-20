@@ -36,6 +36,14 @@ function rowToItem(row: string[]): InventoryItem {
   };
 }
 
+// Normalize "9:30" → "09:30" so stored times are always HH:MM.
+function normalizeTime(t: string): string {
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return t;
+  return `${m[1].padStart(2, '0')}:${m[2]}`;
+}
+
 function itemToRow(item: InventoryItem): string[] {
   return [
     item.client_id,
@@ -47,8 +55,8 @@ function itemToRow(item: InventoryItem): string[] {
     item.is_active ? 'TRUE' : 'FALSE',
     item.updated_at,
     item.notes || '',
-    item.available_from || '',
-    item.available_to || '',
+    normalizeTime(item.available_from || ''),
+    normalizeTime(item.available_to || ''),
     (item.available_days || []).join(','),
   ];
 }
@@ -271,16 +279,22 @@ export async function batchUpsertItems(
   }
 
   // Sequential updates for existing items (usually 0 on first sync)
+  let updateSuccesses = 0;
   for (const { rowIndex, row } of toUpdate) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `inventory!A${rowIndex}:L${rowIndex}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [row] },
-    });
+    try {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `inventory!A${rowIndex}:L${rowIndex}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [row] },
+      });
+      updateSuccesses++;
+    } catch {
+      skipped++;
+    }
   }
 
-  return { written: toAppend.length + toUpdate.length, skipped };
+  return { written: toAppend.length + updateSuccesses, skipped };
 }
 
 export async function deleteItem(clientId: string, sku: string): Promise<boolean> {

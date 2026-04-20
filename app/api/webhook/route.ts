@@ -290,7 +290,9 @@ PAYMENT INSTRUCTIONS:
     }
 
     // Order context: teach bot the [ORDER:] tag for food/product orders (restaurant, D2C, etc.)
-    const orderCapable = ['restaurant', 'd2c'].includes(client.type);
+    // Skip entirely for trial bots — tags are stripped post-generation anyway, so injecting
+    // live stock + instructions would just confuse the AI into claiming orders it can't place.
+    const orderCapable = !isTrialBot && ['restaurant', 'd2c'].includes(client.type);
     let orderContext = '';
     if (orderCapable) {
       // Live inventory snapshot for the bot
@@ -430,7 +432,11 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
           if (staffNameMatch) {
             const staffName = staffNameMatch[1].trim();
             const activeMembers = await getActiveStaff(client.client_id);
-            const matched = activeMembers.find((m) => m.name.toLowerCase().includes(staffName.toLowerCase()));
+            const needle = staffName.toLowerCase();
+            const matched =
+              activeMembers.find((m) => m.name.toLowerCase() === needle) ??
+              activeMembers.find((m) => m.name.toLowerCase().startsWith(needle)) ??
+              activeMembers.find((m) => m.name.toLowerCase().includes(needle));
             if (matched?.whatsapp_phone) {
               const bookingId = `BK_${Date.now()}`;
               const staffMsg =

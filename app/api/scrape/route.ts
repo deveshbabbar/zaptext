@@ -108,7 +108,6 @@ function detectPlatform(url: string): string | null {
   if (u.includes('swiggy.com')) return 'swiggy';
   if (u.includes('instagram.com')) return 'instagram';
   if (u.includes('justdial.com')) return 'justdial';
-  if (u.includes('practo.com')) return 'practo';
   if (u.includes('sulekha.com')) return 'sulekha';
   if (u.includes('dineout.co.in') || u.includes('dineout.com')) return 'dineout';
   if (u.includes('magicpin.in')) return 'magicpin';
@@ -121,7 +120,6 @@ function platformNote(platform: string, url: string): string {
     zomato: `Zomato is a JavaScript app — menu data won't be in raw HTML. Try to infer businessName from URL: "${slug}". Return a restaurant template with empty arrays for menu.`,
     swiggy: `Swiggy is a JavaScript app. Infer businessName from URL: "${slug}". Return a restaurant template with placeholders.`,
     instagram: `Instagram blocks scraping. Extract the @username from the URL as instagramHandle and businessName. Return a business template with instagramHandle set.`,
-    practo: `Practo is a JavaScript app. Infer clinic/doctor name from URL: "${slug}". Return a clinic template with placeholders.`,
     justdial: `JustDial has limited static content. Extract what's available from the content provided, infer businessName from URL: "${slug}".`,
     sulekha: `Sulekha — infer businessName from URL: "${slug}". Return a template with placeholders.`,
     dineout: `Dineout is a JavaScript app. Infer businessName from URL: "${slug}". Return a restaurant template.`,
@@ -246,7 +244,6 @@ export async function POST(request: NextRequest) {
 function buildPrompt(type: BusinessType, context: string, url: string): string {
   const fields: Record<BusinessType, string> = {
     restaurant: `businessName, cuisineType, menuCategories (array of {category: string, items: [{name, price, description, isVeg: boolean, isBestseller: boolean}]}), deliveryAvailable (boolean), deliveryRadius, minimumOrder, paymentMethods (array), specialOffers, workingHours, address, city, whatsappNumber`,
-    clinic: `businessName, ownerName (doctor/owner), specialization, qualifications, services (array of {name, price, duration}), consultationFee, appointmentProcess, workingHours, address, city, emergencyNumber, insuranceAccepted (array), whatsappNumber`,
     salon: `businessName, salonName, gender, services (array of {category, items: [{name, price, duration}]}), packages (array of {name, includes, price}), brands (array), homeServiceAvailable (boolean), homeServiceCharges, workingHours, address, city, whatsappNumber`,
     gym: `businessName, gymName, facilities (array), membershipPlans (array of {name, duration, price, includes}), personalTraining ({available: boolean, pricePerSession, trainerInfo}), groupClasses (array), trialAvailable (boolean), trialDetails, workingHours, address, city, whatsappNumber`,
     coaching: `businessName, instituteName, coursesOffered (array of {name, targetAudience, duration, fee, schedule, mode}), facultyInfo, batchSize, demoClassAvailable (boolean), admissionProcess, workingHours, address, city, whatsappNumber`,

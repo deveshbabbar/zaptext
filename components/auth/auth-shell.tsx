@@ -58,9 +58,9 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
 
         <div className="relative flex flex-col gap-3">
           <ProofRow
-            initials="DK"
+            initials="RM"
             text={<>&ldquo;27 missed calls WhatsApp pe convert — pehli raat.&rdquo;</>}
-            by="— Dr. Karan Shah · Shah Dental, Ahmedabad"
+            by="— Rohit Menon · Menon Fitness, Bengaluru"
           />
           <ProofRow
             emoji="🇮🇳"

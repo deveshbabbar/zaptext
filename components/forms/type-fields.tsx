@@ -16,7 +16,6 @@ interface TypeFieldsProps {
 
 export function TypeFieldsForm({ type, data, onChange }: TypeFieldsProps) {
   switch (type) {
-    case 'clinic': return <ClinicForm data={data} onChange={onChange} />;
     case 'restaurant': return <RestaurantForm data={data} onChange={onChange} />;
     case 'coaching': return <CoachingForm data={data} onChange={onChange} />;
     case 'realestate': return <RealEstateForm data={data} onChange={onChange} />;
@@ -24,99 +23,6 @@ export function TypeFieldsForm({ type, data, onChange }: TypeFieldsProps) {
     case 'd2c': return <D2CForm data={data} onChange={onChange} />;
     case 'gym': return <GymForm data={data} onChange={onChange} />;
   }
-}
-
-// ─── Clinic Form ───
-function ClinicForm({ data, onChange }: { data: Record<string, unknown>; onChange: (f: string, v: unknown) => void }) {
-  const services = (data.services as Array<Record<string, string>>) || [{ name: '', price: '', duration: '' }];
-  const faqs = (data.commonFAQs as FAQ[]) || FAQ_TEMPLATES.clinic;
-  const insurance = (data.insuranceAccepted as string[]) || [];
-
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Doctor & Clinic Details</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label>Doctor Name *</Label>
-          <Input placeholder="Dr. Rajesh Sharma" value={(data.doctorName as string) || ''} onChange={(e) => onChange('doctorName', e.target.value)} />
-        </div>
-        <div>
-          <Label>Specialization *</Label>
-          <Input placeholder="Orthopedic Surgeon" value={(data.specialization as string) || ''} onChange={(e) => onChange('specialization', e.target.value)} />
-        </div>
-      </div>
-      <div>
-        <Label>Qualifications</Label>
-        <Input placeholder="MBBS, MS (Ortho), AIIMS Delhi" value={(data.qualifications as string) || ''} onChange={(e) => onChange('qualifications', e.target.value)} />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label>Consultation Fee *</Label>
-          <Input placeholder="Rs.500 for first visit" value={(data.consultationFee as string) || ''} onChange={(e) => onChange('consultationFee', e.target.value)} />
-        </div>
-        <div>
-          <Label>Emergency Number</Label>
-          <Input placeholder="+919876543210" value={(data.emergencyNumber as string) || ''} onChange={(e) => onChange('emergencyNumber', e.target.value)} />
-        </div>
-      </div>
-      <div>
-        <Label>Appointment Process</Label>
-        <Input placeholder="Call to book, walk-in available Mon-Wed" value={(data.appointmentProcess as string) || ''} onChange={(e) => onChange('appointmentProcess', e.target.value)} />
-      </div>
-      <div>
-        <Label>Insurance Accepted (comma-separated)</Label>
-        <Input
-          placeholder="CGHS, ESI, Star Health"
-          value={insurance.join(', ')}
-          onChange={(e) => onChange('insuranceAccepted', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-        />
-      </div>
-
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Services</h3>
-      <DynamicList
-        items={services}
-        onChange={(items) => onChange('services', items)}
-        newItem={() => ({ name: '', price: '', duration: '' })}
-        addLabel="Add Service"
-        renderItem={(item, _, update) => (
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Service Name</Label>
-              <Input placeholder="Knee Replacement" value={item.name} onChange={(e) => update('name', e.target.value)} />
-            </div>
-            <div>
-              <Label>Price</Label>
-              <Input placeholder="Rs.2,50,000" value={item.price} onChange={(e) => update('price', e.target.value)} />
-            </div>
-            <div>
-              <Label>Duration</Label>
-              <Input placeholder="2-3 hours" value={item.duration} onChange={(e) => update('duration', e.target.value)} />
-            </div>
-          </div>
-        )}
-      />
-
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Common FAQs</h3>
-      <DynamicList
-        items={faqs}
-        onChange={(items) => onChange('commonFAQs', items)}
-        newItem={() => ({ question: '', answer: '' })}
-        addLabel="Add FAQ"
-        renderItem={(item, _, update) => (
-          <div className="space-y-2">
-            <div>
-              <Label>Question</Label>
-              <Input value={item.question} onChange={(e) => update('question', e.target.value)} />
-            </div>
-            <div>
-              <Label>Answer</Label>
-              <Textarea value={item.answer} onChange={(e) => update('answer', e.target.value)} rows={2} placeholder="Bot will answer with this..." />
-            </div>
-          </div>
-        )}
-      />
-    </div>
-  );
 }
 
 // ─── Restaurant Form ───

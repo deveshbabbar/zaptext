@@ -52,7 +52,7 @@ function primeCache<T>(key: string, data: T): void {
 }
 
 const VALID_BIZ_TYPES: ReadonlyArray<BusinessType> = [
-  'clinic', 'restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym',
+  'restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym',
 ];
 const VALID_STATUSES: ReadonlyArray<ClientRow['status']> = [
   'active', 'pending', 'paused', 'rejected', 'error',
@@ -73,9 +73,9 @@ export async function getAllClients(): Promise<ClientRow[]> {
       const rawStatus = row[9] || 'active';
       const type = (VALID_BIZ_TYPES as ReadonlyArray<string>).includes(rawType)
         ? (rawType as BusinessType)
-        : ('clinic' as BusinessType);
+        : ('restaurant' as BusinessType);
       if (rawType && type !== rawType) {
-        console.warn(`[clients] unknown business type "${rawType}" for ${row[0]} — defaulting to clinic`);
+        console.warn(`[clients] unknown/removed business type "${rawType}" for ${row[0]} — defaulting to restaurant (clinic vertical removed for WA policy compliance)`);
       }
       const status = (VALID_STATUSES as ReadonlyArray<string>).includes(rawStatus)
         ? (rawStatus as ClientRow['status'])

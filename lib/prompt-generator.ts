@@ -36,8 +36,6 @@ ${config.additionalInfo ? `ADDITIONAL CONTEXT: ${config.additionalInfo}` : ''}`;
 
 function buildTypeSpecificPrompt(config: ClientConfig): string {
   switch (config.type) {
-    case 'clinic':
-      return buildClinicPrompt(config);
     case 'restaurant':
       return buildRestaurantPrompt(config);
     case 'coaching':
@@ -51,42 +49,6 @@ function buildTypeSpecificPrompt(config: ClientConfig): string {
     case 'gym':
       return buildGymPrompt(config);
   }
-}
-
-function buildClinicPrompt(config: Extract<ClientConfig, { type: 'clinic' }>): string {
-  const servicesText = (config.services || [])
-    .map((s) => `- ${s.name}: ${s.price} (Duration: ${s.duration})`)
-    .join('\n');
-
-  const faqText = (config.commonFAQs || [])
-    .filter((f) => f.answer)
-    .map((f) => `Q: ${f.question}\nA: ${f.answer}`)
-    .join('\n\n');
-
-  return `BUSINESS TYPE: Medical Clinic / Doctor's Office
-
-DOCTOR INFORMATION:
-- Name: ${config.doctorName}
-- Specialization: ${config.specialization}
-- Qualifications: ${config.qualifications}
-- Consultation Fee: ${config.consultationFee}
-
-SERVICES OFFERED:
-${servicesText}
-
-APPOINTMENT PROCESS: ${config.appointmentProcess}
-EMERGENCY NUMBER: ${config.emergencyNumber}
-INSURANCE ACCEPTED: ${(config.insuranceAccepted || []).join(', ')}
-
-FREQUENTLY ASKED QUESTIONS:
-${faqText}
-
-STRICT RULES FOR CLINIC BOT:
-- NEVER give medical diagnoses or medical advice.
-- NEVER suggest medications or treatments.
-- Always recommend visiting the doctor for any medical questions.
-- For emergencies, immediately share the emergency number: ${config.emergencyNumber}
-- You can share service prices, appointment process, and general information.`;
 }
 
 function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant' }>): string {

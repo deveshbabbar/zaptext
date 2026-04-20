@@ -2,15 +2,6 @@ import { BusinessTypeMeta, BusinessType, FAQ } from './types';
 
 export const BUSINESS_TYPES: BusinessTypeMeta[] = [
   {
-    type: 'clinic',
-    label: 'Clinic / Doctor',
-    description: 'Hospitals, clinics, individual doctors, dentists, diagnostics',
-    icon: '🏥',
-    color: 'text-blue-400',
-    bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/30',
-  },
-  {
     type: 'restaurant',
     label: 'Restaurant / Cloud Kitchen',
     description: 'Restaurants, cafes, cloud kitchens, sweet shops, bakeries',
@@ -73,13 +64,6 @@ export function getBusinessTypeMeta(type: BusinessType): BusinessTypeMeta {
 // ─── Default FAQ Templates ───
 
 export const FAQ_TEMPLATES: Record<BusinessType, FAQ[]> = {
-  clinic: [
-    { question: 'Appointment kaise book karein?', answer: '' },
-    { question: 'Doctor ki fees kitni hai?', answer: '' },
-    { question: 'Kya insurance accept hota hai?', answer: '' },
-    { question: 'Clinic ka time kya hai?', answer: '' },
-    { question: 'Emergency mein kya karein?', answer: '' },
-  ],
   restaurant: [
     { question: 'Menu dikhao', answer: '' },
     { question: 'Delivery available hai?', answer: '' },

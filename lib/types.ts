@@ -29,18 +29,10 @@ export interface FAQ {
   answer: string;
 }
 
-export interface ClinicFields extends CommonFields {
-  type: 'clinic';
-  doctorName: string;
-  specialization: string;
-  qualifications: string;
-  services: ServiceItem[];
-  consultationFee: string;
-  appointmentProcess: string;
-  emergencyNumber: string;
-  insuranceAccepted: string[];
-  commonFAQs: FAQ[];
-}
+// NOTE: 'clinic' vertical removed 2026-04 for WhatsApp Business Policy
+// compliance — healthcare/telemedicine messaging is restricted in most
+// jurisdictions including India. Existing clinic rows are auto-disabled
+// via /api/admin/migrate-disable-clinics. Do not re-add this type.
 
 export interface MenuItem {
   name: string;
@@ -187,10 +179,9 @@ export interface GymFields extends CommonFields {
   timings: string;
 }
 
-export type BusinessType = 'clinic' | 'restaurant' | 'coaching' | 'realestate' | 'salon' | 'd2c' | 'gym';
+export type BusinessType = 'restaurant' | 'coaching' | 'realestate' | 'salon' | 'd2c' | 'gym';
 
 export type ClientConfig =
-  | ClinicFields
   | RestaurantFields
   | CoachingFields
   | RealEstateFields
@@ -231,7 +222,6 @@ export interface StaffMember {
 // Role label mapping used by UI + bot prompt
 export const STAFF_ROLE_LABELS: Record<string, { singular: string; plural: string; icon: string }> = {
   gym:        { singular: 'Trainer',      plural: 'Trainers',      icon: '🏋️' },
-  clinic:     { singular: 'Doctor',       plural: 'Doctors',       icon: '🩺' },
   salon:      { singular: 'Stylist',      plural: 'Stylists',      icon: '💇' },
   coaching:   { singular: 'Tutor',        plural: 'Tutors',        icon: '📚' },
   restaurant: { singular: 'Staff member', plural: 'Staff',         icon: '👨‍🍳' },

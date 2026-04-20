@@ -7,7 +7,7 @@ import { PLANS } from "@/lib/plans";
 // ─────────────────────────── DATA ───────────────────────────
 
 type ChatMsg = { who: "in" | "out"; t: string; time?: string; typing?: boolean };
-type BizKey = "restaurant" | "clinic" | "salon" | "coaching" | "realestate" | "d2c" | "gym";
+type BizKey = "restaurant" | "salon" | "coaching" | "realestate" | "d2c" | "gym";
 type Biz = {
   emoji: string;
   label: string;
@@ -61,50 +61,6 @@ const BIZ: Record<BizKey, Biz> = {
         who: "out",
         t: "Order placed ✓ ETA <b>32 min</b>. UPI link: pay.zpt.shop/a9x2<br/>Track: wa.me/track/8821",
         time: "7:44 PM",
-        typing: true,
-      },
-    ],
-  },
-  clinic: {
-    emoji: "🏥",
-    label: "Clinic",
-    name: "Dr. Shah Dental · Bot",
-    avatar: "S",
-    tagline: "Hospitals, clinics, doctors & diagnostics",
-    longDesc:
-      "Books appointments, shares fees & timings, answers insurance questions, sends reminders the night before, and escalates emergencies to the on-call doctor.",
-    stats: [
-      { n: "92%", l: "bookings auto-closed" },
-      { n: "18 hrs", l: "front desk saved/wk" },
-      { n: "< 12s", l: "slot confirmation" },
-    ],
-    faqs: [
-      { q: "Appointment kaise book karein?" },
-      { q: "Doctor ki fees kitni hai?" },
-      { q: "Kya insurance accept hota hai?" },
-      { q: "Clinic ka time kya hai?" },
-      { q: "Emergency mein kya karein?" },
-    ],
-    chat: [
-      { who: "in", t: "Hi, root canal ki appointment chahiye", time: "11:04 AM" },
-      {
-        who: "out",
-        t: "Hi! Root canal consult ₹500 hai (1st visit). Aaj <b>4:30 PM</b> ya kal <b>11:00 AM</b> — dono open hain.",
-        time: "11:04 AM",
-        typing: true,
-      },
-      { who: "in", t: "Kal 11 wala chalega", time: "11:05 AM" },
-      {
-        who: "out",
-        t: "Book ✓ <b>Mon 20 Apr · 11:00 AM</b> with Dr. Shah.<br/>Reminder kal subah 9 baje bhej denge. Insurance claim karni hai?",
-        time: "11:05 AM",
-        typing: true,
-      },
-      { who: "in", t: "Haan Star Health hai", time: "11:05 AM" },
-      {
-        who: "out",
-        t: "Cashless hai ✓ Card aur ID lekar aana. Pre-auth hum process kar denge — 2 din lagenge.",
-        time: "11:06 AM",
         typing: true,
       },
     ],
@@ -414,7 +370,7 @@ function Hero() {
               <span className="zt-serif text-[1.12em] text-[var(--ink)]">
                 &ldquo;order kaha hai, bhaiya?&rdquo;
               </span>{" "}
-              and reply like your best employee — in Hindi, English, or Hinglish. Clinics, restaurants, coaching, salons, real estate, D2C and gyms. Quick setup. No code.
+              and reply like your best employee — in Hindi, English, or Hinglish. Restaurants, coaching, salons, real estate, D2C and gyms. Quick setup. No code.
             </p>
             <div className="flex flex-wrap gap-3 mt-8">
               <Link
@@ -712,7 +668,7 @@ function BizSection() {
               </span>
             </>
           }
-          lead="Every business speaks its own language. A salon bot sells packages, a clinic bot books slots, a restaurant bot takes orders. Pick your industry — we'll show you what your bot will actually do."
+          lead="Every business speaks its own language. A salon bot sells packages, a gym bot manages trials, a restaurant bot takes orders. Pick your industry — we'll show you what your bot will actually do."
         />
         <div className="flex flex-wrap gap-2 mb-8">
           {(Object.entries(BIZ) as [BizKey, Biz][]).map(([k, v]) => (
@@ -842,7 +798,7 @@ function HowItWorks() {
       n: "01",
       tag: "Step 01 · ~1 min",
       h: "Pick your business type",
-      p: "Clinic, restaurant, coaching, salon, real estate, D2C or gym. Each comes pre-trained with the questions your customers actually ask.",
+      p: "Restaurant, coaching, salon, real estate, D2C or gym. Each comes pre-trained with the questions your customers actually ask.",
       mini: (
         <>
           business_type: <b>restaurant</b>
@@ -1244,10 +1200,10 @@ function Testimonial() {
               sab bot sambhal raha hai.&rdquo;
             </p>
             <div className="flex items-center gap-3 mt-7 text-[14px]">
-              <div className="w-[42px] h-[42px] rounded-full bg-[#D9FDD3] grid place-items-center font-bold">DK</div>
+              <div className="w-[42px] h-[42px] rounded-full bg-[#D9FDD3] grid place-items-center font-bold">RM</div>
               <div>
-                <div className="font-semibold">Dr. Karan Shah</div>
-                <div className="text-[var(--mute)]">Shah Dental, Ahmedabad · on ZapText Growth</div>
+                <div className="font-semibold">Rohit Menon</div>
+                <div className="text-[var(--mute)]">Menon Fitness, Bengaluru · on ZapText Growth</div>
               </div>
             </div>
           </div>

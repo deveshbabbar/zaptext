@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { ClientRow, BusinessType } from '@/lib/types';
 
 const TYPE_ICONS: Record<BusinessType, string> = {
-  clinic: '🏥',
   restaurant: '🍽️',
   coaching: '📚',
   realestate: '🏠',
@@ -14,7 +13,6 @@ const TYPE_ICONS: Record<BusinessType, string> = {
 };
 
 const TYPE_BG: Record<BusinessType, string> = {
-  clinic: 'bg-blue-100',
   restaurant: 'bg-amber-100',
   coaching: 'bg-purple-100',
   realestate: 'bg-green-100',

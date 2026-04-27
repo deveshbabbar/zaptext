@@ -235,6 +235,7 @@ export async function setPendingPayment(clientId: string, customerPhone: string,
       spreadsheetId: process.env.SPREADSHEET_ID!,
       range: PENDING_APPEND,
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [[clientId, phone, amount.toString(), note, expiresAt]] },
     });
   }

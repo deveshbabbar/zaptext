@@ -131,10 +131,14 @@ export async function upsertStaff(
       requestBody: { values: [memberToRow(member)] },
     });
   } else {
+    // INSERT_ROWS prevents Sheets from "OVERWRITE"-ing the next row when the
+    // table boundary is miscalculated. Default OVERWRITE has caused appended
+    // rows to silently disappear — same fix as addClient/upsertItem.
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'staff!A:J',
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [memberToRow(member)] },
     });
   }

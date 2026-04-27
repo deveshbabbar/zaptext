@@ -115,10 +115,14 @@ export async function createSubscription(
   record: SubscriptionRecord
 ): Promise<void> {
   const sheets = getSheets();
+  // INSERT_ROWS so we never silently OVERWRITE a previous subscription row —
+  // same fix as addClient. Critical here because losing a subscription row
+  // means the owner is unbilled or considered expired.
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: 'subscriptions!A:I',
     valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [
         [

@@ -177,6 +177,7 @@ export async function addDateOverride(override: DateOverride): Promise<void> {
     spreadsheetId: SPREADSHEET_ID,
     range: 'date_overrides!A:F',
     valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [[
         override.client_id, override.date, override.override_type,
@@ -351,10 +352,14 @@ export async function createBooking(params: {
   };
 
   const sheets = getSheets();
+  // INSERT_ROWS prevents silent OVERWRITE of the row after the table — same
+  // fix as addClient. Without it, appended bookings can vanish when Sheets
+  // miscalculates the table boundary.
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: 'bookings!A:M',
     valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [[
         booking.booking_id, booking.client_id, booking.customer_phone,

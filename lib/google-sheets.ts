@@ -407,10 +407,13 @@ export async function getConversationHistory(
 
 export async function addConversationMessage(msg: ConversationRow): Promise<void> {
   const sheets = getSheets();
+  // INSERT_ROWS for the same reason as addClient — default OVERWRITE can
+  // silently clobber rows when Sheets miscalculates the table boundary.
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: 'conversations!A:F',
     valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [[
         msg.timestamp,
@@ -498,6 +501,7 @@ export async function updateAnalytics(clientId: string, customerPhone: string): 
       spreadsheetId: SPREADSHEET_ID,
       range: 'analytics!A:D',
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: {
         values: [[today, clientId, 1, 1]],
       },

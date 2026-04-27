@@ -201,10 +201,15 @@ export async function upsertItem(
       requestBody: { values: [itemToRow(item)] },
     });
   } else {
+    // INSERT_ROWS prevents Sheets from "OVERWRITE"-ing the next row when its
+    // table-boundary detection is off (blank trailing rows / merged cells).
+    // Without this flag, appended items silently disappear — see addClient
+    // for the same fix on the clients sheet.
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'inventory!A:L',
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [itemToRow(item)] },
     });
   }
@@ -282,12 +287,14 @@ export async function batchUpsertItems(
     }
   }
 
-  // Single batch append for all new items
+  // Single batch append for all new items. INSERT_ROWS for the same reason
+  // as upsertItem above — default OVERWRITE can silently clobber rows.
   if (toAppend.length > 0) {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'inventory!A:L',
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: { values: toAppend },
     });
   }

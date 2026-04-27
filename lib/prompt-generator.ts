@@ -4,7 +4,28 @@ export function generateSystemPrompt(config: ClientConfig): string {
   const base = buildBasePrompt(config);
   const specific = buildTypeSpecificPrompt(config);
   const rules = buildResponseRules(config);
-  return `${base}\n\n${specific}\n\n${rules}`;
+  const extraInventory = buildInventorySection(config);
+  return `${base}\n\n${specific}${extraInventory ? '\n\n' + extraInventory : ''}\n\n${rules}`;
+}
+
+// Optional generic inventory block populated by mirrorInventoryToKb(). Lets
+// the bot see items the owner added via /client/inventory regardless of
+// vertical (gym supplements, salon products, coaching kits, etc.). Live stock
+// numbers are injected at runtime by the webhook — this static block is the
+// catalog the owner controls from the dashboard.
+function buildInventorySection(config: ClientConfig): string {
+  const extra = (config as unknown as { inventoryItems?: Array<{ name: string; price: number; notes?: string; available?: string }> }).inventoryItems;
+  if (!Array.isArray(extra) || extra.length === 0) return '';
+  const lines = extra
+    .filter((it) => it && typeof it.name === 'string' && it.name.trim())
+    .map((it) => {
+      const priceBit = it.price > 0 ? ` — ₹${it.price}` : '';
+      const noteBit = it.notes ? ` (${it.notes})` : '';
+      const availBit = it.available ? ` · available ${it.available}` : '';
+      return `  • ${it.name}${priceBit}${noteBit}${availBit}`;
+    });
+  if (lines.length === 0) return '';
+  return `ADDITIONAL ITEMS (from inventory dashboard):\n${lines.join('\n')}\n\nThese are live items you can offer customers. Live stock is appended to your prompt at message time — when you see "OUT OF STOCK" or "NOT AVAILABLE RIGHT NOW", refuse the order politely.`;
 }
 
 function buildBasePrompt(config: ClientConfig): string {
@@ -29,7 +50,10 @@ PERSONALITY:
 - Use emojis naturally but not excessively (1-2 per message max).
 - Address customers respectfully (aap, ji, sir/ma'am as appropriate).
 
-${config.welcomeMessage ? `WELCOME MESSAGE: When a customer messages for the first time, greet them with: "${config.welcomeMessage}"` : ''}
+${config.welcomeMessage ? `WELCOME MESSAGE TEMPLATE: "${config.welcomeMessage}"
+- When a customer messages for the first time (no prior conversation history), open with this welcome.
+- TRANSLATE the welcome into the PRIMARY language above before sending. The template captures the *meaning* — match the tone/wording of the customer's language, not the literal English (or whichever language the template happens to be in).
+- Keep the brand name and any phone numbers/UPI IDs unchanged. Translate only the natural-language parts.` : `WELCOME MESSAGE: When a customer messages for the first time, greet them warmly in the PRIMARY language above. Mention "${config.businessName}" by name, and ask how you can help. Keep it under 2 short lines.`}
 
 ${config.additionalInfo ? `ADDITIONAL CONTEXT: ${config.additionalInfo}` : ''}`;
 }

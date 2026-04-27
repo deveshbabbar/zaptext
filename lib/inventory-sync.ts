@@ -1,5 +1,7 @@
 import { ClientConfig, InventoryItem } from './types';
-import { batchUpsertItems, getInventory } from './inventory';
+import { batchUpsertItems, getInventory, getActiveInventory } from './inventory';
+import { getClientById, updateClientFields } from './google-sheets';
+import { generateSystemPrompt } from './prompt-generator';
 
 // Extract a numeric price from user-entered strings like "₹280", "Rs. 1,200",
 // "300/-", "1499 INR". Returns 0 if no number found.
@@ -137,4 +139,55 @@ export async function syncProductsFromConfig(
   const names = inputs.slice(0, written).map((i) => i.name);
 
   return { count: written, names, skipped };
+}
+
+// ─── Reverse direction: mirror live inventory → knowledge_base_json ───
+// Called after every /api/client/inventory mutation so the static KB JSON the
+// owner sees in /client/settings stays in sync with what they added/edited via
+// the inventory page. The bot also gets this list at runtime in its system
+// prompt (separate from the live-stock injection in webhook), so reading the
+// KB is enough to know what the bot knows.
+//
+// We write to a generic `inventoryItems` field (flat list) — type-specific
+// fields like menuCategories/products/membershipPlans stay untouched, since
+// those came from the onboarding form and have richer per-vertical structure.
+export async function mirrorInventoryToKb(clientId: string): Promise<void> {
+  const client = await getClientById(clientId);
+  if (!client) return;
+
+  const items = await getActiveInventory(clientId).catch(() => [] as InventoryItem[]);
+
+  let kb: Record<string, unknown> = {};
+  try {
+    kb = JSON.parse(client.knowledge_base_json || '{}');
+    if (!kb || typeof kb !== 'object' || Array.isArray(kb)) kb = {};
+  } catch {
+    // Corrupt KB — start fresh rather than crash the inventory mutation.
+    kb = {};
+  }
+
+  // Snapshot a compact, prompt-friendly subset. Skip stock count here: stock is
+  // volatile and mirroring it would churn the KB on every order. The bot still
+  // gets live stock via the webhook's runtime injection.
+  kb.inventoryItems = items.map((i) => ({
+    name: i.name,
+    price: i.price,
+    notes: i.notes || '',
+    available: (() => {
+      const w = (i.available_from || '') + '-' + (i.available_to || '');
+      const days = (i.available_days || []).join(',');
+      if (!i.available_from && !i.available_to && !days) return '';
+      return `${w}${days ? ` ${days}` : ''}`.trim();
+    })(),
+  }));
+
+  const newKbJson = JSON.stringify(kb);
+  // Regenerate system_prompt so the bot's static prompt also reflects the
+  // updated inventory list (in addition to the runtime live-stock injection).
+  const newPrompt = generateSystemPrompt(kb as unknown as ClientConfig);
+
+  await updateClientFields(clientId, {
+    knowledge_base_json: newKbJson,
+    system_prompt: newPrompt,
+  });
 }

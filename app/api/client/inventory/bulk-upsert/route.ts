@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
 import { upsertItem } from '@/lib/inventory';
+import { mirrorInventoryToKb } from '@/lib/inventory-sync';
 
 const MAX_ITEMS = 500;
 
@@ -53,6 +54,14 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       errors.push(`${name}: ${String(e).slice(0, 120)}`);
     }
+  }
+
+  // KB mirror so /client/settings JSON also reflects the bulk-imported items.
+  // Best-effort: a mirror failure shouldn't roll back a successful import.
+  if (imported > 0) {
+    mirrorInventoryToKb(bot.client_id).catch((e) =>
+      console.error('[bulk-upsert] KB mirror failed:', e),
+    );
   }
 
   return NextResponse.json({

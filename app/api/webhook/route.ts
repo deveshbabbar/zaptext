@@ -312,10 +312,12 @@ PAYMENT INSTRUCTIONS:
 - Use [PAY:] only once per order. If already paid, don't ask again.`;
     }
 
-    // Order context: teach bot the [ORDER:] tag for food/product orders (restaurant, D2C, etc.)
-    // Skip entirely for trial bots — tags are stripped post-generation anyway, so injecting
-    // live stock + instructions would just confuse the AI into claiming orders it can't place.
-    const orderCapable = !isTrialBot && ['restaurant', 'd2c'].includes(client.type);
+    // Order context: teach bot the [ORDER:] tag for food/product orders.
+    // Available for ALL non-trial bots — gyms can sell supplements, salons can
+    // sell products, coaching centers can sell course packages, etc. The owner
+    // controls availability by what they put in /client/inventory; if there's
+    // nothing in inventory the [ORDER:] tag is effectively dormant.
+    const orderCapable = !isTrialBot;
     let orderContext = '';
     if (orderCapable) {
       // Live inventory snapshot for the bot

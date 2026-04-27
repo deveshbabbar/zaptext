@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
 import { getInventory, upsertItem, deleteItem, setStock, adjustStock } from '@/lib/inventory';
+import { mirrorInventoryToKb } from '@/lib/inventory-sync';
 
 export async function GET() {
   const user = await getUserRole();
@@ -26,6 +27,9 @@ export async function POST(req: NextRequest) {
       const sku = typeof body.sku === 'string' ? body.sku : '';
       if (!sku) return NextResponse.json({ error: 'sku required' }, { status: 400 });
       await deleteItem(bot.client_id, sku);
+      // Best-effort KB mirror so /client/settings JSON stays in sync. Failures
+      // are logged but don't break the user-facing inventory action.
+      mirrorInventoryToKb(bot.client_id).catch((e) => console.error('[inventory] KB mirror after delete failed:', e));
       return NextResponse.json({ ok: true });
     }
 
@@ -37,6 +41,7 @@ export async function POST(req: NextRequest) {
       }
       const item = await setStock(bot.client_id, sku, qty);
       if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+      mirrorInventoryToKb(bot.client_id).catch((e) => console.error('[inventory] KB mirror after set-stock failed:', e));
       return NextResponse.json({ ok: true, item });
     }
 
@@ -48,6 +53,7 @@ export async function POST(req: NextRequest) {
       }
       const { item } = await adjustStock(bot.client_id, sku, delta);
       if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+      mirrorInventoryToKb(bot.client_id).catch((e) => console.error('[inventory] KB mirror after adjust-stock failed:', e));
       return NextResponse.json({ ok: true, item });
     }
 
@@ -87,6 +93,7 @@ export async function POST(req: NextRequest) {
       available_to: toVal,
       available_days: daysVal,
     });
+    mirrorInventoryToKb(bot.client_id).catch((e) => console.error('[inventory] KB mirror after upsert failed:', e));
     return NextResponse.json({ ok: true, item });
   } catch (err) {
     console.error('inventory POST error:', err);

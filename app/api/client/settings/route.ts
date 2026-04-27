@@ -4,6 +4,7 @@ import { resolveActiveBot } from '@/lib/active-bot';
 import { updateClientField, updateClientFields } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
+import { isValidUpiId } from '@/lib/payments';
 
 function parseKb(raw: string): Record<string, unknown> {
   try { return JSON.parse(raw || '{}'); } catch { return {}; }
@@ -114,7 +115,19 @@ export async function POST(request: NextRequest) {
       }
 
       if (typeof bulk.system_prompt === 'string') writes.system_prompt = bulk.system_prompt;
-      if (typeof bulk.upi_id === 'string') writes.upi_id = bulk.upi_id.trim();
+      if (typeof bulk.upi_id === 'string') {
+        const trimmedUpi = bulk.upi_id.trim();
+        // Empty string is allowed (owner clearing UPI). Otherwise must look
+        // like name@bank — otherwise the bot generates broken UPI links and
+        // the customer's payment app errors out.
+        if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
+          return NextResponse.json(
+            { error: 'INVALID_UPI', message: 'UPI ID must be in format name@bank (e.g. rohit@ybl).' },
+            { status: 400 }
+          );
+        }
+        writes.upi_id = trimmedUpi;
+      }
       if (typeof bulk.upi_name === 'string') writes.upi_name = bulk.upi_name.trim();
       if (typeof bulk.existing_system === 'string') writes.existing_system = bulk.existing_system.trim();
       if (bulk.export_format === 'csv' || bulk.export_format === 'json') {
@@ -175,6 +188,14 @@ export async function POST(request: NextRequest) {
     // would silently break all AI responses and the inventory sync for this bot.
     if (field === 'knowledge_base_json' && !isValidJson(value)) {
       return NextResponse.json({ error: 'Invalid JSON in knowledge_base_json' }, { status: 400 });
+    }
+
+    // Same UPI guard as the bulk path — non-empty value must look like name@bank.
+    if (field === 'upi_id' && typeof value === 'string' && value.trim() && !isValidUpiId(value.trim())) {
+      return NextResponse.json(
+        { error: 'INVALID_UPI', message: 'UPI ID must be in format name@bank (e.g. rohit@ybl).' },
+        { status: 400 }
+      );
     }
 
     await updateClientField(bot.client_id, field, value);

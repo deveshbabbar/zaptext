@@ -78,10 +78,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Calculate subscription dates — end = start + months*30 days
+    // Calculate subscription dates — end = start + N calendar months.
+    // Was previously `setDate(... + months*30)` which silently shorted owners
+    // by ~5 days on a 12-month plan. setMonth handles month-length correctly.
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setDate(endDate.getDate() + months * 30);
+    endDate.setMonth(endDate.getMonth() + months);
 
     const planAmount = computePlanPrice(validPlan, months);
 
@@ -114,7 +116,7 @@ export async function POST(req: NextRequest) {
           nextBilling: nextBilling.toISOString().slice(0, 10),
         }), ownerName);
       }
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@zaptext.shop';
+      const adminEmail = process.env.ADMIN_EMAIL || 'zaptextofficial@gmail.com';
       await sendTemplate(adminEmail, tplAdminNewSubscription({
         ownerName,
         ownerEmail: ownerEmail || 'unknown',

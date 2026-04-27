@@ -19,7 +19,7 @@ export default function WorkspacePage() {
   const [workspaceName, setWorkspaceName] = useState('ZapText HQ');
   const [language, setLanguage] = useState('English + Hinglish');
   const [timezone, setTimezone] = useState('Asia/Kolkata (IST)');
-  const [notificationEmail, setNotificationEmail] = useState('admin@zaptext.shop');
+  const [notificationEmail, setNotificationEmail] = useState('zaptextofficial@gmail.com');
   const [initing, setIniting] = useState(false);
   const [initReport, setInitReport] = useState<InitReport | null>(null);
 

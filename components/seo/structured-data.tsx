@@ -13,7 +13,7 @@ export function OrganizationJsonLd() {
       {
         '@type': 'ContactPoint',
         contactType: 'customer support',
-        email: 'support@zaptext.shop',
+        email: 'zaptextofficial@gmail.com',
         availableLanguage: ['en', 'hi'],
         areaServed: 'IN',
       },

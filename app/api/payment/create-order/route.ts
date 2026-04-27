@@ -35,7 +35,13 @@ export async function POST(req: NextRequest) {
     const amount = computePlanPrice(plan, months);
     const receipt = `rcpt_${generateId().slice(0, 8)}`;
 
-    const order = await createOrder(amount, 'INR', receipt);
+    // Attach notes so the server-to-server webhook can recover userId/plan/months
+    // and create the subscription even if the browser callback never fires.
+    const order = await createOrder(amount, 'INR', receipt, {
+      userId: user.userId,
+      plan,
+      months: String(months),
+    });
 
     return NextResponse.json({
       orderId: order.id,

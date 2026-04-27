@@ -27,6 +27,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'approve') {
+      // GUARD: refuse to approve a bot whose phone_number_id is empty —
+      // the WhatsApp webhook routes inbound messages by phone_number_id, so
+      // approving without it makes the bot silently dead (owner thinks they're
+      // live, customers message → nothing happens).
+      if (!client.phone_number_id || !client.phone_number_id.trim()) {
+        return NextResponse.json(
+          {
+            error: 'PHONE_NUMBER_ID_MISSING',
+            message:
+              'Cannot approve: phone_number_id is empty. Set the WhatsApp Business API phone_number_id on this client first (PATCH /api/clients/' + clientId + ') or the bot will not receive any messages.',
+          },
+          { status: 400 }
+        );
+      }
+
       // Activate the bot
       await updateClientField(clientId, 'status', 'active');
 
@@ -99,6 +114,51 @@ export async function POST(req: NextRequest) {
 
     if (action === 'reject') {
       await updateClientField(clientId, 'status', 'rejected');
+
+      // Notify the owner via email so they don't sit waiting forever and
+      // re-submit (which would trip the duplicate-bot guard and frustrate
+      // them further). Best-effort: any email failure is logged, not raised.
+      try {
+        if (client.owner_user_id) {
+          const cc = await clerkClient();
+          const owner = await cc.users.getUser(client.owner_user_id);
+          const ownerEmail = owner.emailAddresses[0]?.emailAddress;
+          const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
+          if (ownerEmail) {
+            await sendTemplate(ownerEmail, {
+              subject: `Update on your bot "${client.business_name}"`,
+              html: `
+<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F3EDE3;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a2e1d;">
+<div style="max-width:560px;margin:24px auto;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #e5dcc8;">
+  <div style="background:linear-gradient(135deg,#1a2e1d 0%,#1a5d47 100%);color:#FAF7F2;padding:28px 24px;">
+    <h1 style="margin:0;font-size:22px;font-weight:700;">We couldn't approve your bot — yet</h1>
+  </div>
+  <div style="padding:24px;line-height:1.6;font-size:14px;color:#1a2e1d;">
+    <p>Hi <strong>${ownerName}</strong>,</p>
+    <p>Your bot <strong>${client.business_name}</strong> wasn't approved this round.</p>
+    <p>Common reasons we have to decline:</p>
+    <ul style="padding-left:20px;line-height:1.8;">
+      <li>Missing or unclear opt-in evidence from your customers (WhatsApp Business policy requirement)</li>
+      <li>Business category restricted by Meta (healthcare, gambling, adult, firearms, crypto, etc.)</li>
+      <li>Incomplete onboarding details (missing menu, services, or contact info)</li>
+    </ul>
+    <p>This is reversible — reply to this email with what changed and we'll re-review within 24 hours.</p>
+    <div style="margin-top:24px;text-align:center;">
+      <a href="mailto:${process.env.ADMIN_EMAIL || 'zaptextofficial@gmail.com'}?subject=Re-review%20bot%20${encodeURIComponent(client.business_name)}" style="display:inline-block;background:#1a5d47;color:#FAF7F2;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:600;font-size:14px;">Reply for help</a>
+    </div>
+  </div>
+  <div style="padding:16px 24px;background:#FAF7F2;border-top:1px solid #e5dcc8;font-size:12px;color:#5a6b5d;text-align:center;">
+    ZapText · AI WhatsApp bots for every business
+  </div>
+</div>
+</body></html>`,
+            }, ownerName);
+          }
+        }
+      } catch (e) {
+        console.error('Reject notification email failed:', e);
+      }
 
       return NextResponse.json({ success: true, message: `Bot "${client.business_name}" has been rejected.` });
     }

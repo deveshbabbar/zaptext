@@ -184,6 +184,13 @@ export async function upsertItem(
     is_active: typeof input.is_active === 'boolean' ? input.is_active : existing?.item.is_active ?? true,
     updated_at: new Date().toISOString(),
     notes: typeof input.notes === 'string' ? input.notes : existing?.item.notes ?? '',
+    available_from:
+      typeof input.available_from === 'string' ? input.available_from : existing?.item.available_from ?? '',
+    available_to:
+      typeof input.available_to === 'string' ? input.available_to : existing?.item.available_to ?? '',
+    available_days: Array.isArray(input.available_days)
+      ? input.available_days
+      : existing?.item.available_days ?? [],
   };
 
   if (existing) {
@@ -257,6 +264,13 @@ export async function batchUpsertItems(
         is_active: typeof input.is_active === 'boolean' ? input.is_active : existing?.item.is_active ?? true,
         updated_at: now,
         notes: typeof input.notes === 'string' ? input.notes : existing?.item.notes ?? '',
+        available_from:
+          typeof input.available_from === 'string' ? input.available_from : existing?.item.available_from ?? '',
+        available_to:
+          typeof input.available_to === 'string' ? input.available_to : existing?.item.available_to ?? '',
+        available_days: Array.isArray(input.available_days)
+          ? input.available_days
+          : existing?.item.available_days ?? [],
       };
       if (existing) {
         toUpdate.push({ rowIndex: existing.rowIndex, row: itemToRow(item) });

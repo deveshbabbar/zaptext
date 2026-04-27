@@ -20,8 +20,8 @@ export default function ContactPage() {
         <div className="bg-card border border-border rounded-xl p-6 space-y-2">
           <h2 className="text-lg font-bold text-foreground">Email</h2>
           <p className="text-muted-foreground text-sm">Best for detailed questions, billing, and refunds.</p>
-          <a href="mailto:support@zaptext.shop" className="text-primary hover:underline break-all">
-            support@zaptext.shop
+          <a href="mailto:zaptextofficial@gmail.com" className="text-primary hover:underline break-all">
+            zaptextofficial@gmail.com
           </a>
         </div>
 
@@ -62,10 +62,10 @@ export default function ContactPage() {
       <section className="space-y-3 text-muted-foreground leading-relaxed">
         <h2 className="text-2xl font-bold text-foreground">Other Enquiries</h2>
         <ul className="list-disc pl-6 space-y-2">
-          <li><span className="text-foreground">Sales &amp; demos:</span> support@zaptext.shop with the subject &quot;Demo&quot;.</li>
-          <li><span className="text-foreground">Partnerships:</span> support@zaptext.shop with the subject &quot;Partnership&quot;.</li>
-          <li><span className="text-foreground">Privacy / data requests:</span> support@zaptext.shop with the subject &quot;Privacy&quot;.</li>
-          <li><span className="text-foreground">Grievance officer:</span> support@zaptext.shop with the subject &quot;Grievance&quot;.</li>
+          <li><span className="text-foreground">Sales &amp; demos:</span> zaptextofficial@gmail.com with the subject &quot;Demo&quot;.</li>
+          <li><span className="text-foreground">Partnerships:</span> zaptextofficial@gmail.com with the subject &quot;Partnership&quot;.</li>
+          <li><span className="text-foreground">Privacy / data requests:</span> zaptextofficial@gmail.com with the subject &quot;Privacy&quot;.</li>
+          <li><span className="text-foreground">Grievance officer:</span> zaptextofficial@gmail.com with the subject &quot;Grievance&quot;.</li>
         </ul>
       </section>
     </article>

@@ -110,7 +110,7 @@ export default function PrivacyPage() {
           <li>Lodge a complaint with the Data Protection Board of India.</li>
         </ul>
         <p>
-          To exercise any right, email <a href="mailto:support@zaptext.shop" className="text-foreground underline">support@zaptext.shop</a>. We respond within 30 days.
+          To exercise any right, email <a href="mailto:zaptextofficial@gmail.com" className="text-foreground underline">zaptextofficial@gmail.com</a>. We respond within 30 days.
         </p>
         <p>
           For requests from <b>end customers</b> (i.e., people who messaged a bot on our platform),
@@ -163,7 +163,7 @@ export default function PrivacyPage() {
         <h2 className="text-2xl font-bold text-foreground pt-4">14. Contact</h2>
         <p>
           For privacy questions, contact our Data Protection point-of-contact at{' '}
-          <a href="mailto:support@zaptext.shop" className="text-foreground underline">support@zaptext.shop</a>.
+          <a href="mailto:zaptextofficial@gmail.com" className="text-foreground underline">zaptextofficial@gmail.com</a>.
         </p>
       </section>
     </article>

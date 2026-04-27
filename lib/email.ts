@@ -30,13 +30,18 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
 
   const senderEmail = process.env.ZEPTO_SENDER_EMAIL || 'noreply@zaptext.shop';
   const senderName = process.env.ZEPTO_SENDER_NAME || 'ZapText';
+  // Reply-To: ZeptoMail is send-only — there's no inbox at zaptext.shop, so
+  // any customer reply to a noreply@ message would bounce. Route replies to
+  // a real inbox (Gmail by default). Override with ZEPTO_REPLY_TO_EMAIL.
+  const replyToEmail = process.env.ZEPTO_REPLY_TO_EMAIL || 'zaptextofficial@gmail.com';
 
   try {
-    console.log(`[Email] Sending to ${to} | Subject: ${subject} | From: ${senderName} <${senderEmail}>`);
+    console.log(`[Email] Sending to ${to} | Subject: ${subject} | From: ${senderName} <${senderEmail}> | Reply-To: ${replyToEmail}`);
 
     const body: Record<string, unknown> = {
       from: { address: senderEmail, name: senderName },
       to: [{ email_address: { address: to, name: toName || to } }],
+      reply_to: [{ address: replyToEmail, name: senderName }],
       subject,
       htmlbody: html,
     };

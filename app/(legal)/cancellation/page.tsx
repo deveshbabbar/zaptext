@@ -37,7 +37,7 @@ export default function CancellationPage() {
 
         <h2 className="text-2xl font-bold text-foreground pt-4">3. How to Cancel by Email</h2>
         <p>
-          Alternatively, email <span className="text-foreground">support@zaptext.shop</span> from
+          Alternatively, email <span className="text-foreground">zaptextofficial@gmail.com</span> from
           your registered address with the subject &quot;Cancel Subscription&quot;. We will process the
           request within 1 business day and send you a confirmation.
         </p>
@@ -58,7 +58,7 @@ export default function CancellationPage() {
 
         <h2 className="text-2xl font-bold text-foreground pt-4">6. Contact</h2>
         <p>
-          Need help cancelling? Email <span className="text-foreground">support@zaptext.shop</span>
+          Need help cancelling? Email <span className="text-foreground">zaptextofficial@gmail.com</span>
           and our team will assist you within 24 hours.
         </p>
       </section>

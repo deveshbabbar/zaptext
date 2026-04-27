@@ -337,6 +337,15 @@ export default function ClientSettingsPage() {
             </Panel>
 
             <Panel
+              title="WhatsApp number / phone_number_id"
+              sub="Need to switch the WhatsApp Business number this bot is wired to? That's an admin-only change — for security, owners can't edit phone_number_id directly (an attacker who got dashboard access could otherwise hijack the bot)."
+            >
+              <p className="text-[12.5px] text-[var(--mute)] m-0">
+                Email <a href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'zaptextofficial@gmail.com'}?subject=Change+phone_number_id+for+${encodeURIComponent(botName)}`} className="text-[var(--ink)] underline">support</a> with your new <span className="zt-mono">phone_number_id</span> from Meta Business Manager and we&apos;ll update it within 24 hours. The bot will be paused during the switch so customers see &quot;temporarily offline&quot; instead of going to the wrong number.
+              </p>
+            </Panel>
+
+            <Panel
               title="Business knowledge"
               sub="Edit your bot's menu, delivery info, offers, etc. Must be valid JSON. Changes here re-generate the system prompt when you hit Save at the top (unless you've manually edited it)."
             >

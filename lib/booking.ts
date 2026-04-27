@@ -43,7 +43,9 @@ export interface Booking {
   time_slot: string;
   end_time: string;
   service: string;
-  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+  // pending_approval = booking created by AI but waiting for staff (trainer/stylist/etc.)
+  // to type "approve BK_xxx" on WhatsApp before it's surfaced to the customer as confirmed.
+  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'pending_approval';
   notes: string;
   created_at: string;
   reminded: boolean;
@@ -288,10 +290,11 @@ export async function getAvailableSlots(
     slots = slots.filter((s) => s.service_type === serviceType || s.service_type === 'general');
   }
 
-  // Step 6: Remove already booked slots
+  // Step 6: Remove already booked slots. pending_approval also blocks the slot
+  // so two customers can't grab the same time while a trainer is reviewing.
   const existingBookings = await getBookingsForDate(clientId, date);
   const bookedTimes = existingBookings
-    .filter((b) => b.status === 'confirmed')
+    .filter((b) => b.status === 'confirmed' || b.status === 'pending_approval')
     .map((b) => b.time_slot);
   slots = slots.filter((s) => !bookedTimes.includes(s.start_time));
 
@@ -320,6 +323,9 @@ export async function createBooking(params: {
   endTime: string;
   service?: string;
   notes?: string;
+  // Pass 'pending_approval' when booking is for a specific staff member that
+  // needs to confirm via WhatsApp. Default 'confirmed' for owner-managed bookings.
+  status?: Booking['status'];
 }): Promise<Booking> {
   // Double-check slot is still available
   const available = await getAvailableSlots(params.clientId, params.date);
@@ -337,7 +343,7 @@ export async function createBooking(params: {
     time_slot: params.timeSlot,
     end_time: params.endTime,
     service: params.service || '',
-    status: 'confirmed',
+    status: params.status || 'confirmed',
     notes: params.notes || '',
     created_at: new Date().toISOString(),
     reminded: false,
@@ -359,7 +365,61 @@ export async function createBooking(params: {
     },
   });
 
+  // Race-detect: re-read bookings for this date+slot. Two requests that both
+  // passed the availability check can each append a row. Keep the earliest by
+  // created_at, mark the rest as 'cancelled' with a [RACE-LOST] note so the
+  // customer-facing flow can fall back gracefully.
+  try {
+    const sameSlot = (await getBookingsForDate(params.clientId, params.date))
+      .filter((b) =>
+        b.time_slot === params.timeSlot &&
+        (b.status === 'confirmed' || b.status === 'pending_approval')
+      )
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    if (sameSlot.length > 1) {
+      const winner = sameSlot[0];
+      if (winner.booking_id !== booking.booking_id) {
+        // We lost the race — cancel our row and tell caller via SLOT_TAKEN.
+        await cancelBooking(booking.booking_id, '[RACE-LOST] Slot taken by earlier booking');
+        throw new Error('SLOT_TAKEN');
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === 'SLOT_TAKEN') throw e;
+    // Log but don't fail the booking if race-check itself errored
+    console.error('[createBooking] race-check failed (non-fatal):', e);
+  }
+
   return booking;
+}
+
+// ─── Approve a pending_approval booking → confirmed ───
+// Used when staff (trainer/stylist/agent) types "approve BK_xxx" on WhatsApp.
+// Returns the updated booking, or null if not found / not in pending state.
+export async function approveBooking(bookingId: string): Promise<Booking | null> {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'bookings!A2:M',
+  });
+  const rows = res.data.values || [];
+  const rowIndex = rows.findIndex((row) => row[0] === bookingId);
+  if (rowIndex === -1) return null;
+
+  const current = rowToBooking(rows[rowIndex]);
+  // Only flip pending_approval → confirmed; idempotent if already confirmed.
+  if (current.status !== 'pending_approval' && current.status !== 'confirmed') {
+    return current;
+  }
+  if (current.status === 'pending_approval') {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `bookings!I${rowIndex + 2}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [['confirmed']] },
+    });
+  }
+  return { ...current, status: 'confirmed' };
 }
 
 // ─── Cancel Booking ───

@@ -21,12 +21,17 @@ const razorpay = { get instance() { return getRazorpay(); } };
 export async function createOrder(
   amount: number,
   currency: string = 'INR',
-  receipt: string
+  receipt: string,
+  notes?: Record<string, string>
 ) {
+  // notes are echoed back on Razorpay's payment.captured webhook payload.
+  // We use them to recover userId/plan/months when the browser callback
+  // never runs (popup closed mid-flow) — see app/api/payment/webhook/route.ts.
   const order = await getRazorpay().orders.create({
     amount: amount * 100, // Razorpay expects paise
     currency,
     receipt,
+    ...(notes && Object.keys(notes).length > 0 ? { notes } : {}),
   });
   return order;
 }

@@ -469,7 +469,11 @@ export async function updateAnalytics(clientId: string, customerPhone: string): 
 
   if (existingIndex >= 0) {
     const currentTotal = parseInt(rows[existingIndex][2] || '0', 10) + 1;
-    // Simple unique customer tracking: check conversations for today
+    // Simple unique customer tracking: check conversations for today.
+    // getISTTimestamp() formats as "DD/MM/YYYY, HH:MM:SS" (en-IN locale),
+    // while `today` is YYYY-MM-DD. Convert to DD/MM/YYYY before matching.
+    const [yyyy, mm, dd] = today.split('-');
+    const todayDdMmYyyy = `${dd}/${mm}/${yyyy}`;
     const convRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'conversations!A2:C',
@@ -477,7 +481,7 @@ export async function updateAnalytics(clientId: string, customerPhone: string): 
     const convRows = convRes.data.values || [];
     const todayCustomers = new Set(
       convRows
-        .filter((r) => r[1] === clientId && (r[0] || '').startsWith(today.replace(/-/g, '/')))
+        .filter((r) => r[1] === clientId && (r[0] || '').startsWith(todayDdMmYyyy))
         .map((r) => r[2])
     );
     todayCustomers.add(customerPhone);

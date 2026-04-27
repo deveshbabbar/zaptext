@@ -62,8 +62,19 @@ export default function ClientBookingsPage() {
   };
 
   const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  const upcoming = bookings.filter((b) => b.status === 'confirmed' && b.date >= todayIST);
-  const past = bookings.filter((b) => b.status === 'completed' || (b.status === 'confirmed' && b.date < todayIST));
+  // pending_approval = booking made by AI but waiting for staff to confirm via
+  // WhatsApp. Surface in 'upcoming' so the owner can see it and cancel pre-emptively
+  // if the staff member doesn't respond.
+  const upcoming = bookings.filter(
+    (b) =>
+      (b.status === 'confirmed' || b.status === 'pending_approval') &&
+      b.date >= todayIST
+  );
+  const past = bookings.filter(
+    (b) =>
+      b.status === 'completed' ||
+      ((b.status === 'confirmed' || b.status === 'pending_approval') && b.date < todayIST)
+  );
   const cancelled = bookings.filter((b) => b.status === 'cancelled');
 
   const list = tab === 'upcoming' ? upcoming : tab === 'past' ? past : cancelled;
@@ -141,11 +152,11 @@ export default function ClientBookingsPage() {
                       <StatusPill
                         variant={b.status === 'cancelled' ? 'cancel' : b.status === 'confirmed' ? 'ok' : 'pending'}
                       >
-                        {b.status}
+                        {b.status === 'pending_approval' ? 'awaiting trainer' : b.status}
                       </StatusPill>
                     </td>
                     <td style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', textAlign: 'right' }}>
-                      {b.status === 'confirmed' && (
+                      {(b.status === 'confirmed' || b.status === 'pending_approval') && (
                         <button
                           onClick={() => handleCancel(b.booking_id)}
                           disabled={cancellingId === b.booking_id}

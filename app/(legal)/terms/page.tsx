@@ -196,7 +196,7 @@ export default function TermsPage() {
         <p>
           These Terms are governed by the laws of India. Courts in Bengaluru, Karnataka have
           exclusive jurisdiction over disputes. You agree to first attempt informal resolution by
-          contacting us at <a href="mailto:support@zaptext.shop" className="text-foreground underline">support@zaptext.shop</a>.
+          contacting us at <a href="mailto:zaptextofficial@gmail.com" className="text-foreground underline">zaptextofficial@gmail.com</a>.
         </p>
 
         <h2 className="text-2xl font-bold text-foreground pt-4">16. Changes to Terms</h2>
@@ -208,7 +208,7 @@ export default function TermsPage() {
 
         <h2 className="text-2xl font-bold text-foreground pt-4">17. Contact</h2>
         <p>
-          Questions? Email <a href="mailto:support@zaptext.shop" className="text-foreground underline">support@zaptext.shop</a>.
+          Questions? Email <a href="mailto:zaptextofficial@gmail.com" className="text-foreground underline">zaptextofficial@gmail.com</a>.
         </p>
       </section>
     </article>

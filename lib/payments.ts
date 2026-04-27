@@ -162,33 +162,111 @@ Respond with JSON only.`;
   }
 }
 
-// ─── Pending payment tracker (in-memory, per client + customer) ───
+// ─── Pending payment tracker (Sheets-backed, per client + customer) ───
+// Why Sheets and not memory: Vercel/Next.js serverless cold-starts spawn fresh
+// lambdas per webhook hit, and the in-memory Map didn't survive across them —
+// so a [PAY:] tag set in one invocation was never visible to the screenshot
+// handler in the next, and auto-verification silently broke.
+//
+// Sheet `pending_payments` columns:
+//   A=client_id, B=customer_phone, C=amount, D=note, E=expires_at (ISO)
 
-const pendingPayments = new Map<string, { amount: number; note: string; expiresAt: number }>();
+import { google } from 'googleapis';
+
 const PENDING_TTL_MS = 30 * 60 * 1000;
+const PENDING_RANGE = 'pending_payments!A2:E';
+const PENDING_APPEND = 'pending_payments!A:E';
 
-function pendingKey(clientId: string, customerPhone: string) {
-  return `${clientId}::${customerPhone}`;
-}
-
-export function setPendingPayment(clientId: string, customerPhone: string, amount: number, note: string) {
-  pendingPayments.set(pendingKey(clientId, customerPhone), {
-    amount,
-    note,
-    expiresAt: Date.now() + PENDING_TTL_MS,
+function getPendingSheets() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
+  return google.sheets({ version: 'v4', auth });
 }
 
-export function getPendingPayment(clientId: string, customerPhone: string): { amount: number; note: string } | null {
-  const entry = pendingPayments.get(pendingKey(clientId, customerPhone));
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+async function fetchPendingRows(): Promise<Array<{ rowIndex: number; client_id: string; phone: string; amount: number; note: string; expires_at: string }>> {
+  try {
+    const sheets = getPendingSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.SPREADSHEET_ID!,
+      range: PENDING_RANGE,
+    });
+    const rows = res.data.values || [];
+    return rows.map((row, i) => ({
+      rowIndex: i + 2,
+      client_id: row[0] || '',
+      phone: normalizePhone(row[1] || ''),
+      amount: parseFloat(row[2] || '0') || 0,
+      note: row[3] || '',
+      expires_at: row[4] || '',
+    }));
+  } catch {
+    // Sheet may not exist yet — caller treats as "no pending payment".
+    return [];
+  }
+}
+
+export async function setPendingPayment(clientId: string, customerPhone: string, amount: number, note: string): Promise<void> {
+  const phone = normalizePhone(customerPhone);
+  const expiresAt = new Date(Date.now() + PENDING_TTL_MS).toISOString();
+  const sheets = getPendingSheets();
+
+  // Replace any existing row for this (client, phone) pair so we don't accumulate
+  // stale entries when a customer asks about price multiple times.
+  const all = await fetchPendingRows();
+  const existing = all.find((r) => r.client_id === clientId && r.phone === phone);
+  if (existing) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.SPREADSHEET_ID!,
+      range: `pending_payments!A${existing.rowIndex}:E${existing.rowIndex}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[clientId, phone, amount.toString(), note, expiresAt]] },
+    });
+  } else {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.SPREADSHEET_ID!,
+      range: PENDING_APPEND,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[clientId, phone, amount.toString(), note, expiresAt]] },
+    });
+  }
+}
+
+export async function getPendingPayment(clientId: string, customerPhone: string): Promise<{ amount: number; note: string } | null> {
+  const phone = normalizePhone(customerPhone);
+  const all = await fetchPendingRows();
+  const entry = all.find((r) => r.client_id === clientId && r.phone === phone);
   if (!entry) return null;
-  if (entry.expiresAt < Date.now()) {
-    pendingPayments.delete(pendingKey(clientId, customerPhone));
+  const expiresMs = entry.expires_at ? new Date(entry.expires_at).getTime() : 0;
+  if (!expiresMs || expiresMs < Date.now()) {
+    // Best-effort cleanup of expired row; safe to ignore failure.
+    await clearPendingPayment(clientId, customerPhone).catch(() => {});
     return null;
   }
   return { amount: entry.amount, note: entry.note };
 }
 
-export function clearPendingPayment(clientId: string, customerPhone: string) {
-  pendingPayments.delete(pendingKey(clientId, customerPhone));
+export async function clearPendingPayment(clientId: string, customerPhone: string): Promise<void> {
+  const phone = normalizePhone(customerPhone);
+  const all = await fetchPendingRows();
+  const entry = all.find((r) => r.client_id === clientId && r.phone === phone);
+  if (!entry) return;
+
+  // Blank the row in place — avoids the row-shift hazard of deleteDimension
+  // when other concurrent writes are in flight.
+  const sheets = getPendingSheets();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: process.env.SPREADSHEET_ID!,
+    range: `pending_payments!A${entry.rowIndex}:E${entry.rowIndex}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [['', '', '', '', '']] },
+  });
 }

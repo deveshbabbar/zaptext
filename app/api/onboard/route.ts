@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Notify admin about new bot (needs approval)
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@zaptext.shop';
+      const adminEmail = process.env.ADMIN_EMAIL || 'zaptextofficial@gmail.com';
       await sendTemplate(adminEmail, tplAdminNewBot({
         businessName: client.business_name,
         type: client.type,

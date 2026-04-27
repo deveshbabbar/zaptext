@@ -44,7 +44,7 @@ export default function RefundPage() {
 
         <h2 className="text-2xl font-bold text-foreground pt-4">4. How to Request a Refund</h2>
         <ol className="list-decimal pl-6 space-y-2">
-          <li>Email <span className="text-foreground">support@zaptext.shop</span> from your registered email address.</li>
+          <li>Email <span className="text-foreground">zaptextofficial@gmail.com</span> from your registered email address.</li>
           <li>Use the subject line &quot;Refund Request - [Your Account Email]&quot;.</li>
           <li>Include your registered name, subscription plan, transaction ID, and a brief reason.</li>
           <li>Our team will acknowledge within 24 hours and confirm refund eligibility within 3 business days.</li>
@@ -66,7 +66,7 @@ export default function RefundPage() {
 
         <h2 className="text-2xl font-bold text-foreground pt-4">7. Contact</h2>
         <p>
-          For all refund queries, email <span className="text-foreground">support@zaptext.shop</span>.
+          For all refund queries, email <span className="text-foreground">zaptextofficial@gmail.com</span>.
         </p>
       </section>
     </article>

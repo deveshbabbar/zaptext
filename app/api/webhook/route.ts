@@ -4,8 +4,8 @@ import { getClientByPhoneNumberId, getConversationHistory, getClientConversation
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
-import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime } from '@/lib/booking';
-import { sendTemplate, tplNewBooking } from '@/lib/email';
+import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking } from '@/lib/booking';
+import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
 import {
   buildUpiLink,
   downloadWhatsAppMedia,
@@ -119,7 +119,12 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     trialOutboundCount = allConvos.filter((c) => c.direction === 'outgoing').length;
   }
 
+  // Subscription-expired gate: client.status is 'active' but owner has no
+  // active plan (paid plan lapsed, or trial not yet started). We don't burn
+  // Gemini quota on a non-paying account — send a polite single-shot reply
+  // and stop. Owner messages bypass so they can still issue control commands.
   const ownerDigits = client.whatsapp_number.replace(/\D/g, '');
+  const isSubscriptionExpired = !ownerSubscription;
 
   for (const msg of messages) {
     // Skip duplicate messages (WhatsApp may retry delivery)
@@ -178,6 +183,24 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       await addConversationMessage({
         timestamp: getISTTimestamp(), client_id: client.client_id, customer_phone: customerPhone,
         direction: 'outgoing', message: paused, message_type: 'text',
+      });
+      continue;
+    }
+
+    // Subscription expired (owner stopped paying / trial lapsed). Don't burn
+    // Gemini quota — log incoming, send a generic offline reply, skip AI.
+    if (isSubscriptionExpired && !isOwner) {
+      const offline =
+        `Hi! 👋 ${client.business_name} ka bot abhi temporarily offline hai. ` +
+        `Owner se directly contact karein, jaldi reply milega 🙏`;
+      await addConversationMessage({
+        timestamp, client_id: client.client_id, customer_phone: customerPhone,
+        direction: 'incoming', message: msg.text || `[${msg.type}]`, message_type: msg.type,
+      });
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, offline);
+      await addConversationMessage({
+        timestamp: getISTTimestamp(), client_id: client.client_id, customer_phone: customerPhone,
+        direction: 'outgoing', message: offline, message_type: 'text',
       });
       continue;
     }
@@ -370,9 +393,12 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
 
     // Trial lifetime cap: once hit, reply with an upgrade prompt and skip Gemini.
     if (isTrialBot && trialOutboundCount >= TRIAL_MESSAGE_LIMIT) {
+      // Bilingual — customer probably wasn't messaging in English.
       const upgradeMsg =
-        `🎉 Free trial limit (${TRIAL_MESSAGE_LIMIT} replies) reached. ` +
-        `The owner needs to upgrade for me to keep helping you. Thanks for trying ZapText! 🙏`;
+        `Free trial khatam ho gaya 🎉 (${TRIAL_MESSAGE_LIMIT} replies done). ` +
+        `Owner ko upgrade karna hoga taaki main aapki madad continue kar sakoon. ` +
+        `ZapText try karne ke liye shukriya! 🙏\n\n` +
+        `Free trial reached its limit. The owner needs to upgrade for me to keep helping.`;
       await sendWhatsAppMessage(phoneNumberId, customerPhone, upgradeMsg);
       await addConversationMessage({
         timestamp: getISTTimestamp(),
@@ -415,7 +441,15 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
         const safeService = (service || '').slice(0, 100);
         const safeNotes = (notes || '').slice(0, 200);
         const slotDuration = 30; // default
-        await createBooking({
+
+        // If the booking is for a specific staff member, mark it pending_approval
+        // so the customer-facing "confirmed" status only flips once the staff
+        // member types "approve BK_xxx". Detected from service tag prefix below.
+        const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
+        const staffNameMatch = safeService.match(new RegExp(`^${roleLabel.singular}\\s*[-–:]\\s*(.+)`, 'i'));
+        const isStaffBooking = !!staffNameMatch;
+
+        const newBooking = await createBooking({
           clientId: client.client_id,
           customerPhone,
           customerName: safeName,
@@ -424,11 +458,10 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
           endTime: calculateEndTime(time, slotDuration),
           service: safeService,
           notes: safeNotes,
+          status: isStaffBooking ? 'pending_approval' : 'confirmed',
         });
         // Notify trainer directly if booking is for a specific trainer
         try {
-          const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
-          const staffNameMatch = safeService.match(new RegExp(`^${roleLabel.singular}\\s*[-–:]\\s*(.+)`, 'i'));
           if (staffNameMatch) {
             const staffName = staffNameMatch[1].trim();
             const activeMembers = await getActiveStaff(client.client_id);
@@ -438,12 +471,22 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
               activeMembers.find((m) => m.name.toLowerCase().startsWith(needle)) ??
               activeMembers.find((m) => m.name.toLowerCase().includes(needle));
             if (matched?.whatsapp_phone) {
-              const bookingId = `BK_${Date.now()}`;
+              // CRITICAL: use the REAL booking_id from the row we just inserted,
+              // not Date.now(). The previous Date.now() id was never findable, so
+              // approve/reject commands always returned "booking not found".
+              const realBookingId = newBooking.booking_id;
               const staffMsg =
-                `📅 *New booking request!*\n\n` +
-                `👤 ${safeName}\n📞 ${customerPhone}\n📅 ${date} · ${time}\n` +
-                `${matched.price ? `💰 ₹${matched.price}/session\n` : ''}` +
-                `\nReply:\n*approve ${bookingId}* — confirm\n*reject ${bookingId} <reason>* — decline`;
+                `📅 *Naya booking request — ${client.business_name}*\n\n` +
+                `👤 *Customer:* ${safeName}\n` +
+                `📞 *Phone:* +${customerPhone.replace(/\D/g, '')}\n` +
+                `📅 *Date:* ${date}\n` +
+                `🕐 *Time:* ${time}\n` +
+                (safeService ? `💼 *Service:* ${safeService}\n` : '') +
+                (safeNotes ? `📝 *Notes:* ${safeNotes}\n` : '') +
+                (matched.price ? `💰 *Fee:* ₹${matched.price}/session\n` : '') +
+                `\nReply with one of:\n` +
+                `✅ *approve ${realBookingId}*\n` +
+                `❌ *reject ${realBookingId} <reason>*`;
               await sendWhatsAppMessage(phoneNumberId, matched.whatsapp_phone, staffMsg);
             }
           }
@@ -495,7 +538,45 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
         targetBooking.client_id === client.client_id &&
         targetBooking.customer_phone === customerPhone
       ) {
-        await cancelBooking(cancelId);
+        await cancelBooking(cancelId, 'Cancelled by customer via WhatsApp');
+        // Notify owner so they know the slot freed up — both WhatsApp and email.
+        try {
+          const ownerCancelMsg =
+            `⚠️ *Booking cancelled by customer*\n\n` +
+            `👤 ${targetBooking.customer_name || customerPhone}\n` +
+            `📞 ${customerPhone}\n` +
+            `📅 ${targetBooking.date}${targetBooking.time_slot ? ` · ${targetBooking.time_slot}` : ''}\n` +
+            (targetBooking.service ? `💼 ${targetBooking.service}\n` : '') +
+            `\nSlot khali ho gaya — koi aur le sakta hai.`;
+          await sendWhatsAppMessage(
+            phoneNumberId,
+            client.whatsapp_number.replace('+', ''),
+            ownerCancelMsg
+          );
+        } catch (e) {
+          console.error('Cancel owner-notify (WhatsApp) failed:', e);
+        }
+        try {
+          const cc = await clerkClient();
+          const owner = await cc.users.getUser(client.owner_user_id);
+          const ownerEmail = owner.emailAddresses[0]?.emailAddress;
+          const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
+          if (ownerEmail) {
+            await sendTemplate(
+              ownerEmail,
+              tplBookingCancelled({
+                ownerName,
+                businessName: client.business_name,
+                customerName: targetBooking.customer_name || customerPhone,
+                date: targetBooking.date,
+                time: targetBooking.time_slot,
+              }),
+              ownerName,
+            );
+          }
+        } catch (e) {
+          console.error('Cancel owner-notify (email) failed:', e);
+        }
       } else {
         console.warn('[CANCEL] scope-check failed', { cancelId, clientId: client.client_id, customerPhone });
       }
@@ -653,7 +734,7 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
           amount,
           note,
         });
-        setPendingPayment(client.client_id, customerPhone, amount, note);
+        await setPendingPayment(client.client_id, customerPhone, amount, note);
         finalResponse =
           finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim() +
           `\n\n💳 Pay ₹${amount.toFixed(2)} here: ${upiLink}\nPaid hone ke baad screenshot bhej dena — hum confirm kar denge ✓`;
@@ -704,7 +785,7 @@ async function handlePaymentScreenshot(
   caption: string
 ) {
   const ts = getISTTimestamp();
-  const pending = getPendingPayment(client.client_id, customerPhone);
+  const pending = await getPendingPayment(client.client_id, customerPhone);
 
   await addConversationMessage({
     timestamp: ts,
@@ -772,7 +853,7 @@ async function forwardImageToOwner(
   check: Awaited<ReturnType<typeof verifyPaymentScreenshot>> | null
 ) {
   const ownerPhone = client.whatsapp_number.replace('+', '');
-  const pending = getPendingPayment(client.client_id, customerPhone);
+  const pending = await getPendingPayment(client.client_id, customerPhone);
 
   const header = `💰 Payment screenshot from ${customerPhone}`;
   const expected = pending ? `\nExpected: ₹${pending.amount.toFixed(2)} — ${pending.note}` : '';
@@ -896,7 +977,7 @@ async function handleOwnerCommand(
   const paidMatch = normalized.match(/^paid\s+(\+?\d{10,15})$/);
   if (paidMatch) {
     const custDigits = paidMatch[1].replace(/\D/g, '');
-    const pending = getPendingPayment(clientId, custDigits);
+    const pending = await getPendingPayment(clientId, custDigits);
     if (!pending) {
       await sendWhatsAppMessage(
         phoneNumberId,
@@ -905,7 +986,7 @@ async function handleOwnerCommand(
       );
       return true;
     }
-    clearPendingPayment(clientId, custDigits);
+    await clearPendingPayment(clientId, custDigits);
     await sendWhatsAppMessage(
       phoneNumberId,
       custDigits,
@@ -1068,6 +1149,8 @@ async function handleStaffCommand(
       await sendWhatsAppMessage(phoneNumberId, trainerPhone, `❌ Booking ${bookingId} not found.`);
       return true;
     }
+    // Flip pending_approval → confirmed in the DB. Idempotent if already confirmed.
+    await approveBooking(bookingId);
     // Notify the customer
     try {
       const { getClientById } = await import('@/lib/google-sheets');

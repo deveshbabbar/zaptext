@@ -266,12 +266,12 @@ export default function SubscriptionPage() {
 
         <div>
           <MonoLabel className="mb-4">{currentSub ? '// Upgrade your plan' : '// Choose a plan'}</MonoLabel>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
             {(Object.entries(PLANS) as [PlanKey, (typeof PLANS)[PlanKey]][])
-              .filter(([, plan]) => !('hidden' in plan && plan.hidden === true))
               .map(([key, plan]) => {
               const isCurrent = currentSub?.plan === key;
               const highlighted = 'highlighted' in plan && plan.highlighted === true;
+              const isFree = key === 'trial';
               return (
                 <div
                   key={key}
@@ -298,15 +298,28 @@ export default function SubscriptionPage() {
                     {plan.name}
                   </div>
                   <div className="mt-2.5 flex items-baseline gap-1">
-                    <span className="text-[36px] font-bold tracking-[-0.03em] leading-none">
-                      <span className="zt-serif text-[0.7em]">₹</span>
-                      {computePlanPrice(key, selectedMonths[key]).toLocaleString('en-IN')}
-                    </span>
-                    <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>
-                      / {DURATIONS[selectedMonths[key]].label}
-                    </span>
+                    {isFree ? (
+                      <>
+                        <span className="text-[36px] font-bold tracking-[-0.03em] leading-none">
+                          Free
+                        </span>
+                        <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>
+                          / forever
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[36px] font-bold tracking-[-0.03em] leading-none">
+                          <span className="zt-serif text-[0.7em]">₹</span>
+                          {computePlanPrice(key, selectedMonths[key]).toLocaleString('en-IN')}
+                        </span>
+                        <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>
+                          / {DURATIONS[selectedMonths[key]].label}
+                        </span>
+                      </>
+                    )}
                   </div>
-                  {!isCurrent && (
+                  {!isCurrent && !isFree && (
                     <div className="flex gap-1 mt-2">
                       {(Object.keys(DURATIONS) as unknown as DurationKey[]).map((m) => {
                         const months = Number(m) as DurationKey;
@@ -356,6 +369,15 @@ export default function SubscriptionPage() {
                     >
                       Current plan
                     </div>
+                  ) : isFree ? (
+                    <button
+                      onClick={handleStartTrial}
+                      disabled={startingTrial || !!currentSub}
+                      className="text-center rounded-[10px] border border-[var(--ink)] font-semibold text-[12.5px] hover:bg-[var(--ink)] hover:text-[var(--background)] disabled:opacity-60"
+                      style={{ padding: 10 }}
+                    >
+                      {startingTrial ? 'Starting…' : currentSub ? 'Already on a plan' : 'Start free'}
+                    </button>
                   ) : (
                     <button
                       onClick={() => handleSubscribe(key, selectedMonths[key])}

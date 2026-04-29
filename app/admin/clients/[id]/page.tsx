@@ -29,6 +29,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [promptDraft, setPromptDraft] = useState('');
   const [approving, setApproving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [phoneIdDraft, setPhoneIdDraft] = useState('');
+  const [savingPhoneId, setSavingPhoneId] = useState(false);
 
   const handleDeleteBot = async () => {
     const ok = window.confirm(
@@ -58,10 +60,38 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       .then((d) => {
         setData(d);
         setPromptDraft(d.client?.system_prompt || '');
+        setPhoneIdDraft(d.client?.phone_number_id || '');
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [id]);
+
+  const handleSavePhoneId = async () => {
+    const trimmed = phoneIdDraft.trim();
+    if (!/^[0-9]{6,20}$/.test(trimmed)) {
+      toast.error('phone_number_id should be a numeric ID (typically 15 digits) from Meta WhatsApp Manager.');
+      return;
+    }
+    setSavingPhoneId(true);
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'phone_number_id', value: trimmed }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || 'Failed to save phone_number_id');
+        return;
+      }
+      setData((prev) => prev ? { ...prev, client: { ...prev.client, phone_number_id: trimmed } } : prev);
+      toast.success('phone_number_id saved. You can now approve the bot.');
+    } catch {
+      toast.error('Failed to save phone_number_id');
+    } finally {
+      setSavingPhoneId(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -258,6 +288,51 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       )}
+
+      {/* WhatsApp API Connection — phone_number_id is required before approval */}
+      <Card className={`mb-8 border-2 ${client.phone_number_id ? 'border-emerald-500/30' : 'border-red-500/40'}`}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <span>🔌</span> WhatsApp API Connection
+            {client.phone_number_id ? (
+              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 ml-2">connected</Badge>
+            ) : (
+              <Badge className="bg-red-500/10 text-red-500 border-red-500/30 ml-2">not connected</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              Phone Number ID <span className="text-red-500">*</span>
+            </p>
+            <p className="text-xs text-muted-foreground mb-2">
+              Get this from Meta WhatsApp Manager → Phone numbers → click your number → API Setup → copy the 15-digit
+              &ldquo;Phone number ID&rdquo;. The webhook routes inbound messages by this ID — without it, the bot is silently dead.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={phoneIdDraft}
+                onChange={(e) => setPhoneIdDraft(e.target.value)}
+                placeholder="e.g. 109876543210123"
+                className="font-mono"
+                inputMode="numeric"
+              />
+              <Button
+                onClick={handleSavePhoneId}
+                disabled={savingPhoneId || phoneIdDraft.trim() === (client.phone_number_id || '').trim()}
+              >
+                {savingPhoneId ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+            {client.phone_number_id && (
+              <p className="text-[11px] text-muted-foreground mt-2 font-mono">
+                Current on file: <span className="text-foreground">{client.phone_number_id}</span>
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Client Contact Details — prominently visible for review & ongoing support */}
       <Card className="mb-8 border-2 border-primary/20">

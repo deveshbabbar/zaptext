@@ -263,6 +263,7 @@ const FAQS = [
 ];
 
 const PLAN_ORDER: Array<{ key: keyof typeof PLANS; tag: string }> = [
+  { key: "trial", tag: "Try without paying" },
   { key: "starter", tag: "Solo shops, 1 number" },
   { key: "growth", tag: "Multi-location · most popular" },
   { key: "pro", tag: "Teams that close on chat" },
@@ -1103,10 +1104,11 @@ function Pricing() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {PLAN_ORDER.map(({ key, tag }) => {
             const p = PLANS[key];
             const popular = key === "growth";
+            const isFree = key === "trial";
             const price = annual ? Math.round(p.price * 0.85) : p.price;
             return (
               <div
@@ -1128,20 +1130,39 @@ function Pricing() {
                   {tag}
                 </div>
                 <div className="mt-3.5 flex items-baseline gap-1.5">
-                  <span className="text-[54px] font-bold tracking-[-0.045em] leading-none">
-                    <span className="zt-serif text-[0.7em] mr-0.5">₹</span>
-                    {price.toLocaleString("en-IN")}
-                  </span>
-                  <span className="text-[13px]" style={{ color: popular ? "#ffffff88" : "var(--mute)" }}>
-                    / mo{annual ? " · billed yearly" : ""}
-                  </span>
+                  {isFree ? (
+                    <>
+                      <span className="text-[54px] font-bold tracking-[-0.045em] leading-none">
+                        Free
+                      </span>
+                      <span className="text-[13px]" style={{ color: popular ? "#ffffff88" : "var(--mute)" }}>
+                        / forever
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[54px] font-bold tracking-[-0.045em] leading-none">
+                        <span className="zt-serif text-[0.7em] mr-0.5">₹</span>
+                        {price.toLocaleString("en-IN")}
+                      </span>
+                      <span className="text-[13px]" style={{ color: popular ? "#ffffff88" : "var(--mute)" }}>
+                        / mo{annual ? " · billed yearly" : ""}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="text-[12.5px] mb-5" style={{ color: popular ? "#ffffffcc" : "var(--ink-2)" }}>
-                  Setup:{" "}
-                  <b className={`${popular ? "text-[var(--accent-2)]" : "text-[var(--ink)]"} bg-[var(--accent)] px-1.5 rounded-[4px] font-bold`}>
-                    FREE
-                  </b>{" "}
-                  <s className="opacity-50">₹{p.originalSetupFee.toLocaleString("en-IN")}</s> · launch offer
+                  {isFree ? (
+                    <span style={{ color: "var(--mute)" }}>No card required · upgrade anytime</span>
+                  ) : (
+                    <>
+                      Setup:{" "}
+                      <b className={`${popular ? "text-[var(--accent-2)]" : "text-[var(--ink)]"} bg-[var(--accent)] px-1.5 rounded-[4px] font-bold`}>
+                        FREE
+                      </b>{" "}
+                      <s className="opacity-50">₹{p.originalSetupFee.toLocaleString("en-IN")}</s> · launch offer
+                    </>
+                  )}
                 </div>
                 <ul className="flex flex-col gap-2.5 flex-1 mb-5">
                   {p.features.map((f, i) => (
@@ -1159,7 +1180,7 @@ function Pricing() {
                       : "border-[var(--ink)] hover:bg-[var(--ink)] hover:text-[var(--background)]"
                   } transition`}
                 >
-                  Start {p.name} →
+                  {isFree ? "Start free →" : `Start ${p.name} →`}
                 </Link>
               </div>
             );

@@ -6,7 +6,7 @@ export const TRIAL_MESSAGE_LIMIT = 50;
 
 export const PLANS = {
   trial: {
-    name: 'Free Trial',
+    name: 'Free',
     price: 0,
     setupFee: 0,
     originalSetupFee: 0,
@@ -15,7 +15,6 @@ export const PLANS = {
     conversations: TRIAL_MESSAGE_LIMIT,
     messages: TRIAL_MESSAGE_LIMIT,
     extraBotPrice: null as number | null,
-    hidden: true, // not shown in pricing grid — activated via "Start trial" CTA
     features: [
       `${TRIAL_MESSAGE_LIMIT} bot replies (lifetime)`,
       '1 WhatsApp Bot',

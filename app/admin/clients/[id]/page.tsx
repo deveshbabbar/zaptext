@@ -31,6 +31,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [deleting, setDeleting] = useState(false);
   const [phoneIdDraft, setPhoneIdDraft] = useState('');
   const [savingPhoneId, setSavingPhoneId] = useState(false);
+  const [pinDraft, setPinDraft] = useState('');
+  const [registering, setRegistering] = useState(false);
 
   const handleDeleteBot = async () => {
     const ok = window.confirm(
@@ -65,6 +67,32 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       })
       .catch(() => setLoading(false));
   }, [id]);
+
+  const handleRegisterWhatsApp = async () => {
+    if (!/^[0-9]{6}$/.test(pinDraft)) {
+      toast.error('PIN must be exactly 6 digits (the two-step verification PIN you set in Meta WhatsApp Manager).');
+      return;
+    }
+    setRegistering(true);
+    try {
+      const res = await fetch('/api/admin/register-whatsapp-number', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: id, pin: pinDraft }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        toast.error(result.message || result.error || 'Registration failed');
+        return;
+      }
+      toast.success(result.message || 'Number registered. Status will flip to Connected shortly.');
+      setPinDraft('');
+    } catch {
+      toast.error('Registration request failed');
+    } finally {
+      setRegistering(false);
+    }
+  };
 
   const handleSavePhoneId = async () => {
     const trimmed = phoneIdDraft.trim();
@@ -331,6 +359,35 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </p>
             )}
           </div>
+
+          {client.phone_number_id && (
+            <div className="border-t pt-3 mt-3">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                Register on WhatsApp Cloud API
+              </p>
+              <p className="text-xs text-muted-foreground mb-2">
+                If Meta WhatsApp Manager shows status &ldquo;Pending&rdquo; for this number, register it here. First set a
+                6-digit two-step verification PIN in Meta WhatsApp Manager → Phone numbers → Two-step verification, then enter
+                that PIN below.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={pinDraft}
+                  onChange={(e) => setPinDraft(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                  placeholder="6-digit PIN"
+                  className="font-mono"
+                  inputMode="numeric"
+                  maxLength={6}
+                />
+                <Button onClick={handleRegisterWhatsApp} disabled={registering || pinDraft.length !== 6}>
+                  {registering ? 'Registering…' : 'Register on WhatsApp'}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Status will flip Pending → Connected within ~30 seconds after success.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

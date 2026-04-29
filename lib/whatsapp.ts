@@ -76,6 +76,42 @@ export async function sendWhatsAppImage(
   }
 }
 
+// Register a phone number for WhatsApp Cloud API. Required once after adding a
+// new number to the WABA — flips status from "Pending" → "Connected" so the
+// number can send/receive via the API. The PIN is the 6-digit two-step
+// verification PIN configured in Meta WhatsApp Manager → Phone numbers →
+// Two-step verification.
+export async function registerPhoneNumber(
+  phoneNumberId: string,
+  pin: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(
+      `${WHATSAPP_API_URL}/${phoneNumberId}/register`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          pin,
+        }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('WhatsApp register error:', data);
+      return { success: false, error: data.error?.message || 'Unknown error' };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('WhatsApp register exception:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
 export function verifyWebhook(
   mode: string | null,
   token: string | null,

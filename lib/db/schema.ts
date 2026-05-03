@@ -171,17 +171,13 @@ export const staff = pgTable(
     whatsapp_phone: varchar('whatsapp_phone', { length: 32 }).default(''),
     bio: text('bio').default(''),
     is_active: boolean('is_active').notNull().default(true),
-    // Mon–Sun availability stored as text per day, matching the existing
-    // Sheets layout (one column per day with comma-separated 'HH:MM-HH:MM'
-    // ranges). Kept as text so the migration script can copy verbatim;
-    // downstream parsing logic in lib/staff.ts is unchanged.
-    availability_mon: text('availability_mon').default(''),
-    availability_tue: text('availability_tue').default(''),
-    availability_wed: text('availability_wed').default(''),
-    availability_thu: text('availability_thu').default(''),
-    availability_fri: text('availability_fri').default(''),
-    availability_sat: text('availability_sat').default(''),
-    availability_sun: text('availability_sun').default(''),
+    // Full Mon–Sun availability stored as a JSON string — matches the legacy
+    // Sheets column-I layout 1:1 so the seed script can copy verbatim and
+    // lib/staff.ts's parseAvailability() reads the same shape it always did.
+    // (We considered splitting into 7 day-specific columns but the JSON-in-text
+    // form is simpler, the cell is small enough to never approach Postgres
+    // text limits, and no query needs to filter by inner block times.)
+    availability: text('availability').default('{}'),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

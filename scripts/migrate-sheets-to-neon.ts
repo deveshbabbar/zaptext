@@ -22,7 +22,7 @@ import { google } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
 import { db } from '../lib/db';
-import { clients, conversations, analytics, subscriptions, inventory } from '../lib/db/schema';
+import { clients, conversations, analytics, subscriptions, inventory, staff } from '../lib/db/schema';
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 if (!SPREADSHEET_ID) {
@@ -290,6 +290,60 @@ async function migrateInventory() {
   console.log(`[inventory] upserted=${inserted} skipped=${skipped}`);
 }
 
+async function migrateStaff() {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'staff!A2:J',
+  });
+  const rows = res.data.values || [];
+  console.log(`[staff] ${rows.length} rows in Sheet`);
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const staffId = row[0];
+    const clientId = row[1];
+    if (!staffId || !clientId) {
+      skipped++;
+      continue;
+    }
+    // The legacy column-I `availability` is already a JSON string in the
+    // shape the new schema expects, so we copy it verbatim. Empty/missing
+    // → '{}'.
+    const availability = row[8] && row[8].trim() ? row[8] : '{}';
+    await db
+      .insert(staff)
+      .values({
+        staff_id: staffId,
+        client_id: clientId,
+        name: row[2] || '',
+        specialty: row[3] || '',
+        price: String(parseFloat(row[4] || '0') || 0),
+        whatsapp_phone: (row[5] || '').replace(/\D/g, ''),
+        bio: row[6] || '',
+        is_active: (row[7] || 'TRUE').toUpperCase() !== 'FALSE',
+        availability,
+        created_at: safeDate(row[9]),
+      })
+      .onConflictDoUpdate({
+        target: staff.staff_id,
+        set: {
+          client_id: clientId,
+          name: row[2] || '',
+          specialty: row[3] || '',
+          price: String(parseFloat(row[4] || '0') || 0),
+          whatsapp_phone: (row[5] || '').replace(/\D/g, ''),
+          bio: row[6] || '',
+          is_active: (row[7] || 'TRUE').toUpperCase() !== 'FALSE',
+          availability,
+        },
+      });
+    inserted++;
+  }
+  console.log(`[staff] upserted=${inserted} skipped=${skipped}`);
+}
+
 async function main() {
   console.log('Starting Sheets → Neon migration…');
   console.log(`Spreadsheet: ${SPREADSHEET_ID}`);
@@ -299,6 +353,7 @@ async function main() {
   await migrateAnalytics();
   await migrateSubscriptions();
   await migrateInventory();
+  await migrateStaff();
 
   console.log('\n✓ Migration complete.');
   console.log('Spot-check counts in Neon Studio: npm run db:studio');

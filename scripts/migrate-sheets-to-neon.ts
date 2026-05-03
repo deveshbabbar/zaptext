@@ -20,6 +20,7 @@
 // connection string at import time. Requires Node ≥ 20.6.
 import { google } from 'googleapis';
 import { v4 as uuid } from 'uuid';
+import { eq } from 'drizzle-orm';
 import { db } from '../lib/db';
 import { clients, conversations, analytics, subscriptions } from '../lib/db/schema';
 
@@ -196,28 +197,38 @@ async function migrateSubscriptions() {
       skipped++;
       continue;
     }
-    const result = await db
-      .insert(subscriptions)
-      .values({
-        id: uuid(),
-        user_id: userId,
-        plan: row[1] || 'trial',
-        status: row[2] || 'active',
-        razorpay_payment_id: row[3] || '',
-        razorpay_order_id: row[4] || '',
-        amount: String(row[5] || '0'),
-        start_date: safeDate(row[6]),
-        end_date: safeDate(row[7]),
-        created_at: safeDate(row[8]),
-      })
-      // Two trial subscriptions for the same user both have empty
-      // razorpay_payment_id; the unique index on payment_id would block
-      // them. Skip the conflict guard for empty payment ids by treating
-      // those rows as always-insert.
-      .onConflictDoNothing({ target: subscriptions.razorpay_payment_id })
-      .returning({ id: subscriptions.id });
-    if (result.length > 0) inserted++;
-    else skipped++;
+    const paymentId = row[3] || '';
+
+    // Existence check instead of ON CONFLICT: the partial unique index
+    // (WHERE payment_id <> '') can't be inferred as an arbiter index from
+    // a plain ON CONFLICT (col) clause, so we look it up explicitly. Empty
+    // payment ids (trial rows) always insert — there's no DB-level dedup
+    // for those, application logic prevents duplicate trials per user.
+    if (paymentId) {
+      const existing = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(eq(subscriptions.razorpay_payment_id, paymentId))
+        .limit(1);
+      if (existing.length > 0) {
+        skipped++;
+        continue;
+      }
+    }
+
+    await db.insert(subscriptions).values({
+      id: uuid(),
+      user_id: userId,
+      plan: row[1] || 'trial',
+      status: row[2] || 'active',
+      razorpay_payment_id: paymentId,
+      razorpay_order_id: row[4] || '',
+      amount: String(row[5] || '0'),
+      start_date: safeDate(row[6]),
+      end_date: safeDate(row[7]),
+      created_at: safeDate(row[8]),
+    });
+    inserted++;
   }
   console.log(`[subscriptions] inserted=${inserted} skipped=${skipped} (already in Neon)`);
 }

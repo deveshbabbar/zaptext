@@ -80,25 +80,31 @@ export async function getSubscriptionByPaymentId(paymentId: string): Promise<Sub
 }
 
 export async function createSubscription(record: SubscriptionRecord): Promise<void> {
-  await db
-    .insert(subscriptionsTable)
-    .values({
-      id: uuid(),
-      user_id: record.userId,
-      plan: record.plan,
-      status: record.status,
-      razorpay_payment_id: record.razorpayPaymentId || '',
-      razorpay_order_id: record.razorpayOrderId || '',
-      amount: String(record.amount ?? 0),
-      start_date: record.startDate ? new Date(record.startDate) : new Date(),
-      end_date: record.endDate ? new Date(record.endDate) : new Date(),
-      created_at: record.createdAt ? new Date(record.createdAt) : new Date(),
-    })
-    // Skip silently if the same razorpay_payment_id already landed (double
-    // verify call). Trials use a per-user empty payment id, so idempotency
-    // there is enforced at the application layer instead — see
-    // app/api/client/start-trial/route.ts.
-    .onConflictDoNothing({ target: subscriptionsTable.razorpay_payment_id });
+  // Application-level idempotency: callers (e.g. /api/payment/verify) already
+  // check getSubscriptionByPaymentId() before invoking us. We keep a defensive
+  // existence check here so a race between two duplicate verify calls only
+  // produces one row. We don't use Postgres ON CONFLICT because the partial
+  // unique index on razorpay_payment_id (WHERE payment_id <> '') can't be
+  // inferred as an arbiter index from a plain ON CONFLICT (col) clause —
+  // Drizzle would need the `targetWhere` predicate, which complicates the
+  // call site. Empty payment ids (trial rows) skip the existence check
+  // entirely so multiple users can each have a trial.
+  if (record.razorpayPaymentId) {
+    const existing = await getSubscriptionByPaymentId(record.razorpayPaymentId);
+    if (existing) return;
+  }
+  await db.insert(subscriptionsTable).values({
+    id: uuid(),
+    user_id: record.userId,
+    plan: record.plan,
+    status: record.status,
+    razorpay_payment_id: record.razorpayPaymentId || '',
+    razorpay_order_id: record.razorpayOrderId || '',
+    amount: String(record.amount ?? 0),
+    start_date: record.startDate ? new Date(record.startDate) : new Date(),
+    end_date: record.endDate ? new Date(record.endDate) : new Date(),
+    created_at: record.createdAt ? new Date(record.createdAt) : new Date(),
+  });
 }
 
 export async function getSubscriptionHistory(userId: string): Promise<SubscriptionRecord[]> {

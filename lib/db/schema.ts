@@ -13,6 +13,7 @@
 // - Booleans: real `boolean` columns. The migration script converts the
 //   Sheets `"TRUE"`/`"FALSE"` strings on the fly.
 
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   text,
@@ -53,7 +54,13 @@ export const clients = pgTable(
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every
     // inbound message — must be indexed for sub-millisecond lookups.
-    phoneNumberIdIdx: uniqueIndex('clients_phone_number_id_idx').on(t.phone_number_id),
+    // Partial: empty strings (newly-onboarded bots that haven't set a
+    // Meta phone_number_id yet) are excluded from the uniqueness check
+    // since multiple pending bots can legitimately share an empty value.
+    // Once a real ID is filled in, it remains globally unique.
+    phoneNumberIdIdx: uniqueIndex('clients_phone_number_id_idx')
+      .on(t.phone_number_id)
+      .where(sql`${t.phone_number_id} <> ''`),
     ownerUserIdIdx: index('clients_owner_user_id_idx').on(t.owner_user_id),
     statusIdx: index('clients_status_idx').on(t.status),
   })

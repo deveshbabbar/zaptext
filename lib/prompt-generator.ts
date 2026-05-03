@@ -29,11 +29,17 @@ function buildInventorySection(config: ClientConfig): string {
 }
 
 function buildBasePrompt(config: ClientConfig): string {
+  // Owner's call number vs the WhatsApp bot number are two DIFFERENT things.
+  // `whatsappNumber` is what customers MESSAGE (the bot itself); the bot
+  // should never tell a customer to call its own line. `contactNumber` is
+  // the owner's personal phone captured during onboarding. Fall back to
+  // whatsappNumber only when contactNumber wasn't captured (legacy bots).
+  const ownerCallNumber = config.contactNumber?.trim() || config.whatsappNumber;
   return `You are the AI WhatsApp assistant for ${config.businessName}.
 Owner: ${config.ownerName}
 Location: ${config.address}, ${config.city}
 Working Hours: ${config.workingHours}
-Contact: ${config.whatsappNumber}
+Contact: ${ownerCallNumber}
 
 LANGUAGE RULES:
 - Your primary language is the FIRST entry in Supported languages below.
@@ -271,7 +277,7 @@ function buildResponseRules(config: ClientConfig): string {
 
 ESCALATION RULES:
 - If the customer asks something you don't know or can't answer, say:
-  "Main aapko ${config.ownerName} ji se connect kara deta hoon. Aap unhe ${config.whatsappNumber} pe call kar sakte hain."
+  "Main aapko ${config.ownerName} ji se connect kara deta hoon. Aap unhe ${config.contactNumber?.trim() || config.whatsappNumber} pe call kar sakte hain."
 - If the customer seems angry or frustrated, immediately offer to connect with the owner.
 - If the customer asks to speak to a human, provide the owner's number.
 

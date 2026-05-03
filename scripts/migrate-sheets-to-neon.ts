@@ -21,7 +21,7 @@
 import { google } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { db } from '../lib/db';
-import { clients, conversations, analytics } from '../lib/db/schema';
+import { clients, conversations, analytics, subscriptions } from '../lib/db/schema';
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 if (!SPREADSHEET_ID) {
@@ -179,6 +179,49 @@ async function migrateAnalytics() {
   console.log(`[analytics] inserted=${inserted} skipped=${skipped} (already in Neon)`);
 }
 
+async function migrateSubscriptions() {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'subscriptions!A2:I',
+  });
+  const rows = res.data.values || [];
+  console.log(`[subscriptions] ${rows.length} rows in Sheet`);
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const userId = row[0];
+    if (!userId) {
+      skipped++;
+      continue;
+    }
+    const result = await db
+      .insert(subscriptions)
+      .values({
+        id: uuid(),
+        user_id: userId,
+        plan: row[1] || 'trial',
+        status: row[2] || 'active',
+        razorpay_payment_id: row[3] || '',
+        razorpay_order_id: row[4] || '',
+        amount: String(row[5] || '0'),
+        start_date: safeDate(row[6]),
+        end_date: safeDate(row[7]),
+        created_at: safeDate(row[8]),
+      })
+      // Two trial subscriptions for the same user both have empty
+      // razorpay_payment_id; the unique index on payment_id would block
+      // them. Skip the conflict guard for empty payment ids by treating
+      // those rows as always-insert.
+      .onConflictDoNothing({ target: subscriptions.razorpay_payment_id })
+      .returning({ id: subscriptions.id });
+    if (result.length > 0) inserted++;
+    else skipped++;
+  }
+  console.log(`[subscriptions] inserted=${inserted} skipped=${skipped} (already in Neon)`);
+}
+
 async function main() {
   console.log('Starting Sheets → Neon migration…');
   console.log(`Spreadsheet: ${SPREADSHEET_ID}`);
@@ -186,6 +229,7 @@ async function main() {
   await migrateClients();
   await migrateConversations();
   await migrateAnalytics();
+  await migrateSubscriptions();
 
   console.log('\n✓ Migration complete.');
   console.log('Spot-check counts in Neon Studio: npm run db:studio');

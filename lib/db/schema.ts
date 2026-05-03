@@ -121,8 +121,12 @@ export const subscriptions = pgTable(
   (t) => ({
     userIdIdx: index('subscriptions_user_id_idx').on(t.user_id),
     // Idempotency guard: prevents the same Razorpay payment from creating
-    // two subscription rows on duplicate webhook delivery.
-    paymentIdIdx: uniqueIndex('subscriptions_payment_id_idx').on(t.razorpay_payment_id),
+    // two subscription rows on duplicate webhook delivery. Partial — empty
+    // payment ids (all trial subscriptions) are excluded from uniqueness so
+    // multiple users can each have a trial row.
+    paymentIdIdx: uniqueIndex('subscriptions_payment_id_idx')
+      .on(t.razorpay_payment_id)
+      .where(sql`${t.razorpay_payment_id} <> ''`),
     statusIdx: index('subscriptions_status_idx').on(t.status),
   })
 );

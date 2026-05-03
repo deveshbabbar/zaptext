@@ -14,22 +14,14 @@
 // Usage:
 //   npm run db:seed-from-sheets
 
-// Belt-and-suspenders env loading. The npm script also passes
-// `--env-file=.env.local` to tsx (Node 20.6+ native flag) so DATABASE_URL
-// is set BEFORE any module loads — that's the only ordering that lets
-// lib/db/index.ts see the real connection string at import time. The
-// dotenv calls below cover older Node + are harmless when --env-file ran.
-import { config } from 'dotenv';
-config({ path: '.env.local' });
-config({ path: '.env' });
-
+// Env loading: the npm script passes `--env-file=.env.local` to tsx
+// (Node 20.6+ native flag) so DATABASE_URL is set BEFORE any module
+// loads — that's the ordering that lets lib/db/index.ts see the real
+// connection string at import time. Requires Node ≥ 20.6.
 import { google } from 'googleapis';
 import { v4 as uuid } from 'uuid';
+import { db } from '../lib/db';
 import { clients, conversations, analytics } from '../lib/db/schema';
-// Dynamic import for lib/db so its top-level `process.env.DATABASE_URL`
-// read happens AFTER the dotenv config calls above, in case --env-file
-// wasn't honored (older Node).
-const { db } = await import('../lib/db');
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 if (!SPREADSHEET_ID) {

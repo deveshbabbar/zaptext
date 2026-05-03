@@ -13,6 +13,13 @@ import { getBotsByOwner } from '@/lib/owner-clients';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
 import { rateLimit, getClientKey } from '@/lib/rate-limit';
+import type { BusinessType } from '@/lib/types';
+
+// Closed allowlist of supported verticals. `clinic` is intentionally absent —
+// removed for WhatsApp Business Policy compliance. Any creation request with
+// an unknown / removed type must be rejected here so a bad row never reaches
+// the Sheet (where prompt-generator silently downgrades it to "restaurant").
+const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym'];
 
 export async function POST(request: NextRequest) {
   const rl = rateLimit(getClientKey(request, '/api/onboard'), 5, 60_000);
@@ -62,6 +69,16 @@ export async function POST(request: NextRequest) {
 
     if (!config || !config.type || !config.businessName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    if (!(VALID_BUSINESS_TYPES as ReadonlyArray<string>).includes(config.type)) {
+      return NextResponse.json(
+        {
+          error: 'INVALID_BUSINESS_TYPE',
+          message: `Business type must be one of: ${VALID_BUSINESS_TYPES.join(', ')}. Got "${config.type}". The "clinic" vertical was removed for WhatsApp Business Policy compliance.`,
+        },
+        { status: 400 }
+      );
     }
 
     // COMPLIANCE: WhatsApp Business Messaging Policy requires the business

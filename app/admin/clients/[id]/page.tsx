@@ -8,8 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { getBusinessTypeMeta } from '@/lib/constants';
+import { getBusinessTypeMeta, BUSINESS_TYPES } from '@/lib/constants';
 import { ClientRow, ConversationRow, AnalyticsRow, BusinessType } from '@/lib/types';
+
+const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym'];
 import { toast } from 'sonner';
 
 interface ClientData {
@@ -33,6 +35,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [savingPhoneId, setSavingPhoneId] = useState(false);
   const [pinDraft, setPinDraft] = useState('');
   const [registering, setRegistering] = useState(false);
+  const [typeDraft, setTypeDraft] = useState<BusinessType | ''>('');
+  const [savingType, setSavingType] = useState(false);
 
   const handleDeleteBot = async () => {
     const ok = window.confirm(
@@ -63,10 +67,51 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setData(d);
         setPromptDraft(d.client?.system_prompt || '');
         setPhoneIdDraft(d.client?.phone_number_id || '');
+        const t = d.client?.type as BusinessType | undefined;
+        setTypeDraft(t && VALID_BUSINESS_TYPES.includes(t) ? t : '');
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [id]);
+
+  const handleSaveType = async () => {
+    if (!typeDraft || !VALID_BUSINESS_TYPES.includes(typeDraft as BusinessType)) {
+      toast.error('Pick a valid business type.');
+      return;
+    }
+    setSavingType(true);
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: 'type', value: typeDraft }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.message || body.error || 'Failed to save business type');
+        return;
+      }
+      setData((prev) => {
+        if (!prev) return prev;
+        let kb: Record<string, unknown> = {};
+        try { kb = JSON.parse(prev.client.knowledge_base_json || '{}'); } catch { kb = {}; }
+        kb.type = typeDraft;
+        return {
+          ...prev,
+          client: {
+            ...prev.client,
+            type: typeDraft as BusinessType,
+            knowledge_base_json: JSON.stringify(kb),
+          },
+        };
+      });
+      toast.success('Business type updated. Regenerate the system prompt to refresh the bot personality.');
+    } catch {
+      toast.error('Failed to save business type');
+    } finally {
+      setSavingType(false);
+    }
+  };
 
   const handleRegisterWhatsApp = async () => {
     if (!/^[0-9]{6}$/.test(pinDraft)) {
@@ -316,6 +361,70 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       )}
+
+      {/* Business Type — must match the vertical the bot was created for. If
+          the stored value is invalid or legacy (e.g. "clinic"), the prompt
+          generator silently falls back to "restaurant", giving customers the
+          wrong bot personality. Make this explicit and admin-fixable. */}
+      {(() => {
+        const storedType = (client.type as string) || '';
+        const isValid = (VALID_BUSINESS_TYPES as ReadonlyArray<string>).includes(storedType);
+        return (
+          <Card className={`mb-8 border-2 ${isValid ? 'border-emerald-500/30' : 'border-red-500/50'}`}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span>🏷️</span> Business Type
+                {isValid ? (
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 ml-2">
+                    {storedType}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-500/10 text-red-500 border-red-500/30 ml-2">
+                    invalid: {storedType || '(empty)'}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!isValid && (
+                <p className="text-xs text-red-500 m-0">
+                  This bot has an invalid or legacy business type. Until you fix it, the prompt generator
+                  defaults to &ldquo;restaurant&rdquo; — so a gym/salon/etc. bot will reply with restaurant
+                  language. Pick the correct type below.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground m-0">
+                Changing the type also rewrites the inner <code>type</code> field of <code>knowledge_base_json</code> atomically.
+                Regenerate the system prompt afterwards so the bot personality matches the new vertical.
+              </p>
+              <div className="flex gap-2">
+                <select
+                  value={typeDraft}
+                  onChange={(e) => setTypeDraft(e.target.value as BusinessType)}
+                  className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm"
+                >
+                  <option value="">— Select business type —</option>
+                  {BUSINESS_TYPES.map((bt) => (
+                    <option key={bt.type} value={bt.type}>
+                      {bt.icon} {bt.label} ({bt.type})
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  onClick={handleSaveType}
+                  disabled={
+                    savingType ||
+                    !typeDraft ||
+                    typeDraft === storedType
+                  }
+                >
+                  {savingType ? 'Saving…' : 'Save type'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* WhatsApp API Connection — phone_number_id is required before approval */}
       <Card className={`mb-8 border-2 ${client.phone_number_id ? 'border-emerald-500/30' : 'border-red-500/40'}`}>

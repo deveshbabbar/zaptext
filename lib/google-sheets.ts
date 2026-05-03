@@ -293,6 +293,7 @@ export async function updateClientStatus(clientId: string, status: ClientRow['st
 
 const CLIENT_FIELD_TO_COL: Record<string, string> = {
   business_name: 'B',
+  type: 'C',
   owner_name: 'D',
   whatsapp_number: 'E',
   phone_number_id: 'F',

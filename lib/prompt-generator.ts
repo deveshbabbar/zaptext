@@ -72,6 +72,19 @@ function buildTypeSpecificPrompt(config: ClientConfig): string {
       return buildD2CPrompt(config);
     case 'gym':
       return buildGymPrompt(config);
+    default: {
+      // Defensive: prevents the switch from silently returning `undefined`
+      // when a legacy/unsupported type (e.g., "clinic") leaks past upstream
+      // validation. Surfaces the bug loudly in logs instead of producing a
+      // silent wrong-vertical bot. Creation paths (onboard, create-client,
+      // PATCH /api/clients/[id]) already reject these values, so this only
+      // fires for legacy rows that pre-date the validation.
+      const stray = (config as { type?: string }).type;
+      console.error(
+        `[prompt-generator] unsupported business type "${stray}" — admin must update this client's type via /admin/clients/[id] (Business Type card).`
+      );
+      return `(This bot's business type ("${stray}") is not supported. The owner must update the bot configuration before this bot can answer correctly.)`;
+    }
   }
 }
 

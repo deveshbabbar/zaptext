@@ -5,6 +5,7 @@ import { updateClientField, updateClientFields } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
 
 function parseKb(raw: string): Record<string, unknown> {
   try { return JSON.parse(raw || '{}'); } catch { return {}; }
@@ -139,6 +140,25 @@ export async function POST(request: NextRequest) {
       }
 
       await updateClientFields(bot.client_id, writes);
+
+      // Auto-sync inventory whenever the KB is updated. The owner's edits to
+      // menu items / services / membership plans / courses / products /
+      // listings flow into the inventory table so the bot's runtime menu
+      // (and the inventory dashboard page) stay in lock-step with what the
+      // owner just typed in settings. Best-effort — if sync fails, the
+      // settings save still succeeds and the user can rerun manually from
+      // /client/inventory.
+      if (typeof writes.knowledge_base_json === 'string') {
+        try {
+          const parsedKb = JSON.parse(writes.knowledge_base_json) as ClientConfig;
+          if (parsedKb && parsedKb.type) {
+            await syncProductsFromConfig(bot.client_id, parsedKb);
+          }
+        } catch (e) {
+          console.error('[settings] inventory auto-sync failed (non-fatal):', e);
+        }
+      }
+
       return NextResponse.json({
         success: true,
         systemPrompt: writes.system_prompt,

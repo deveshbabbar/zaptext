@@ -22,7 +22,7 @@ import { google } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
 import { db } from '../lib/db';
-import { clients, conversations, analytics, subscriptions, inventory, staff } from '../lib/db/schema';
+import { clients, conversations, analytics, subscriptions, inventory, staff, bookings, slots, date_overrides } from '../lib/db/schema';
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 if (!SPREADSHEET_ID) {
@@ -344,6 +344,140 @@ async function migrateStaff() {
   console.log(`[staff] upserted=${inserted} skipped=${skipped}`);
 }
 
+async function migrateBookings() {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'bookings!A2:M',
+  });
+  const rows = res.data.values || [];
+  console.log(`[bookings] ${rows.length} rows in Sheet`);
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const bookingId = row[0];
+    const clientId = row[1];
+    if (!bookingId || !clientId) {
+      skipped++;
+      continue;
+    }
+    await db
+      .insert(bookings)
+      .values({
+        booking_id: bookingId,
+        client_id: clientId,
+        customer_phone: row[2] || '',
+        customer_name: row[3] || '',
+        date: row[4] || '',
+        time_slot: row[5] || '',
+        end_time: row[6] || '',
+        service: row[7] || '',
+        status: row[8] || 'confirmed',
+        notes: row[9] || '',
+        created_at: safeDate(row[10]),
+        reminded: (row[11] || '').toUpperCase() === 'TRUE',
+        owner_notified: (row[12] || '').toUpperCase() === 'TRUE',
+      })
+      .onConflictDoUpdate({
+        target: bookings.booking_id,
+        set: {
+          customer_name: row[3] || '',
+          status: row[8] || 'confirmed',
+          notes: row[9] || '',
+          reminded: (row[11] || '').toUpperCase() === 'TRUE',
+          owner_notified: (row[12] || '').toUpperCase() === 'TRUE',
+        },
+      });
+    inserted++;
+  }
+  console.log(`[bookings] upserted=${inserted} skipped=${skipped}`);
+}
+
+async function migrateSlots() {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'weekly_schedule!A2:G',
+  });
+  const rows = res.data.values || [];
+  console.log(`[slots] ${rows.length} rows in Sheet (weekly_schedule)`);
+
+  let inserted = 0;
+  let skipped = 0;
+  // Sheets has no PK; we synthesize one. To keep re-runs idempotent, we
+  // wipe existing slots for each client first (matches setWeeklySchedule
+  // semantic), then insert fresh.
+  const seenClients = new Set<string>();
+  for (const row of rows) {
+    const clientId = row[0];
+    const dayOfWeek = row[1];
+    if (!clientId || !dayOfWeek) {
+      skipped++;
+      continue;
+    }
+    if (!seenClients.has(clientId)) {
+      await db.delete(slots).where(eq(slots.client_id, clientId));
+      seenClients.add(clientId);
+    }
+    await db.insert(slots).values({
+      id: uuid(),
+      client_id: clientId,
+      day_of_week: dayOfWeek,
+      start_time: row[2] || '00:00',
+      end_time: row[3] || '00:00',
+      slot_duration_minutes: parseInt(row[4] || '30', 10) || 30,
+      is_active: (row[5] || 'TRUE').toUpperCase() !== 'FALSE',
+      service_type: row[6] || '',
+    });
+    inserted++;
+  }
+  console.log(`[slots] inserted=${inserted} skipped=${skipped}`);
+}
+
+async function migrateDateOverrides() {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'date_overrides!A2:F',
+  });
+  const rows = res.data.values || [];
+  console.log(`[date_overrides] ${rows.length} rows in Sheet`);
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const clientId = row[0];
+    const date = row[1];
+    if (!clientId || !date) {
+      skipped++;
+      continue;
+    }
+    await db
+      .insert(date_overrides)
+      .values({
+        id: uuid(),
+        client_id: clientId,
+        date,
+        override_type: row[2] || 'blocked',
+        custom_start: row[3] || '',
+        custom_end: row[4] || '',
+        reason: row[5] || '',
+      })
+      .onConflictDoUpdate({
+        target: [date_overrides.client_id, date_overrides.date],
+        set: {
+          override_type: row[2] || 'blocked',
+          custom_start: row[3] || '',
+          custom_end: row[4] || '',
+          reason: row[5] || '',
+        },
+      });
+    inserted++;
+  }
+  console.log(`[date_overrides] upserted=${inserted} skipped=${skipped}`);
+}
+
 async function main() {
   console.log('Starting Sheets → Neon migration…');
   console.log(`Spreadsheet: ${SPREADSHEET_ID}`);
@@ -354,6 +488,9 @@ async function main() {
   await migrateSubscriptions();
   await migrateInventory();
   await migrateStaff();
+  await migrateBookings();
+  await migrateSlots();
+  await migrateDateOverrides();
 
   console.log('\n✓ Migration complete.');
   console.log('Spot-check counts in Neon Studio: npm run db:studio');

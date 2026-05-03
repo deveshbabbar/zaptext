@@ -20,6 +20,17 @@ export default function ClientSettingsPage() {
   const [languages, setLanguages] = useState<string[]>(['English']);
   const [botName, setBotName] = useState('');
   const [botType, setBotType] = useState('');
+  // Business-details fields (live inside knowledge_base_json under
+  // CommonFields). Editing here updates KB → system_prompt regenerates →
+  // bot's "Location: …", "Working Hours: …", and welcome line all
+  // change in one save. Previously the only way to change the address
+  // was to edit the raw KB JSON or the system_prompt by hand, which
+  // didn't keep both in sync.
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [workingHours, setWorkingHours] = useState('');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [bizDirty, setBizDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Track whether the user has edited the prompt manually after last load/save.
@@ -54,6 +65,22 @@ export default function ClientSettingsPage() {
         if (Array.isArray(data.languages) && data.languages.length > 0) {
           setLanguages(data.languages);
         }
+        // Pull business-detail fields out of the parsed KB so the inputs
+        // below are pre-filled. Empty strings are fine — we won't overwrite
+        // the saved KB with an empty value unless the user explicitly clears.
+        try {
+          const parsed = data.knowledgeBase ? JSON.parse(data.knowledgeBase) : {};
+          if (parsed && typeof parsed === 'object') {
+            setAddress(typeof parsed.address === 'string' ? parsed.address : '');
+            setCity(typeof parsed.city === 'string' ? parsed.city : '');
+            setWorkingHours(typeof parsed.workingHours === 'string' ? parsed.workingHours : '');
+            setWelcomeMessage(typeof parsed.welcomeMessage === 'string' ? parsed.welcomeMessage : '');
+          }
+        } catch {
+          // Corrupt KB — leave fields blank, the JSON editor below will
+          // surface the parse error.
+        }
+        setBizDirty(false);
         setPromptDirty(false);
         setKbDirty(false);
         setKbError('');
@@ -150,7 +177,24 @@ export default function ClientSettingsPage() {
       // Only send system_prompt if the user actually edited it — otherwise let
       // the server regenerate from the (possibly new) languages array / KB.
       if (promptDirty) bulk.system_prompt = prompt;
-      if (kbDirty) bulk.knowledge_base_json = config;
+
+      // If the business-detail fields (address / city / working hours /
+      // welcome) were touched, merge them into the KB JSON we send. We
+      // start from whatever the user has typed in the raw KB editor (or
+      // the originally-loaded value) so this never clobbers their other
+      // edits, then overlay the four fields.
+      if (bizDirty || kbDirty) {
+        let baseKb: Record<string, unknown> = {};
+        try { baseKb = JSON.parse(config || '{}'); } catch { baseKb = {}; }
+        if (!baseKb || typeof baseKb !== 'object' || Array.isArray(baseKb)) baseKb = {};
+        if (bizDirty) {
+          baseKb.address = address.trim();
+          baseKb.city = city.trim();
+          baseKb.workingHours = workingHours.trim();
+          baseKb.welcomeMessage = welcomeMessage.trim();
+        }
+        bulk.knowledge_base_json = JSON.stringify(baseKb);
+      }
 
       const res = await fetch('/api/client/settings', {
         method: 'POST',
@@ -162,6 +206,7 @@ export default function ClientSettingsPage() {
         if (data.systemPrompt) setPrompt(data.systemPrompt);
         setPromptDirty(false);
         setKbDirty(false);
+        setBizDirty(false);
         setKbError('');
         if (kbDirty) {
           toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
@@ -203,6 +248,59 @@ export default function ClientSettingsPage() {
           <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
         ) : (
           <div className="flex flex-col gap-4">
+            <Panel
+              title="Business details"
+              sub="Address, city, working hours, and welcome message. Editing any of these here updates business knowledge AND the bot's system prompt — both stay in sync, so the bot starts using the new info on the next customer message."
+            >
+              <div className="grid gap-3">
+                <div className="grid gap-1">
+                  <label className="text-[12px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold">Address</label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => { setAddress(e.target.value); setBizDirty(true); }}
+                    placeholder="e.g., A-12 Lajpat Nagar, near Metro Station"
+                    className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-[12px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold">City</label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => { setCity(e.target.value); setBizDirty(true); }}
+                    placeholder="e.g., Delhi"
+                    className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-[12px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold">Working hours</label>
+                  <input
+                    type="text"
+                    value={workingHours}
+                    onChange={(e) => { setWorkingHours(e.target.value); setBizDirty(true); }}
+                    placeholder="e.g., Mon-Sat 5 AM - 11 PM"
+                    className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-[12px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold">Welcome message</label>
+                  <textarea
+                    rows={2}
+                    value={welcomeMessage}
+                    onChange={(e) => { setWelcomeMessage(e.target.value); setBizDirty(true); }}
+                    placeholder="e.g., Namaste! Sharma Ji Ka Dhaba mein aapka swagat hai 🙏 Aaj kya khayenge?"
+                    className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm resize-none"
+                  />
+                </div>
+              </div>
+              {bizDirty && (
+                <p className="text-[11px] text-[var(--mute)] mt-2">
+                  Unsaved business details — click <b>Save all changes</b> at the top.
+                </p>
+              )}
+            </Panel>
+
             <Panel
               title="Bot languages"
               sub="Pick every language your bot should understand and reply in. The first one is the default fallback when the customer's language isn't clear. Hit Save at the top when done."

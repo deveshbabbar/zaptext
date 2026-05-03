@@ -1,71 +1,38 @@
-import { google } from 'googleapis';
-import { InventoryItem } from './types';
+// ─── Inventory: pure utilities + Neon-backed DB layer ───
+//
+// Phase 2B step 2 of the Neon migration. The DB-touching functions live
+// in lib/db/inventory.ts and are re-exported from here so the existing
+// callers (webhook, inventory-sync, client routes) don't change their
+// imports. The pure utility functions and reserveOrder() stay here
+// because they're either standalone (no I/O) or compose multiple DB
+// functions in a way that's natural to keep next to the utilities they
+// rely on (findBestMatch, parseQuantityFromToken).
 
-function getAuth() {
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    },
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-}
-function getSheets() {
-  return google.sheets({ version: 'v4', auth: getAuth() });
-}
+import type { InventoryItem } from './types';
+import {
+  getActiveInventory as _getActiveInventory,
+  adjustStock,
+} from './db/inventory';
 
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID!;
+// Re-export the DB-touching functions so callers keep importing from
+// '@/lib/inventory'.
+export {
+  getInventory,
+  getActiveInventory,
+  getItem,
+  upsertItem,
+  setStock,
+  adjustStock,
+  batchUpsertItems,
+  deleteItem,
+} from './db/inventory';
 
-function rowToItem(row: string[]): InventoryItem {
-  const daysRaw = (row[11] || '').trim();
-  return {
-    client_id: row[0] || '',
-    sku: row[1] || '',
-    name: row[2] || '',
-    price: parseFloat(row[3] || '0') || 0,
-    stock: parseInt(row[4] || '0', 10) || 0,
-    low_stock_threshold: parseInt(row[5] || '0', 10) || 0,
-    is_active: (row[6] || 'TRUE').toUpperCase() !== 'FALSE',
-    updated_at: row[7] || '',
-    notes: row[8] || '',
-    available_from: row[9] || '',
-    available_to: row[10] || '',
-    available_days: daysRaw
-      ? daysRaw.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean)
-      : [],
-  };
-}
-
-// Normalize "9:30" → "09:30" so stored times are always HH:MM.
-function normalizeTime(t: string): string {
-  if (!t) return '';
-  const m = t.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return t;
-  return `${m[1].padStart(2, '0')}:${m[2]}`;
-}
-
-function itemToRow(item: InventoryItem): string[] {
-  return [
-    item.client_id,
-    item.sku,
-    item.name,
-    item.price.toString(),
-    Math.max(0, Math.floor(item.stock)).toString(),
-    Math.max(0, Math.floor(item.low_stock_threshold)).toString(),
-    item.is_active ? 'TRUE' : 'FALSE',
-    item.updated_at,
-    item.notes || '',
-    normalizeTime(item.available_from || ''),
-    normalizeTime(item.available_to || ''),
-    (item.available_days || []).join(','),
-  ];
-}
+// ─── Pure utilities (no I/O) ─────────────────────────────────────────────
 
 // Check if an item is available at a specific IST moment. An item with no
 // time window (both available_from/to empty) is always available. Time
 // windows support wrap-around midnight (e.g. from=22:00, to=02:00).
 // available_days empty/absent = available every day of the week.
-
 export function isItemAvailableNow(item: InventoryItem, now: Date = new Date()): boolean {
   // Convert to IST for the day-of-week + HH:MM check.
   const istFormatter = new Intl.DateTimeFormat('en-US', {
@@ -133,200 +100,6 @@ export function slugify(name: string): string {
   );
 }
 
-async function fetchAllRows(): Promise<{ rowIndex: number; item: InventoryItem }[]> {
-  const sheets = getSheets();
-  try {
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'inventory!A2:L',
-    });
-    const rows = res.data.values || [];
-    return rows.map((row, i) => ({ rowIndex: i + 2, item: rowToItem(row) }));
-  } catch {
-    return [];
-  }
-}
-
-export async function getInventory(clientId: string): Promise<InventoryItem[]> {
-  const all = await fetchAllRows();
-  return all.filter((x) => x.item.client_id === clientId).map((x) => x.item);
-}
-
-export async function getActiveInventory(clientId: string): Promise<InventoryItem[]> {
-  const all = await getInventory(clientId);
-  return all.filter((i) => i.is_active);
-}
-
-export async function getItem(clientId: string, sku: string): Promise<InventoryItem | null> {
-  const all = await fetchAllRows();
-  const found = all.find((x) => x.item.client_id === clientId && x.item.sku === sku);
-  return found ? found.item : null;
-}
-
-export async function upsertItem(
-  input: Partial<InventoryItem> & { client_id: string; name: string }
-): Promise<InventoryItem> {
-  const sheets = getSheets();
-  const sku = input.sku && input.sku.trim() ? slugify(input.sku) : slugify(input.name);
-  const all = await fetchAllRows();
-  const existing = all.find((x) => x.item.client_id === input.client_id && x.item.sku === sku);
-
-  const item: InventoryItem = {
-    client_id: input.client_id,
-    sku,
-    name: input.name.trim(),
-    price: typeof input.price === 'number' ? input.price : existing?.item.price ?? 0,
-    stock: typeof input.stock === 'number' ? Math.max(0, Math.floor(input.stock)) : existing?.item.stock ?? 0,
-    low_stock_threshold:
-      typeof input.low_stock_threshold === 'number'
-        ? Math.max(0, Math.floor(input.low_stock_threshold))
-        : existing?.item.low_stock_threshold ?? 0,
-    is_active: typeof input.is_active === 'boolean' ? input.is_active : existing?.item.is_active ?? true,
-    updated_at: new Date().toISOString(),
-    notes: typeof input.notes === 'string' ? input.notes : existing?.item.notes ?? '',
-    available_from:
-      typeof input.available_from === 'string' ? input.available_from : existing?.item.available_from ?? '',
-    available_to:
-      typeof input.available_to === 'string' ? input.available_to : existing?.item.available_to ?? '',
-    available_days: Array.isArray(input.available_days)
-      ? input.available_days
-      : existing?.item.available_days ?? [],
-  };
-
-  if (existing) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `inventory!A${existing.rowIndex}:L${existing.rowIndex}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [itemToRow(item)] },
-    });
-  } else {
-    // INSERT_ROWS prevents Sheets from "OVERWRITE"-ing the next row when its
-    // table-boundary detection is off (blank trailing rows / merged cells).
-    // Without this flag, appended items silently disappear — see addClient
-    // for the same fix on the clients sheet.
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'inventory!A:L',
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [itemToRow(item)] },
-    });
-  }
-  return item;
-}
-
-export async function setStock(clientId: string, sku: string, qty: number): Promise<InventoryItem | null> {
-  const item = await getItem(clientId, sku);
-  if (!item) return null;
-  return upsertItem({ ...item, stock: Math.max(0, Math.floor(qty)) });
-}
-
-export async function adjustStock(
-  clientId: string,
-  sku: string,
-  delta: number
-): Promise<{ item: InventoryItem | null; previous: number; crossedLowThreshold: boolean }> {
-  const item = await getItem(clientId, sku);
-  if (!item) return { item: null, previous: 0, crossedLowThreshold: false };
-  const previous = item.stock;
-  const next = Math.max(0, previous + Math.floor(delta));
-  const crossedLowThreshold =
-    item.low_stock_threshold > 0 && previous > item.low_stock_threshold && next <= item.low_stock_threshold;
-  const updated = await upsertItem({ ...item, stock: next });
-  return { item: updated, previous, crossedLowThreshold };
-}
-
-// Batch-upsert: reads the sheet ONCE, appends all new rows in a single call,
-// then updates existing rows individually. Avoids the N×fetchAllRows() pattern
-// that causes rate-limit failures when syncing 10–20 items at once.
-export async function batchUpsertItems(
-  inputs: Array<Partial<InventoryItem> & { client_id: string; name: string }>
-): Promise<{ written: number; skipped: number }> {
-  if (!inputs.length) return { written: 0, skipped: 0 };
-  const sheets = getSheets();
-  const all = await fetchAllRows();
-  const now = new Date().toISOString();
-
-  const toAppend: string[][] = [];
-  const toUpdate: Array<{ rowIndex: number; row: string[] }> = [];
-  let skipped = 0;
-
-  for (const input of inputs) {
-    try {
-      const sku = input.sku && input.sku.trim() ? slugify(input.sku) : slugify(input.name);
-      const existing = all.find((x) => x.item.client_id === input.client_id && x.item.sku === sku);
-      const item: InventoryItem = {
-        client_id: input.client_id,
-        sku,
-        name: input.name.trim(),
-        price: typeof input.price === 'number' ? input.price : existing?.item.price ?? 0,
-        stock: typeof input.stock === 'number' ? Math.max(0, Math.floor(input.stock)) : existing?.item.stock ?? 0,
-        low_stock_threshold:
-          typeof input.low_stock_threshold === 'number'
-            ? Math.max(0, Math.floor(input.low_stock_threshold))
-            : existing?.item.low_stock_threshold ?? 0,
-        is_active: typeof input.is_active === 'boolean' ? input.is_active : existing?.item.is_active ?? true,
-        updated_at: now,
-        notes: typeof input.notes === 'string' ? input.notes : existing?.item.notes ?? '',
-        available_from:
-          typeof input.available_from === 'string' ? input.available_from : existing?.item.available_from ?? '',
-        available_to:
-          typeof input.available_to === 'string' ? input.available_to : existing?.item.available_to ?? '',
-        available_days: Array.isArray(input.available_days)
-          ? input.available_days
-          : existing?.item.available_days ?? [],
-      };
-      if (existing) {
-        toUpdate.push({ rowIndex: existing.rowIndex, row: itemToRow(item) });
-      } else {
-        toAppend.push(itemToRow(item));
-      }
-    } catch {
-      skipped++;
-    }
-  }
-
-  // Single batch append for all new items. INSERT_ROWS for the same reason
-  // as upsertItem above — default OVERWRITE can silently clobber rows.
-  if (toAppend.length > 0) {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'inventory!A:L',
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: toAppend },
-    });
-  }
-
-  // Sequential updates for existing items (usually 0 on first sync)
-  let updateSuccesses = 0;
-  for (const { rowIndex, row } of toUpdate) {
-    try {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `inventory!A${rowIndex}:L${rowIndex}`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [row] },
-      });
-      updateSuccesses++;
-    } catch {
-      skipped++;
-    }
-  }
-
-  return { written: toAppend.length + updateSuccesses, skipped };
-}
-
-export async function deleteItem(clientId: string, sku: string): Promise<boolean> {
-  const item = await getItem(clientId, sku);
-  if (!item) return false;
-  await upsertItem({ ...item, is_active: false });
-  return true;
-}
-
-// ─── Fuzzy match for free-text bot item references ───
-
 export function parseQuantityFromToken(raw: string): { qty: number; name: string } {
   const m = raw.match(/^\s*(\d+)\s*[xX*×]\s*(.+?)\s*$/);
   if (m) return { qty: parseInt(m[1], 10), name: m[2].trim() };
@@ -365,6 +138,13 @@ export function findBestMatch(items: InventoryItem[], query: string): InventoryI
 }
 
 // ─── Reserve (atomic-ish) an order against inventory ───
+//
+// Two-phase: (1) match every requested token to an active inventory item
+// and check stock-vs-requested; (2) if all lines have stock, decrement
+// each item's stock individually. This is "atomic-ish" — Neon transactions
+// would make it fully atomic, but the current bot flow tolerates the
+// extremely rare race-window in step 2 (we'd reduce stock past zero,
+// which is harmless because the order has already been confirmed).
 
 export interface ReservationLine {
   requested: string;
@@ -386,7 +166,7 @@ export async function reserveOrder(
   clientId: string,
   rawItemTokens: string[]
 ): Promise<ReservationResult> {
-  const active = await getActiveInventory(clientId);
+  const active = await _getActiveInventory(clientId);
   const lines: ReservationLine[] = rawItemTokens.map((raw) => {
     const parsed = parseQuantityFromToken(raw);
     const match = findBestMatch(active, parsed.name);

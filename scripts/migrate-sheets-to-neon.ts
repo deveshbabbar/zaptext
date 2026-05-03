@@ -22,7 +22,7 @@ import { google } from 'googleapis';
 import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
 import { db } from '../lib/db';
-import { clients, conversations, analytics, subscriptions } from '../lib/db/schema';
+import { clients, conversations, analytics, subscriptions, inventory } from '../lib/db/schema';
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 if (!SPREADSHEET_ID) {
@@ -233,6 +233,63 @@ async function migrateSubscriptions() {
   console.log(`[subscriptions] inserted=${inserted} skipped=${skipped} (already in Neon)`);
 }
 
+async function migrateInventory() {
+  const sheets = getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'inventory!A2:L',
+  });
+  const rows = res.data.values || [];
+  console.log(`[inventory] ${rows.length} rows in Sheet`);
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const clientId = row[0];
+    const sku = row[1];
+    if (!clientId || !sku) {
+      skipped++;
+      continue;
+    }
+    // Composite PK (client_id, sku) — ON CONFLICT updates the existing row
+    // so re-running the script overwrites Neon with the latest Sheets state
+    // (matches the legacy upsertItem semantic).
+    await db
+      .insert(inventory)
+      .values({
+        client_id: clientId,
+        sku,
+        name: row[2] || '',
+        price: String(parseFloat(row[3] || '0') || 0),
+        stock: parseInt(row[4] || '0', 10) || 0,
+        low_stock_threshold: parseInt(row[5] || '0', 10) || 0,
+        is_active: (row[6] || 'TRUE').toUpperCase() !== 'FALSE',
+        updated_at: safeDate(row[7]),
+        notes: row[8] || '',
+        available_from: row[9] || '',
+        available_to: row[10] || '',
+        available_days: row[11] || '',
+      })
+      .onConflictDoUpdate({
+        target: [inventory.client_id, inventory.sku],
+        set: {
+          name: row[2] || '',
+          price: String(parseFloat(row[3] || '0') || 0),
+          stock: parseInt(row[4] || '0', 10) || 0,
+          low_stock_threshold: parseInt(row[5] || '0', 10) || 0,
+          is_active: (row[6] || 'TRUE').toUpperCase() !== 'FALSE',
+          updated_at: safeDate(row[7]),
+          notes: row[8] || '',
+          available_from: row[9] || '',
+          available_to: row[10] || '',
+          available_days: row[11] || '',
+        },
+      });
+    inserted++;
+  }
+  console.log(`[inventory] upserted=${inserted} skipped=${skipped}`);
+}
+
 async function main() {
   console.log('Starting Sheets → Neon migration…');
   console.log(`Spreadsheet: ${SPREADSHEET_ID}`);
@@ -241,6 +298,7 @@ async function main() {
   await migrateConversations();
   await migrateAnalytics();
   await migrateSubscriptions();
+  await migrateInventory();
 
   console.log('\n✓ Migration complete.');
   console.log('Spot-check counts in Neon Studio: npm run db:studio');

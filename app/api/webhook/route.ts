@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
 import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
@@ -82,14 +82,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' });
     }
 
-    // Process messages asynchronously (don't block the response).
-    // Capture context in the error log so we can actually debug failures.
-    processMessages(payload.phoneNumberId, payload.messages).catch((err) => {
-      console.error('[processMessages] failed', {
-        phoneNumberId: payload.phoneNumberId,
-        messageCount: payload.messages.length,
-        error: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
-      });
+    // Process messages asynchronously AFTER sending the 200 response.
+    // `after()` from next/server tells Vercel to keep the serverless
+    // function warm until this callback finishes — without it, the
+    // function freezes the moment the response is sent and Gemini /
+    // Sheets / Neon writes get killed mid-flight (which is why we saw
+    // no new "incoming" rows in conversations after the Neon cutover:
+    // Neon was so much faster than Sheets that the response landed
+    // before processMessages even started its first query).
+    after(async () => {
+      try {
+        await processMessages(payload.phoneNumberId, payload.messages);
+      } catch (err) {
+        console.error('[processMessages] failed', {
+          phoneNumberId: payload.phoneNumberId,
+          messageCount: payload.messages.length,
+          error: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
+        });
+      }
     });
 
     return NextResponse.json({ status: 'ok' });

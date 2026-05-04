@@ -2,6 +2,7 @@ import { ClientConfig, InventoryItem } from './types';
 import { batchUpsertItems, getInventory, getActiveInventory } from './inventory';
 import { getClientById, updateClientFields } from './google-sheets';
 import { generateSystemPrompt } from './prompt-generator';
+import { seedDefaultsForVertical } from './db/inventory-categories';
 
 // Extract a numeric price from user-entered strings like "₹280", "Rs. 1,200",
 // "300/-", "1499 INR". Returns 0 if no number found.
@@ -27,7 +28,18 @@ export async function syncProductsFromConfig(
   clientId: string,
   config: ClientConfig
 ): Promise<SyncResult> {
-  const toCreate: Array<Partial<InventoryItem> & { name: string; notes?: string }> = [];
+  // Make sure the per-client category list exists before any item upsert,
+  // so each pushed item lands in a real category row (and the inventory
+  // page can group by them on the very first render). Idempotent.
+  await seedDefaultsForVertical(clientId, config.type).catch((e) => {
+    // Non-fatal — sync still proceeds with empty categories. The owner
+    // can add categories manually later.
+    console.error('[inventory-sync] seedDefaultsForVertical failed:', e);
+  });
+
+  const toCreate: Array<
+    Partial<InventoryItem> & { name: string; notes?: string; category?: string; tracks_stock?: boolean }
+  > = [];
 
   switch (config.type) {
     case 'restaurant':
@@ -38,6 +50,8 @@ export async function syncProductsFromConfig(
             name: item.name,
             price: parsePrice(item.price),
             notes: [cat.category, item.description, item.isVeg ? 'veg' : 'non-veg'].filter(Boolean).join(' · '),
+            category: 'Menu',
+            tracks_stock: true,
           });
         }
       }
@@ -51,6 +65,8 @@ export async function syncProductsFromConfig(
             name: item.name,
             price: parsePrice(item.price),
             notes: [cat.category, item.duration].filter(Boolean).join(' · '),
+            category: 'Services',
+            tracks_stock: false,
           });
         }
       }
@@ -60,6 +76,8 @@ export async function syncProductsFromConfig(
           name: pkg.name,
           price: parsePrice(pkg.price),
           notes: ['package', pkg.includes].filter(Boolean).join(' · '),
+          category: 'Packages',
+          tracks_stock: false,
         });
       }
       break;
@@ -71,6 +89,30 @@ export async function syncProductsFromConfig(
           name: plan.name,
           price: parsePrice(plan.price),
           notes: [plan.duration, plan.includes].filter(Boolean).join(' · '),
+          category: 'Membership Plans',
+          tracks_stock: false,
+        });
+      }
+      // Personal training as a single line-item if the gym offers it.
+      if (config.personalTraining?.available) {
+        toCreate.push({
+          name: 'Personal Training',
+          price: parsePrice(config.personalTraining.pricePerSession),
+          notes: config.personalTraining.trainerInfo || '',
+          category: 'Personal Training',
+          tracks_stock: false,
+        });
+      }
+      // Group classes — each class becomes its own item under "Group Classes".
+      for (const cls of config.groupClasses || []) {
+        const name = typeof cls === 'string' ? cls : '';
+        if (!name.trim()) continue;
+        toCreate.push({
+          name,
+          price: 0,
+          notes: 'Group class',
+          category: 'Group Classes',
+          tracks_stock: false,
         });
       }
       break;
@@ -82,6 +124,8 @@ export async function syncProductsFromConfig(
           name: product.name,
           price: parsePrice(product.price),
           notes: [product.description, product.bestseller ? 'bestseller' : ''].filter(Boolean).join(' · '),
+          category: 'Products',
+          tracks_stock: true,
         });
       }
       break;
@@ -93,6 +137,8 @@ export async function syncProductsFromConfig(
           name: course.name,
           price: parsePrice(course.fee),
           notes: [course.duration, course.schedule, course.mode].filter(Boolean).join(' · '),
+          category: 'Courses',
+          tracks_stock: false,
         });
       }
       break;
@@ -104,6 +150,8 @@ export async function syncProductsFromConfig(
           name: listing.title,
           price: parsePrice(listing.price),
           notes: [listing.type, listing.area, listing.highlights].filter(Boolean).join(' · '),
+          category: 'Listings',
+          tracks_stock: false,
         });
       }
       break;
@@ -130,8 +178,12 @@ export async function syncProductsFromConfig(
       name: it.name.trim(),
       price: it.price,
       notes: it.notes,
+      category: it.category,
+      tracks_stock: it.tracks_stock,
       is_active: true as const,
-      ...(isNew ? { stock: 0, low_stock_threshold: 0 } : {}),
+      // Only seed stock=0 for stock-tracked items; service categories
+      // shouldn't show "0 left" in the UI on first sync.
+      ...(isNew && it.tracks_stock !== false ? { stock: 0, low_stock_threshold: 0 } : {}),
     };
   });
 

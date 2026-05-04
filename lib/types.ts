@@ -283,6 +283,23 @@ export interface InventoryItem {
   available_from?: string; // 'HH:MM' 24h
   available_to?: string;   // 'HH:MM' 24h
   available_days?: string[]; // lowercase day names: mon, tue, wed, thu, fri, sat, sun
+  // Multi-category inventory (Phase 3). Empty string = use the vertical's
+  // default category at render time. tracks_stock=false hides stock fields
+  // for service/plan-style items (memberships, services, courses, listings).
+  category?: string;
+  tracks_stock?: boolean;
+}
+
+// ─── Inventory category metadata ───
+// Used by /client/settings to manage the per-vertical category list and
+// custom owner-added categories. Mirrors the inventoryCategories table.
+export interface InventoryCategory {
+  id: string;
+  client_id: string;
+  name: string;
+  tracks_stock: boolean;
+  display_order: number;
+  created_at: string;
 }
 
 // ─── Business Type Metadata ───

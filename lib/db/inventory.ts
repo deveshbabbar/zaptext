@@ -41,6 +41,8 @@ function dbRowToItem(row: DbInventoryRow): InventoryItem {
     available_days: daysRaw
       ? daysRaw.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean)
       : [],
+    category: row.category ?? '',
+    tracks_stock: row.tracks_stock,
   };
 }
 
@@ -120,6 +122,10 @@ export async function upsertItem(
   const days = Array.isArray(input.available_days)
     ? input.available_days
     : existing?.available_days ?? [];
+  const category =
+    typeof input.category === 'string' ? input.category.trim() : existing?.category ?? '';
+  const tracksStock =
+    typeof input.tracks_stock === 'boolean' ? input.tracks_stock : existing?.tracks_stock ?? true;
 
   const now = new Date();
   const trimmedName = input.name.trim();
@@ -140,6 +146,8 @@ export async function upsertItem(
       available_from: fromT,
       available_to: toT,
       available_days: daysJoined,
+      category,
+      tracks_stock: tracksStock,
     })
     .onConflictDoUpdate({
       target: [inventoryTable.client_id, inventoryTable.sku],
@@ -154,6 +162,8 @@ export async function upsertItem(
         available_from: fromT,
         available_to: toT,
         available_days: daysJoined,
+        category,
+        tracks_stock: tracksStock,
       },
     });
 
@@ -170,6 +180,8 @@ export async function upsertItem(
     available_from: fromT,
     available_to: toT,
     available_days: days,
+    category,
+    tracks_stock: tracksStock,
   };
 }
 

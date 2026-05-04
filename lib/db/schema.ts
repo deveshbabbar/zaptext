@@ -203,11 +203,50 @@ export const inventory = pgTable(
     available_from: varchar('available_from', { length: 5 }).default(''), // 'HH:MM'
     available_to: varchar('available_to', { length: 5 }).default(''),
     available_days: varchar('available_days', { length: 64 }).default(''), // 'mon,tue,wed'
+    // Logical grouping for multi-category UI. Examples per vertical:
+    //   gym         → 'Membership Plans' | 'Personal Training' | 'Supplements' | 'Merchandise' | 'Equipment'
+    //   salon       → 'Services' | 'Packages' | 'Products' | 'Memberships'
+    //   restaurant  → 'Menu' (with sub-cat in notes) | 'Combos' | 'Catering'
+    //   coaching    → 'Courses' | 'Books' | 'Online Resources'
+    //   d2c         → 'Products' | 'Subscriptions'
+    //   realestate  → 'Listings' | 'Project Ads'
+    // Empty string is treated as the vertical's default category at read time.
+    category: varchar('category', { length: 100 }).default(''),
+    // tracks_stock=false for service-type categories (memberships, classes,
+    // services, courses) where "stock" is meaningless. UI hides stock fields
+    // when this is false. Default true for backward compat with existing
+    // restaurant/d2c rows.
+    tracks_stock: boolean('tracks_stock').notNull().default(true),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.client_id, t.sku] }),
     clientIdIdx: index('inventory_client_id_idx').on(t.client_id),
     nameIdx: index('inventory_client_name_idx').on(t.client_id, t.name),
+    categoryIdx: index('inventory_client_category_idx').on(t.client_id, t.category),
+  })
+);
+
+// ─── inventory_categories (per-client category definitions) ─────────────
+
+// Each client gets a list of category labels. Verticals come pre-seeded
+// with sensible defaults (see lib/inventory-sync.ts), and the owner can
+// add custom categories from /client/settings (e.g. "Diet Plans" for a
+// gym, "Nail Art" for a salon). The `tracks_stock` flag controls whether
+// the inventory page exposes stock + low-stock fields for items in that
+// category.
+export const inventoryCategories = pgTable(
+  'inventory_categories',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    tracks_stock: boolean('tracks_stock').notNull().default(true),
+    display_order: integer('display_order').notNull().default(0),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    clientNameIdx: uniqueIndex('inventory_categories_client_name_idx').on(t.client_id, t.name),
+    clientIdIdx: index('inventory_categories_client_id_idx').on(t.client_id),
   })
 );
 
@@ -268,3 +307,5 @@ export type SlotRow = typeof slots.$inferSelect;
 export type NewSlotRow = typeof slots.$inferInsert;
 export type DateOverrideRow = typeof date_overrides.$inferSelect;
 export type NewDateOverrideRow = typeof date_overrides.$inferInsert;
+export type InventoryCategoryRow = typeof inventoryCategories.$inferSelect;
+export type NewInventoryCategoryRow = typeof inventoryCategories.$inferInsert;

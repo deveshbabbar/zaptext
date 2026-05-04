@@ -239,21 +239,43 @@ async function remap() {
   const fromId = from;
   const toId = to;
 
-  // Atomic — if either UPDATE fails, both roll back.
-  await db.transaction(async (tx: any) => {
-    const updatedClients = await tx
+  // Sequential UPDATEs (NOT a transaction) — the neon-http driver this
+  // project uses doesn't support multi-statement transactions. Acceptable
+  // for a one-shot migration because:
+  //   - Both updates are idempotent on their predicate (re-running with
+  //     the same --from won't double-apply; the second run just sees 0
+  //     matching rows).
+  //   - If step 2 fails after step 1 succeeds, the user just re-runs
+  //     the same command; the script will correctly migrate ONLY the
+  //     leftover subscription row.
+  let updatedClientsCount = 0;
+  try {
+    const updatedClients = await db
       .update(clients)
       .set({ owner_user_id: toId })
       .where(eq(clients.owner_user_id, fromId))
       .returning({ id: clients.client_id });
-    const updatedSubs = await tx
+    updatedClientsCount = updatedClients.length;
+    console.log(`   ✅ clients      : ${updatedClientsCount} row(s) updated`);
+  } catch (e) {
+    console.error('   ❌ Step 1 (clients) FAILED:', e);
+    console.error('   No rows changed yet. Safe to re-run with the same args.');
+    process.exit(1);
+  }
+
+  try {
+    const updatedSubs = await db
       .update(subscriptions)
       .set({ user_id: toId })
       .where(eq(subscriptions.user_id, fromId))
       .returning({ id: subscriptions.id });
-    console.log(`   ✅ clients      : ${updatedClients.length} row(s) updated`);
     console.log(`   ✅ subscriptions: ${updatedSubs.length} row(s) updated`);
-  });
+  } catch (e) {
+    console.error('   ❌ Step 2 (subscriptions) FAILED — but step 1 (clients) already succeeded:', e);
+    console.error(`   ${updatedClientsCount} client row(s) are now under ${toId}, but subscriptions still under ${fromId}.`);
+    console.error('   Re-run the same command; it will only retry the subscriptions step.');
+    process.exit(1);
+  }
 
   console.log('\n✅ Done. Log in to the app with the new Clerk account — your bots should appear.\n');
   process.exit(0);

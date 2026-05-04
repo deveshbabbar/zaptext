@@ -31,6 +31,16 @@ export default function ClientSettingsPage() {
   const [workingHours, setWorkingHours] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [bizDirty, setBizDirty] = useState(false);
+  // Per-bot inventory categories. Loaded from /api/client/inventory/categories
+  // and managed via the "Inventory categories" panel below — owners can add
+  // custom labels (e.g. "Diet Plans" for a gym) or delete defaults they
+  // don't use. Items already tagged with a deleted category fall to
+  // "Uncategorised" on the inventory page rather than disappearing.
+  interface CategoryRow { id: string; name: string; tracks_stock: boolean; display_order: number }
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatTracksStock, setNewCatTracksStock] = useState(true);
+  const [catBusy, setCatBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Track whether the user has edited the prompt manually after last load/save.
@@ -87,7 +97,102 @@ export default function ClientSettingsPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    // Fire-and-forget categories fetch — independent of the main settings
+    // load, so the panel populates as soon as the route responds and
+    // doesn't block the rest of the page if the categories endpoint is
+    // slow or 404s.
+    fetch('/api/client/inventory/categories', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('cat fetch failed'))))
+      .then((data) => {
+        if (Array.isArray(data.categories)) setCategories(data.categories);
+      })
+      .catch(() => {
+        // Non-fatal — leave the list empty; owner can still type a new
+        // category name to seed the table on first save.
+      });
   }, []);
+
+  const reloadCategories = async () => {
+    try {
+      const res = await fetch('/api/client/inventory/categories', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.categories)) setCategories(data.categories);
+    } catch {
+      // ignore — toast on the calling action surfaces the failure
+    }
+  };
+
+  const addCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) {
+      toast.error('Category name required');
+      return;
+    }
+    setCatBusy('__new__');
+    try {
+      const res = await fetch('/api/client/inventory/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, tracks_stock: newCatTracksStock }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to add category');
+        return;
+      }
+      toast.success(`Added "${name}"`);
+      setNewCatName('');
+      setNewCatTracksStock(true);
+      await reloadCategories();
+    } finally {
+      setCatBusy(null);
+    }
+  };
+
+  const toggleCategoryStock = async (cat: CategoryRow) => {
+    setCatBusy(cat.id);
+    try {
+      const res = await fetch('/api/client/inventory/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: cat.name, tracks_stock: !cat.tracks_stock }),
+      });
+      if (!res.ok) {
+        toast.error('Failed to update category');
+        return;
+      }
+      // Optimistic local update — server has already accepted the change
+      // by the time we reach this line; no need to wait for a re-fetch.
+      setCategories((prev) =>
+        prev.map((c) => (c.id === cat.id ? { ...c, tracks_stock: !c.tracks_stock } : c))
+      );
+    } finally {
+      setCatBusy(null);
+    }
+  };
+
+  const deleteCategoryRow = async (cat: CategoryRow) => {
+    if (!window.confirm(`Delete "${cat.name}"? Items already tagged with it will fall under "Uncategorised" until you re-tag them.`)) {
+      return;
+    }
+    setCatBusy(cat.id);
+    try {
+      const res = await fetch('/api/client/inventory/categories', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: cat.name }),
+      });
+      if (!res.ok) {
+        toast.error('Failed to delete');
+        return;
+      }
+      setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+    } finally {
+      setCatBusy(null);
+    }
+  };
 
   const validateKb = (raw: string): string => {
     if (!raw.trim()) return 'Business knowledge cannot be empty.';
@@ -299,6 +404,79 @@ export default function ClientSettingsPage() {
                   Unsaved business details — click <b>Save all changes</b> at the top.
                 </p>
               )}
+            </Panel>
+
+            <Panel
+              title="Inventory categories"
+              sub="Group your bot's items (membership plans, services, products, etc.). Toggle stock-tracking off for service categories so the inventory page hides stock fields. Custom categories let you add anything specific to your business."
+            >
+              {categories.length === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] m-0 mb-3">
+                  No categories yet. Add one below — bot approval auto-seeds the default list, but you can always add custom ones.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1.5 mb-4">
+                  {categories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className="flex items-center gap-3 rounded-[10px] border border-[var(--line)] bg-[var(--card)]"
+                      style={{ padding: '8px 12px' }}
+                    >
+                      <span className="font-semibold text-[13.5px] flex-1">{cat.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryStock(cat)}
+                        disabled={catBusy === cat.id}
+                        className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-full border transition disabled:opacity-50 ${
+                          cat.tracks_stock
+                            ? 'border-emerald-500/40 text-emerald-600'
+                            : 'border-[var(--line)] text-[var(--mute)]'
+                        }`}
+                        title="Toggle whether items in this category track stock counts"
+                      >
+                        {cat.tracks_stock ? '✓ Tracks stock' : '— No stock'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteCategoryRow(cat)}
+                        disabled={catBusy === cat.id}
+                        className="text-[11.5px] text-[var(--mute)] hover:text-red-500 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-[2fr_auto_auto] gap-2.5">
+                <input
+                  type="text"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  placeholder="New category name (e.g., Diet Plans)"
+                  disabled={catBusy === '__new__'}
+                  className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setNewCatTracksStock((v) => !v)}
+                  disabled={catBusy === '__new__'}
+                  className={`rounded-[10px] border px-3 py-2 text-[12.5px] font-semibold transition disabled:opacity-50 ${
+                    newCatTracksStock
+                      ? 'border-emerald-500/40 text-emerald-600'
+                      : 'border-[var(--line)] text-[var(--mute)]'
+                  }`}
+                  title="Click to toggle stock-tracking for this category"
+                >
+                  {newCatTracksStock ? '✓ Tracks stock' : '— No stock'}
+                </button>
+                <Pill variant="ink" onClick={addCategory} disabled={catBusy === '__new__' || !newCatName.trim()}>
+                  {catBusy === '__new__' ? 'Adding…' : '+ Add'}
+                </Pill>
+              </div>
+              <p className="text-[11px] text-[var(--mute)] mt-2 m-0">
+                Stock-tracking off → items don&apos;t show stock counts (good for memberships, services, courses, listings). Toggle on for physical products with finite quantity.
+              </p>
             </Panel>
 
             <Panel

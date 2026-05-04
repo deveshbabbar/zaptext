@@ -22,10 +22,14 @@
 // Loads DATABASE_URL from .env.local then .env (matches drizzle.config.ts).
 
 import { config } from 'dotenv';
-import { db } from '../lib/db';
-import { clients, subscriptions } from '../lib/db/schema';
-import { eq, sql } from 'drizzle-orm';
 
+// CRITICAL: load env BEFORE importing the db module. Static `import` is
+// hoisted to the top of the file in JS, so previously the `lib/db` module
+// initialized its Neon connection with DATABASE_URL=undefined even when
+// .env.local had it set. The npm aliases (`clerk:list`, `clerk:remap`)
+// avoided this via tsx's --env-file flag, but plain `npx tsx scripts/...`
+// hit the bug. Loading dotenv first + dynamic-importing the db module
+// fixes both invocation paths.
 config({ path: '.env.local' });
 config({ path: '.env' });
 
@@ -34,15 +38,40 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// Module-scope bindings, filled by initDb() inside the IIFE at the bottom
+// AFTER dotenv has loaded (tsconfig targets CJS so top-level await isn't
+// available; see the comment above). Typed `any` to keep the script tiny.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let db: any;
+let clients: any;
+let subscriptions: any;
+let eq: any;
+let sql: any;
+async function initDb() {
+  const dbMod = await import('../lib/db');
+  const schemaMod = await import('../lib/db/schema');
+  const drizzleMod = await import('drizzle-orm');
+  db = dbMod.db;
+  clients = schemaMod.clients;
+  subscriptions = schemaMod.subscriptions;
+  eq = drizzleMod.eq;
+  sql = drizzleMod.sql;
+}
+
 function arg(name: string): string | undefined {
   const flag = `--${name}`;
-  const exact = process.argv.find((a) => a === flag);
-  if (exact) return ''; // present-but-empty (boolean flag)
+  // --flag=value form first (unambiguous)
   const prefixed = process.argv.find((a) => a.startsWith(`${flag}=`));
   if (prefixed) return prefixed.slice(flag.length + 1);
+  // --flag form: if next argv looks like a value (not another --flag), use it.
+  // Otherwise treat as a boolean flag (return ''). The previous version
+  // returned '' on first sight of `--flag` and never looked at the next
+  // argv, which made `--to user_2DEF...` silently parse `to` as empty.
   const idx = process.argv.indexOf(flag);
-  if (idx >= 0 && process.argv[idx + 1] && !process.argv[idx + 1].startsWith('--')) {
-    return process.argv[idx + 1];
+  if (idx >= 0) {
+    const next = process.argv[idx + 1];
+    if (next && !next.startsWith('--')) return next;
+    return ''; // boolean flag (present without value)
   }
   return undefined;
 }
@@ -119,8 +148,8 @@ async function remap() {
       .from(subscriptions)
       .groupBy(subscriptions.user_id);
     const all = new Set<string>();
-    distinctOwners.forEach((r) => r.id && all.add(r.id));
-    distinctSubs.forEach((r) => r.id && all.add(r.id));
+    distinctOwners.forEach((r: { id: string | null }) => r.id && all.add(r.id));
+    distinctSubs.forEach((r: { id: string | null }) => r.id && all.add(r.id));
     all.delete(to);
     const candidates = Array.from(all);
     if (candidates.length === 0) {
@@ -211,7 +240,7 @@ async function remap() {
   const toId = to;
 
   // Atomic — if either UPDATE fails, both roll back.
-  await db.transaction(async (tx) => {
+  await db.transaction(async (tx: any) => {
     const updatedClients = await tx
       .update(clients)
       .set({ owner_user_id: toId })
@@ -232,6 +261,7 @@ async function remap() {
 
 (async () => {
   try {
+    await initDb();
     if (list) await listAllUserIds();
     else await remap();
   } catch (e) {

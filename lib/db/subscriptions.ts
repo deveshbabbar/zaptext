@@ -116,3 +116,15 @@ export async function getSubscriptionHistory(userId: string): Promise<Subscripti
     .orderBy(desc(subscriptionsTable.created_at));
   return rows.map(dbRowToRecord);
 }
+
+// Admin-only — returns every subscription row across all users, newest first.
+// Used by /api/admin/revenue and /api/admin/subscriptions to compute MRR,
+// per-plan stats, etc. Replaces the old Sheets-backed read of the
+// `subscriptions` tab.
+export async function getAllSubscriptions(): Promise<SubscriptionRecord[]> {
+  const rows = await db
+    .select()
+    .from(subscriptionsTable)
+    .orderBy(desc(subscriptionsTable.created_at));
+  return rows.map(dbRowToRecord);
+}

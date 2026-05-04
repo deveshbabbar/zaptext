@@ -16,4 +16,5 @@ export {
   getSubscriptionByPaymentId,
   createSubscription,
   getSubscriptionHistory,
+  getAllSubscriptions,
 } from './db/subscriptions';

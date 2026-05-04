@@ -164,6 +164,31 @@ export const bookings = pgTable(
   })
 );
 
+// ─── pending_payments ────────────────────────────────────────────────────
+// Tracks "bot just sent a [PAY:] tag, waiting on customer's screenshot" so
+// the screenshot handler can verify the amount + UPI when it arrives. Used
+// to live in a Sheets tab `pending_payments` (replaced as part of the
+// Sheets→Neon cutover so Google Cloud credentials can be removed).
+//
+// Composite PK (client_id, customer_phone) matches the natural identity:
+// one pending payment per customer per business. setPendingPayment is
+// upsert-style — re-asking for the same customer overwrites the previous
+// row, just like the Sheets implementation did.
+
+export const pending_payments = pgTable(
+  'pending_payments',
+  {
+    client_id: text('client_id').notNull(),
+    customer_phone: varchar('customer_phone', { length: 32 }).notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    note: text('note').default(''),
+    expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.client_id, t.customer_phone] }),
+  })
+);
+
 // ─── staff ───────────────────────────────────────────────────────────────
 
 export const staff = pgTable(

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { getAllClients } from '@/lib/google-sheets';
-import { google } from 'googleapis';
-import { PLANS } from '@/lib/subscription';
+import { PLANS, getAllSubscriptions } from '@/lib/subscription';
 
 export async function GET() {
   const user = await getUserRole();
@@ -12,40 +11,18 @@ export async function GET() {
 
   try {
     const clients = await getAllClients();
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-    const sheets = google.sheets({ version: 'v4', auth });
 
-    let subscriptions: Array<{
-      userId: string;
-      plan: string;
-      status: string;
-      amount: number;
-      startDate: string;
-      endDate: string;
-    }> = [];
-    try {
-      const res = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.SPREADSHEET_ID!,
-        range: 'subscriptions!A2:I',
-      });
-      const rows = res.data.values || [];
-      subscriptions = rows.map((row) => ({
-        userId: row[0] || '',
-        plan: row[1] || '',
-        status: row[2] || '',
-        amount: Number(row[5] || 0),
-        startDate: row[6] || '',
-        endDate: row[7] || '',
-      }));
-    } catch {
-      // subscriptions sheet may not exist yet
-    }
+    // Was Sheets-backed (`subscriptions!A2:I`); now reads Neon. Same row
+    // shape used by the per-plan aggregation below.
+    const allSubs = await getAllSubscriptions().catch(() => []);
+    const subscriptions = allSubs.map((s) => ({
+      userId: s.userId,
+      plan: s.plan,
+      status: s.status,
+      amount: s.amount,
+      startDate: s.startDate,
+      endDate: s.endDate,
+    }));
 
     // Aggregate by plan
     const planStats: Record<

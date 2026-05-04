@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { getAllClients } from '@/lib/google-sheets';
-import { google } from 'googleapis';
-import { PLANS } from '@/lib/subscription';
+import { PLANS, getAllSubscriptions } from '@/lib/subscription';
 
 interface SubRow {
   userId: string;
@@ -22,34 +21,21 @@ export async function GET() {
 
   try {
     const clients = await getAllClients();
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-    const sheets = google.sheets({ version: 'v4', auth });
 
-    let subscriptions: SubRow[] = [];
-    try {
-      const res = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.SPREADSHEET_ID!,
-        range: 'subscriptions!A2:I',
-      });
-      const rows = res.data.values || [];
-      subscriptions = rows.map((row) => ({
-        userId: row[0] || '',
-        plan: row[1] || '',
-        status: row[2] || '',
-        amount: Number(row[5] || 0),
-        startDate: row[6] || '',
-        endDate: row[7] || '',
-        createdAt: row[8] || '',
-      }));
-    } catch {
-      // subscriptions sheet may not exist yet
-    }
+    // Read all subscriptions from Neon. Was Sheets-backed (range
+    // `subscriptions!A2:I`); replaced as part of removing googleapis from
+    // the codebase so Google Cloud creds can be deleted without breaking
+    // the admin revenue dashboard.
+    const allSubs = await getAllSubscriptions().catch(() => []);
+    const subscriptions: SubRow[] = allSubs.map((s) => ({
+      userId: s.userId,
+      plan: s.plan,
+      status: s.status,
+      amount: s.amount,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      createdAt: s.createdAt,
+    }));
 
     const planPrice = (key: string): number => {
       const p = (PLANS as Record<string, { price: number }>)[key];

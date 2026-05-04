@@ -30,6 +30,7 @@ export {
   getBookingsByCustomer,
   getBookingById,
   getBookingsForTomorrow,
+  getStalePendingBookings,
   getAvailableSlots,
   getAvailableSlotsForStaff,
   getBookingsForStaff,

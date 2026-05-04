@@ -8,7 +8,7 @@
 // orchestrator stay in lib/booking.ts.
 
 import { v4 as uuid } from 'uuid';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, lt } from 'drizzle-orm';
 import { db } from './index';
 import {
   bookings as bookingsTable,
@@ -253,6 +253,27 @@ export async function getBookingsForTomorrow(date: string): Promise<Booking[]> {
     .select()
     .from(bookingsTable)
     .where(and(eq(bookingsTable.date, date), eq(bookingsTable.status, 'confirmed')));
+  return rows.map(dbRowToBooking);
+}
+
+// Used by cron/auto-cancel-stale — finds pending_approval bookings older than
+// `maxAgeMinutes` so the cron can cancel them and free up the slot. Without
+// this safety net, a trainer who never sees / never responds to the booking
+// notification leaves the customer hanging indefinitely AND blocks the slot
+// from being booked by anyone else (per-trainer slot conflict logic treats
+// pending_approval rows as "taken").
+export async function getStalePendingBookings(maxAgeMinutes: number): Promise<Booking[]> {
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
+  const rows = await db
+    .select()
+    .from(bookingsTable)
+    .where(
+      and(
+        eq(bookingsTable.status, 'pending_approval'),
+        lt(bookingsTable.created_at, cutoff)
+      )
+    )
+    .orderBy(asc(bookingsTable.created_at));
   return rows.map(dbRowToBooking);
 }
 

@@ -1,8 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
+
+// Compact "Xm ago" label for the topbar's last-saved indicator.
+function savedAgo(ts: number | null): string {
+  if (!ts) return '';
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 5) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  return `${Math.floor(sec / 86400)}d ago`;
+}
 
 type Format = 'csv' | 'json';
 
@@ -61,6 +72,30 @@ export default function ClientSettingsPage() {
   const [previewPrompt, setPreviewPrompt] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewAt, setPreviewAt] = useState('');
+  // Unix-ms timestamp of the most recent successful save in this session.
+  // Used by the topbar "Saved Xm ago" badge so the user gets concrete
+  // feedback instead of a silent toast that disappeared 3 seconds ago.
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  // Tick once a minute so the "Saved Xm ago" relative label refreshes
+  // without a full re-render cascade.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((n) => n + 1), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Derived list of sections with unsaved changes — drives the sticky
+  // bottom save bar and the count badge on the topbar save button. Order
+  // matches the on-page panel order so the labels read top-to-bottom.
+  const dirtySections = useMemo<string[]>(() => {
+    const out: string[] = [];
+    if (bizDirty) out.push('Business details');
+    if (ptDirty) out.push('Personal training');
+    if (promptDirty) out.push('System prompt');
+    if (kbDirty) out.push('Business knowledge');
+    return out;
+  }, [bizDirty, ptDirty, promptDirty, kbDirty]);
+  const anyDirty = dirtySections.length > 0;
 
   useEffect(() => {
     fetch('/api/client/settings', { cache: 'no-store' })
@@ -361,6 +396,7 @@ export default function ClientSettingsPage() {
         setBizDirty(false);
         setPtDirty(false);
         setKbError('');
+        setLastSavedAt(Date.now());
         if (kbDirty) {
           toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
         } else {
@@ -386,9 +422,28 @@ export default function ClientSettingsPage() {
           </>
         }
         actions={
-          <Pill variant="ink" onClick={handleSaveAll}>
-            {saving ? 'Saving…' : '💾 Save all changes'}
-          </Pill>
+          <>
+            {lastSavedAt && !anyDirty && (
+              <span
+                className="hidden sm:inline-flex items-center gap-1.5 text-[11.5px] text-[var(--mute)]"
+                title={`Saved at ${new Date(lastSavedAt).toLocaleString('en-IN')}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Saved {savedAgo(lastSavedAt)}
+              </span>
+            )}
+            <Pill
+              variant="ink"
+              onClick={handleSaveAll}
+              disabled={saving || (!anyDirty && lastSavedAt !== null)}
+            >
+              {saving
+                ? 'Saving…'
+                : anyDirty
+                  ? `💾 Save ${dirtySections.length} change${dirtySections.length === 1 ? '' : 's'}`
+                  : '💾 Save all changes'}
+            </Pill>
+          </>
         }
       />
       <div style={{ padding: '28px 32px 60px' }} className="max-w-4xl">
@@ -398,7 +453,7 @@ export default function ClientSettingsPage() {
         />
 
         {loading ? (
-          <div className="animate-pulse h-64 bg-[var(--card)] border border-[var(--line)] rounded-[18px]" />
+          <SettingsSkeleton />
         ) : (
           <div className="flex flex-col gap-4">
             <Panel
@@ -795,6 +850,60 @@ export default function ClientSettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Sticky bottom save bar — appears whenever any section is dirty so
+          the user never has to scroll back to the topbar to save. */}
+      {anyDirty && !loading && (
+        <div
+          className="sticky bottom-0 z-20 border-t border-[var(--line)] bg-[var(--card)]/95 backdrop-blur flex items-center gap-3 flex-wrap"
+          style={{ padding: '12px 24px' }}
+        >
+          <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold">
+            <span className="w-2 h-2 rounded-full bg-[#E89A1C] animate-pulse" />
+            <span>You have unsaved changes</span>
+            <span className="text-[var(--mute)] font-normal">in {dirtySections.join(', ')}</span>
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              disabled={saving}
+              className="text-[12px] font-semibold text-[var(--mute)] hover:text-foreground transition disabled:opacity-50"
+            >
+              Discard
+            </button>
+            <Pill variant="ink" onClick={handleSaveAll} disabled={saving}>
+              {saving
+                ? 'Saving…'
+                : `💾 Save ${dirtySections.length} change${dirtySections.length === 1 ? '' : 's'}`}
+            </Pill>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+// ─── Loading skeleton — mirrors the real panel layout so nothing jumps
+// when settings load. Eight bars of varying widths is enough to convey
+// "structured form" without modeling each panel exactly.
+function SettingsSkeleton() {
+  return (
+    <div className="flex flex-col gap-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-[18px] border border-[var(--line)] bg-[var(--card)] animate-pulse"
+          style={{ padding: '20px 22px' }}
+        >
+          <div className="h-4 w-40 rounded bg-[var(--line)] mb-2" />
+          <div className="h-3 w-2/3 rounded bg-[var(--line)] mb-4 opacity-60" />
+          <div className="flex flex-col gap-2">
+            <div className="h-9 rounded-[10px] bg-[var(--bg-2)]" />
+            <div className="h-9 w-3/4 rounded-[10px] bg-[var(--bg-2)]" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

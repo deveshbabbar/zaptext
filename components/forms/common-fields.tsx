@@ -11,7 +11,6 @@ interface CommonFieldsProps {
   onChange: (field: string, value: unknown) => void;
 }
 
-const LANGUAGE_OPTIONS = ['Hindi', 'English', 'Hinglish', 'Punjabi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati'];
 
 // Strip +91 / 91 / leading 0 / spaces so only the 10-digit number shows in input.
 // The stored form is `+91<10 digits>`; as the user types a single digit D the
@@ -112,8 +111,6 @@ function WorkingHoursPicker({ value, onChange }: { value: string; onChange: (v: 
 }
 
 export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
-  const languages = (data.languages as string[]) || ['Hindi', 'English', 'Hinglish'];
-
   // Live WhatsApp display-name validation. Catches Meta-rejection patterns
   // (generic-only names like "Gym Time Fitness", URLs, emojis, ALL CAPS,
   // bare locations, etc.) BEFORE the bot is submitted to Meta — a Meta
@@ -275,33 +272,6 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           value={(data.workingHours as string) || ''}
           onChange={(v) => onChange('workingHours', v)}
         />
-      </div>
-
-      <div>
-        <Label>Languages (select all that apply)</Label>
-        <div className="flex flex-wrap gap-2 mt-2">
-          {LANGUAGE_OPTIONS.map((lang) => (
-            <button
-              key={lang}
-              type="button"
-              onClick={() => {
-                const current = [...languages];
-                if (current.includes(lang)) {
-                  onChange('languages', current.filter((l) => l !== lang));
-                } else {
-                  onChange('languages', [...current, lang]);
-                }
-              }}
-              className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                languages.includes(lang)
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-secondary text-secondary-foreground border-border hover:border-primary/50'
-              }`}
-            >
-              {lang}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div>

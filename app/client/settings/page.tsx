@@ -17,10 +17,6 @@ function savedAgo(ts: number | null): string {
 
 type Format = 'csv' | 'json';
 
-const LANGUAGE_OPTIONS = [
-  'English', 'Hindi', 'Hinglish', 'Punjabi', 'Tamil', 'Telugu', 'Bengali', 'Marathi', 'Gujarati', 'Kannada', 'Malayalam',
-];
-
 export default function ClientSettingsPage() {
   const [prompt, setPrompt] = useState('');
   const [config, setConfig] = useState('');
@@ -28,7 +24,6 @@ export default function ClientSettingsPage() {
   const [exportFormat, setExportFormat] = useState<Format>('csv');
   const [upiId, setUpiId] = useState('');
   const [upiName, setUpiName] = useState('');
-  const [languages, setLanguages] = useState<string[]>(['English']);
   const [botName, setBotName] = useState('');
   const [botType, setBotType] = useState('');
   // Business-details fields (live inside knowledge_base_json under
@@ -118,9 +113,6 @@ export default function ClientSettingsPage() {
         setUpiName(data.upiName || '');
         setBotName(data.botName || '');
         setBotType(data.botType || '');
-        if (Array.isArray(data.languages) && data.languages.length > 0) {
-          setLanguages(data.languages);
-        }
         // Pull business-detail fields out of the parsed KB so the inputs
         // below are pre-filled. Empty strings are fine — we won't overwrite
         // the saved KB with an empty value unless the user explicitly clears.
@@ -316,23 +308,6 @@ export default function ClientSettingsPage() {
     }
   };
 
-  const toggleLanguage = (lang: string) => {
-    setLanguages((prev) => {
-      if (prev.includes(lang)) {
-        const next = prev.filter((l) => l !== lang);
-        return next.length === 0 ? ['English'] : next;
-      }
-      return [...prev, lang];
-    });
-  };
-
-  const setPrimaryLanguage = (lang: string) => {
-    setLanguages((prev) => {
-      const rest = prev.filter((l) => l !== lang);
-      return [lang, ...rest];
-    });
-  };
-
   const handleSaveAll = async () => {
     // Block save if KB is dirty and invalid — prevents writing broken JSON
     // that would corrupt the bot config (422 error on next language change).
@@ -348,7 +323,6 @@ export default function ClientSettingsPage() {
     setSaving(true);
     try {
       const bulk: Record<string, unknown> = {
-        languages,
         upi_id: upiId.trim(),
         upi_name: upiName.trim(),
         existing_system: existingSystem.trim(),
@@ -630,50 +604,11 @@ export default function ClientSettingsPage() {
             </Panel>
 
             <Panel
-              title="Bot languages"
-              sub="Pick every language your bot should understand and reply in. The first one is the default fallback when the customer's language isn't clear. Hit Save at the top when done."
+              title="Language behavior"
+              sub="Your bot auto-detects every customer's language and replies in the same one. Default is English when the customer's language isn't clear. No setup needed — just works."
             >
-              <div className="flex flex-wrap gap-2 mb-3">
-                {LANGUAGE_OPTIONS.map((lang) => {
-                  const active = languages.includes(lang);
-                  const isPrimary = active && languages[0] === lang;
-                  return (
-                    <button
-                      key={lang}
-                      type="button"
-                      onClick={() => toggleLanguage(lang)}
-                      className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition ${
-                        isPrimary
-                          ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]'
-                          : active
-                            ? 'bg-[var(--accent)] text-[var(--accent-2)] border-[var(--accent)]'
-                            : 'bg-[var(--card)] border-[var(--line)] hover:border-[var(--ink)]'
-                      }`}
-                    >
-                      {isPrimary ? `★ ${lang}` : lang}
-                    </button>
-                  );
-                })}
-              </div>
-              {languages.length > 1 && (
-                <div className="text-[11.5px] text-[var(--mute)] mb-2">
-                  Default language: <b className="text-[var(--ink)]">{languages[0]}</b>. Click another selected language to make it primary:
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {languages.slice(1).map((lang) => (
-                      <button
-                        key={`primary-${lang}`}
-                        type="button"
-                        onClick={() => setPrimaryLanguage(lang)}
-                        className="px-2.5 py-0.5 rounded-full text-[11.5px] border border-[var(--line)] hover:border-[var(--ink)]"
-                      >
-                        Make {lang} primary
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <p className="text-[11.5px] text-[var(--mute)] m-0">
-                Saving regenerates the system prompt automatically — unless you&apos;ve manually edited it below.
+              <p className="text-[12.5px] text-[var(--mute)] m-0">
+                Pure English in → pure English out. Hinglish in → Hinglish out. Devanagari Hindi in → Hindi out. Tamil/Telugu/Bengali/etc. in → reply in that language if confidently identified, otherwise English.
               </p>
             </Panel>
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppButtons, isMessageProcessed } from '@/lib/whatsapp';
+import { generateSystemPrompt } from '@/lib/prompt-generator';
+import type { ClientConfig } from '@/lib/types';
 import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { generateBotResponse } from '@/lib/gemini';
@@ -440,9 +442,31 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
       continue;
     }
 
+    // Generate the system prompt FRESH from the bot's knowledge_base_json
+    // on every message — so any change to lib/prompt-generator.ts (e.g.
+    // tightening language rules) reaches every active bot immediately,
+    // without needing to re-save settings or run a regen script. The
+    // stored client.system_prompt column is now a snapshot for admin
+    // viewing only, never the source of truth at runtime.
+    //
+    // Fallback: if knowledge_base_json is empty or corrupt (legacy or
+    // mid-migration bots), fall back to the stored prompt so the bot
+    // doesn't go dark.
+    let basePrompt = client.system_prompt;
+    try {
+      const kb = client.knowledge_base_json
+        ? (JSON.parse(client.knowledge_base_json) as ClientConfig)
+        : null;
+      if (kb && (kb as { type?: string }).type) {
+        basePrompt = generateSystemPrompt(kb);
+      }
+    } catch (e) {
+      console.error('[webhook] generateSystemPrompt fresh failed, using stored snapshot:', e);
+    }
+
     // Generate AI response with booking + payment + order + staff context
     let aiResponse = await generateBotResponse(
-      client.system_prompt + availabilityContext + paymentContext + orderContext + staffContext,
+      basePrompt + availabilityContext + paymentContext + orderContext + staffContext,
       pastHistory,
       msg.text
     );

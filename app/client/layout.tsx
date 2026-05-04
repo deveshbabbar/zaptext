@@ -1,10 +1,38 @@
 import { requireClientWithBots } from '@/lib/auth';
 import { UserButton } from '@clerk/nextjs';
 import { BotSwitcher } from '@/components/client/bot-switcher';
+import { SidebarNav } from '@/components/client/sidebar-nav';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
 import Link from 'next/link';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
+
+const TYPE_ICONS: Record<string, string> = {
+  restaurant: '🍽️',
+  coaching: '📚',
+  realestate: '🏠',
+  salon: '💇',
+  d2c: '🛍️',
+  gym: '💪',
+};
+
+const TYPE_BG: Record<string, string> = {
+  restaurant: 'bg-amber-100',
+  coaching: 'bg-purple-100',
+  realestate: 'bg-green-100',
+  salon: 'bg-pink-100',
+  d2c: 'bg-teal-100',
+  gym: 'bg-red-100',
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  restaurant: 'Restaurant',
+  coaching: 'Coaching',
+  realestate: 'Real Estate',
+  salon: 'Salon',
+  d2c: 'D2C',
+  gym: 'Gym',
+};
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireClientWithBots();
@@ -108,24 +136,7 @@ export default async function ClientLayout({ children }: { children: React.React
           )}
         </div>
 
-        <SideSec>Workspace</SideSec>
-        <nav className="flex flex-col gap-px">
-          <SideLink href="/client/dashboard" icon="📊" label="Dashboard" />
-          <SideLink href="/client/conversations" icon="💬" label="Conversations" />
-          <SideLink href="/client/bookings" icon="📅" label="Bookings" />
-          <SideLink href="/client/inventory" icon="📦" label="Inventory" />
-          <SideLink href="/client/staff" icon="👥" label="My Team" />
-          <SideLink href="/client/availability" icon="⏰" label="Availability" />
-          <SideLink href="/client/calendar" icon="📆" label="Calendar" />
-          <SideLink href="/client/settings" icon="⚙️" label="Bot Settings" />
-        </nav>
-
-        <SideSec>Account</SideSec>
-        <nav className="flex flex-col gap-px">
-          <SideLink href="/client/subscription" icon="💳" label="Subscription" />
-          <SideLink href="/client/bots" icon="🤖" label="All bots" />
-          <SideLink href="/client/create-bot" icon="✨" label="Create bot" />
-        </nav>
+        <SidebarNav />
 
         <div className="mt-auto pt-3 border-t border-white/10 flex items-center gap-2.5">
           <div className="w-[34px] h-[34px] rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[13px]">
@@ -142,19 +153,46 @@ export default async function ClientLayout({ children }: { children: React.React
       <main className="flex-1 overflow-auto bg-background">
         {user.activeBot && (
           <div
-            className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--card)]/90 backdrop-blur flex items-center gap-2 text-[12.5px]"
-            style={{ padding: '8px 20px' }}
+            className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--card)]/95 backdrop-blur flex items-center gap-3"
+            style={{ padding: '12px 24px' }}
           >
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--accent)]/25 text-[var(--ink)] font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-              Editing: {user.activeBot.business_name || '(unnamed bot)'}
-            </span>
-            <span className="text-[var(--mute)]">
-              {user.activeBot.type} · {user.activeBot.whatsapp_number || 'no number'}
-            </span>
+            <div
+              className={`w-11 h-11 rounded-[12px] grid place-items-center text-[22px] flex-shrink-0 ${TYPE_BG[user.activeBot.type] || 'bg-gray-100'}`}
+              aria-hidden="true"
+            >
+              {TYPE_ICONS[user.activeBot.type] || '🤖'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--mute)]">
+                  Now editing
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[.05em] px-1.5 py-0.5 rounded-full ${
+                    user.activeBot.status === 'active'
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      user.activeBot.status === 'active' ? 'bg-emerald-500' : 'bg-yellow-500'
+                    }`}
+                  />
+                  {user.activeBot.status}
+                </span>
+              </div>
+              <div className="text-[16px] font-bold text-foreground leading-tight truncate">
+                {user.activeBot.business_name || '(unnamed bot)'}
+              </div>
+              <div className="text-[12px] text-[var(--mute)] mt-0.5 truncate">
+                {TYPE_LABEL[user.activeBot.type] || user.activeBot.type}
+                {user.activeBot.whatsapp_number ? ` · ${user.activeBot.whatsapp_number}` : ''}
+              </div>
+            </div>
             {user.allBots.length > 1 && (
-              <span className="ml-auto text-[11px] text-[var(--mute)]">
-                Switch bots from the sidebar ↖
+              <span className="hidden md:inline-block text-[11px] text-[var(--mute)] flex-shrink-0">
+                Switch bots from sidebar ↖
               </span>
             )}
           </div>
@@ -165,34 +203,3 @@ export default async function ClientLayout({ children }: { children: React.React
   );
 }
 
-function SideSec({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="zt-mono text-[10px] uppercase tracking-[.09em] text-white/55"
-      style={{ padding: '14px 8px 4px' }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function SideLink({ href, icon, label, count }: { href: string; icon: string; label: string; count?: number }) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center gap-2.5 rounded-[9px] text-white/65 hover:text-white hover:bg-white/5 transition-colors font-medium text-[13.5px]"
-      style={{ padding: '9px 10px' }}
-    >
-      <span className="w-4 text-center text-[13px]">{icon}</span>
-      {label}
-      {typeof count === 'number' && (
-        <span
-          className="ml-auto zt-mono text-[10.5px] rounded-full font-semibold text-white/65"
-          style={{ padding: '2px 7px', background: '#ffffff10' }}
-        >
-          {count}
-        </span>
-      )}
-    </Link>
-  );
-}

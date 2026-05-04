@@ -48,9 +48,10 @@ function arg(name: string): string | undefined {
 }
 
 const list = arg('list') !== undefined;
-const from = arg('from');
+let from = arg('from');
 const to = arg('to');
 const execute = arg('execute') !== undefined;
+const autoFrom = arg('auto-from') !== undefined;
 
 async function listAllUserIds() {
   console.log('\n═══ Clerk user_ids currently in the database ═══\n');
@@ -99,8 +100,47 @@ async function listAllUserIds() {
 }
 
 async function remap() {
-  if (!from || !to) {
-    console.error('❌ Both --from and --to are required.');
+  if (!to) {
+    console.error('❌ --to is required (the new prod user_id).');
+    process.exit(1);
+  }
+
+  // --auto-from: when the dev user_id isn't passed, detect it by reading all
+  // distinct user_ids in the DB and picking the one that is NOT --to. Only
+  // works cleanly when there's exactly ONE other user_id (the typical
+  // single-developer dev→prod migration). Aborts on ambiguity.
+  if (!from && autoFrom) {
+    const distinctOwners = await db
+      .select({ id: clients.owner_user_id })
+      .from(clients)
+      .groupBy(clients.owner_user_id);
+    const distinctSubs = await db
+      .select({ id: subscriptions.user_id })
+      .from(subscriptions)
+      .groupBy(subscriptions.user_id);
+    const all = new Set<string>();
+    distinctOwners.forEach((r) => r.id && all.add(r.id));
+    distinctSubs.forEach((r) => r.id && all.add(r.id));
+    all.delete(to);
+    const candidates = Array.from(all);
+    if (candidates.length === 0) {
+      console.error('❌ --auto-from found no other user_ids in the DB. Either:');
+      console.error('   • The remap is already done (everything is on the new id), or');
+      console.error('   • The DB is empty.');
+      process.exit(1);
+    }
+    if (candidates.length > 1) {
+      console.error(`❌ --auto-from is ambiguous — found ${candidates.length} possible source ids:`);
+      candidates.forEach((c) => console.error(`   • ${c}`));
+      console.error('\nRe-run with --from <explicit-id> to pick the right one.');
+      process.exit(1);
+    }
+    from = candidates[0];
+    console.log(`🔎 --auto-from picked: ${from}`);
+  }
+
+  if (!from) {
+    console.error('❌ Both --from and --to are required (or pass --auto-from to auto-detect).');
     console.error('   Run with --list first to see existing user_ids in the DB.');
     process.exit(1);
   }
@@ -164,17 +204,23 @@ async function remap() {
 
   console.log('🔴 EXECUTING transaction…');
 
+  // Capture into const so TS narrows correctly inside the transaction closure.
+  // (`from` is `let` because --auto-from may assign it; the guards above
+  // ensure it's defined by this point.)
+  const fromId = from;
+  const toId = to;
+
   // Atomic — if either UPDATE fails, both roll back.
   await db.transaction(async (tx) => {
     const updatedClients = await tx
       .update(clients)
-      .set({ owner_user_id: to })
-      .where(eq(clients.owner_user_id, from))
+      .set({ owner_user_id: toId })
+      .where(eq(clients.owner_user_id, fromId))
       .returning({ id: clients.client_id });
     const updatedSubs = await tx
       .update(subscriptions)
-      .set({ user_id: to })
-      .where(eq(subscriptions.user_id, from))
+      .set({ user_id: toId })
+      .where(eq(subscriptions.user_id, fromId))
       .returning({ id: subscriptions.id });
     console.log(`   ✅ clients      : ${updatedClients.length} row(s) updated`);
     console.log(`   ✅ subscriptions: ${updatedSubs.length} row(s) updated`);

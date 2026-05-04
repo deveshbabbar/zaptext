@@ -1,8 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClientRow, BusinessType } from '@/lib/types';
+
+// Minimum overlay display time (ms). Even a fast switch stays visible
+// for at least this long so the user sees "we registered your click"
+// instead of a 200ms flash that's worse than no feedback at all.
+const MIN_OVERLAY_MS = 700;
 
 const TYPE_ICONS: Record<BusinessType, string> = {
   restaurant: '🍽️',
@@ -52,11 +57,11 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [switchingTo, setSwitchingTo] = useState<ClientRow | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [switchStartedAt, setSwitchStartedAt] = useState<number>(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const active = bots.find((b) => b.client_id === activeBotId) || bots[0] || null;
-  const showOverlay = !!switchingTo || (isPending && switchingTo !== null);
+  const showOverlay = !!switchingTo;
 
   // Click-outside to close. Listener is bound only while the dropdown is
   // open so we don't leak handlers on every page render.
@@ -69,15 +74,24 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
     return () => window.removeEventListener('mousedown', onClick);
   }, [open]);
 
-  // Drop the overlay once the server transition lands.
-  // (isPending flips false the moment router.refresh() completes — that's
-  // when the new active bot data is in the layout.)
+  // Watch the activeBotId PROP — the overlay drops only when the layout
+  // has actually re-rendered with the new bot. This is more reliable than
+  // useTransition's isPending, which Next.js flips back to false BEFORE
+  // the server roundtrip completes (causing the previous bug where the
+  // overlay vanished, the page sat there briefly with stale data, then
+  // suddenly switched). Plus a MIN_OVERLAY_MS floor so brief switches
+  // still register visually.
   useEffect(() => {
-    if (!isPending && switchingTo) {
+    if (!switchingTo) return;
+    if (switchingTo.client_id !== activeBotId) return; // not yet
+    const elapsed = Date.now() - switchStartedAt;
+    const remaining = Math.max(0, MIN_OVERLAY_MS - elapsed);
+    const t = setTimeout(() => {
       setSwitchingTo(null);
       setOpen(false);
-    }
-  }, [isPending, switchingTo]);
+    }, remaining);
+    return () => clearTimeout(t);
+  }, [activeBotId, switchingTo, switchStartedAt]);
 
   const switchTo = async (bot: ClientRow) => {
     if (bot.client_id === activeBotId) {
@@ -85,6 +99,7 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
       return;
     }
     setSwitchingTo(bot); // overlay on immediately
+    setSwitchStartedAt(Date.now());
     try {
       await fetch('/api/client/switch-bot', {
         method: 'POST',
@@ -96,7 +111,11 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
       setSwitchingTo(null);
       return;
     }
-    startTransition(() => router.refresh());
+    // Trigger the layout re-fetch. The overlay-dismiss useEffect above
+    // waits for activeBotId to actually flip, so the spinner stays put
+    // until the new server data lands — no more "loading flash, gap,
+    // then late switch" UX.
+    router.refresh();
   };
 
   return (

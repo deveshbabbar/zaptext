@@ -204,13 +204,16 @@ export const inventory = pgTable(
     available_to: varchar('available_to', { length: 5 }).default(''),
     available_days: varchar('available_days', { length: 64 }).default(''), // 'mon,tue,wed'
     // Logical grouping for multi-category UI. Examples per vertical:
-    //   gym         → 'Membership Plans' | 'Personal Training' | 'Supplements' | 'Merchandise' | 'Equipment'
+    //   gym         → 'Membership Plans' | 'Personal Training' | 'Group Classes' | 'Merchandise' | 'Equipment'
     //   salon       → 'Services' | 'Packages' | 'Products' | 'Memberships'
     //   restaurant  → 'Menu' (with sub-cat in notes) | 'Combos' | 'Catering'
     //   coaching    → 'Courses' | 'Books' | 'Online Resources'
     //   d2c         → 'Products' | 'Subscriptions'
     //   realestate  → 'Listings' | 'Project Ads'
     // Empty string is treated as the vertical's default category at read time.
+    // Note: 'Supplements' / 'Diet Plans' are intentionally not seeded for
+    // any vertical — see lib/db/inventory-categories.ts header for the
+    // WhatsApp Commerce Policy reasoning.
     category: varchar('category', { length: 100 }).default(''),
     // tracks_stock=false for service-type categories (memberships, classes,
     // services, courses) where "stock" is meaningless. UI hides stock fields

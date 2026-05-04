@@ -453,7 +453,7 @@ export default function ClientSettingsPage() {
                   type="text"
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder="New category name (e.g., Diet Plans)"
+                  placeholder="New category name (e.g., Apparel, Locker Rental)"
                   disabled={catBusy === '__new__'}
                   className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm disabled:opacity-50"
                 />

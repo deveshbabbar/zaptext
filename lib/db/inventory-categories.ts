@@ -9,6 +9,16 @@
 // inserts a sensible starter set per business type. The seed is
 // idempotent — ON CONFLICT (client_id, name) DO NOTHING — so re-running
 // never duplicates and the owner's renames/deletes survive.
+//
+// WhatsApp Commerce Policy compliance:
+//   We deliberately exclude categories that Meta classifies as restricted
+//   commerce content — most notably "Supplements" (ingestible products)
+//   and "Diet Plans" / weight-loss services. Listing items in these
+//   categories with prices effectively promotes their sale via the bot,
+//   which is prohibited and triggers WABA restrictions. If an owner
+//   really wants those, they have to add them as a custom category from
+//   /client/settings — that's their explicit choice, with the policy
+//   risk on them, not seeded by us.
 
 import { v4 as uuid } from 'uuid';
 import { and, asc, eq } from 'drizzle-orm';
@@ -43,12 +53,14 @@ interface DefaultCategory {
 
 export const VERTICAL_DEFAULT_CATEGORIES: Record<BusinessType, DefaultCategory[]> = {
   gym: [
+    // 'Supplements' (ingestible) is intentionally NOT seeded — Meta's
+    // WhatsApp Commerce Policy prohibits promoting the sale of ingestible
+    // supplements, which would put the WABA at restriction risk.
     { name: 'Membership Plans',  tracks_stock: false, order: 0 },
     { name: 'Personal Training', tracks_stock: false, order: 1 },
     { name: 'Group Classes',     tracks_stock: false, order: 2 },
-    { name: 'Supplements',       tracks_stock: true,  order: 3 },
-    { name: 'Merchandise',       tracks_stock: true,  order: 4 },
-    { name: 'Equipment',         tracks_stock: true,  order: 5 },
+    { name: 'Merchandise',       tracks_stock: true,  order: 3 },
+    { name: 'Equipment',         tracks_stock: true,  order: 4 },
   ],
   salon: [
     { name: 'Services',    tracks_stock: false, order: 0 },

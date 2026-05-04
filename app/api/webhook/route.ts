@@ -6,7 +6,7 @@ import { getClientByPhoneNumberId, getConversationHistory, getClientConversation
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
-import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff } from '@/lib/booking';
+import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
 import {
   buildUpiLink,
@@ -101,6 +101,17 @@ export async function POST(request: NextRequest) {
           messageCount: payload.messages.length,
           error: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
         });
+      }
+      // Inline stale-pending sweep — runs piggybacking on every webhook
+      // invocation so during active hours, abandoned booking-approvals
+      // get cleaned up within minutes (vs waiting for the daily evening
+      // cron). Zero impact on user-visible latency because we're already
+      // past the response. Cheap: getStalePendingBookings is an indexed
+      // query that returns 0 rows in the common case.
+      try {
+        await sweepStalePendings();
+      } catch (err) {
+        console.error('[stale-sweep] failed (non-fatal):', err);
       }
     });
 
@@ -1412,4 +1423,69 @@ async function handleStaffCommand(
   await sendWhatsAppMessage(phoneNumberId, trainerPhone,
     `Hi ${trainer.name}! 👋 I only process trainer commands here.\nText *help* for the list.`);
   return true; // consumed — don't pass to customer AI flow
+}
+
+// ─── Inline stale-pending sweep ─────────────────────────────────────────
+// Mirrors /api/cron/auto-cancel-stale but runs piggybacking on every
+// webhook invocation. Vercel Hobby tier only allows 2 daily crons total,
+// so we lost the dedicated 15-min sweep — this fills the gap during
+// active hours. The 2 daily crons (morning + evening) still call the
+// dedicated endpoint as a backstop for bots with no recent customer
+// activity.
+//
+// Safety: getStalePendingBookings query is indexed + returns 0 rows in
+// the common case (most bots won't have a stuck pending booking at any
+// given moment). Cheap to call on every message.
+
+const STALE_SWEEP_MINUTES = 60;
+
+async function sweepStalePendings() {
+  const stale = await getStalePendingBookings(STALE_SWEEP_MINUTES);
+  if (stale.length === 0) return;
+
+  for (const b of stale) {
+    try {
+      await cancelBooking(
+        b.booking_id,
+        `[AUTO-CANCEL: trainer did not respond within ${STALE_SWEEP_MINUTES} minutes]`
+      );
+
+      const { getClientById } = await import('@/lib/google-sheets');
+      const realClient = await getClientById(b.client_id).catch(() => null);
+      if (!realClient?.phone_number_id) continue;
+
+      if (b.customer_phone) {
+        try {
+          const trainerLine = b.service ? ` with ${b.service}` : '';
+          const msg =
+            `🙏 Sorry, we couldn't confirm your booking${trainerLine} for ${b.date} at ${b.time_slot} — no response from our side within an hour.\n\n` +
+            `Please reply with another preferred time and we'll set it up.\n\n` +
+            `Hindi: 🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking confirm nahi ho payi (1 ghante mein response nahi mila). Doosra time bhej dijiye, hum set kar denge.`;
+          await sendWhatsAppMessage(realClient.phone_number_id, b.customer_phone, msg);
+        } catch (e) {
+          console.error('[stale-sweep] customer-notify failed:', e);
+        }
+      }
+
+      if (b.staff_id) {
+        try {
+          const { getStaffById } = await import('@/lib/staff');
+          const staff = await getStaffById(b.staff_id).catch(() => null);
+          if (staff?.whatsapp_phone) {
+            const msg =
+              `⏰ Booking auto-cancelled\n\n` +
+              `Customer: ${b.customer_name || b.customer_phone}\n` +
+              `Slot: ${b.date} at ${b.time_slot}\n\n` +
+              `No approve/reject response within ${STALE_SWEEP_MINUTES} minutes — slot was freed automatically. ` +
+              `If you still want this booking, ask the customer to rebook.`;
+            await sendWhatsAppMessage(realClient.phone_number_id, staff.whatsapp_phone, msg);
+          }
+        } catch (e) {
+          console.error('[stale-sweep] trainer-notify failed:', e);
+        }
+      }
+    } catch (e) {
+      console.error('[stale-sweep] cancel failed:', e);
+    }
+  }
 }

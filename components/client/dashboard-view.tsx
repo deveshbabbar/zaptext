@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ClientRow } from '@/lib/types';
+import { ClientRow, BusinessType } from '@/lib/types';
 import {
   PageTopbar,
   PageHead,
@@ -15,6 +15,148 @@ import {
   StatusPill,
   MonoLabel,
 } from '@/components/app/primitives';
+
+// Vertical-specific dashboard copy. The bot is a gym/restaurant/salon/etc.
+// in the customer's mind, not a generic "bookings" engine — so the
+// dashboard greets the owner in the language of their actual business.
+//
+// Each entry maps a BusinessType to:
+//   - heroTitle / heroDesc: the big top card
+//   - todayLabel: stat-card label for "today's primary thing"
+//   - scheduleTitle / scheduleEmpty / scheduleSub: the bookings panel
+//   - quickLink: a vertical-relevant deep link (e.g. trainers for gym,
+//     menu for restaurant)
+interface DashboardCopy {
+  heroTitle: ReactNode;
+  heroDesc: (totalMessages: number) => ReactNode;
+  todayLabel: string;
+  scheduleTitle: string;
+  scheduleEmpty: string;
+  scheduleSub: (count: number) => string;
+  quickLink?: { href: string; emoji: string; label: string };
+}
+
+const DEFAULT_COPY: DashboardCopy = {
+  heroTitle: (
+    <>
+      Customers can chat <span className="zt-serif">24/7</span>, boss.
+    </>
+  ),
+  heroDesc: (n) => (
+    <>
+      Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages total.
+    </>
+  ),
+  todayLabel: "Today's bookings",
+  scheduleTitle: "Today's schedule",
+  scheduleEmpty: 'Nothing scheduled today.',
+  scheduleSub: (n) => (n === 0 ? 'No bookings yet today' : `${n} booked`),
+};
+
+const TYPE_COPY: Record<BusinessType, DashboardCopy> = {
+  gym: {
+    heroTitle: (
+      <>
+        Training requests <span className="zt-serif">all day</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — booking sessions and answering members.
+      </>
+    ),
+    todayLabel: "Today's sessions",
+    scheduleTitle: "Today's training sessions",
+    scheduleEmpty: 'No sessions booked yet today.',
+    scheduleSub: (n) => (n === 0 ? 'No sessions yet' : `${n} session${n === 1 ? '' : 's'} booked`),
+    quickLink: { href: '/client/staff', emoji: '🏋️', label: 'Trainers' },
+  },
+  restaurant: {
+    heroTitle: (
+      <>
+        Orders rolling in <span className="zt-serif">all day</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI took <b style={{ color: '#fff' }}>{n}</b> messages — turning chats into orders.
+      </>
+    ),
+    todayLabel: "Today's orders",
+    scheduleTitle: "Today's reservations",
+    scheduleEmpty: 'No reservations yet today.',
+    scheduleSub: (n) => (n === 0 ? 'No reservations yet' : `${n} reservation${n === 1 ? '' : 's'}`),
+    quickLink: { href: '/client/inventory', emoji: '🍽️', label: 'Menu' },
+  },
+  salon: {
+    heroTitle: (
+      <>
+        Bookings flowing in <span className="zt-serif">non-stop</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — filling chairs.
+      </>
+    ),
+    todayLabel: "Today's appointments",
+    scheduleTitle: "Today's appointments",
+    scheduleEmpty: 'No appointments yet today.',
+    scheduleSub: (n) => (n === 0 ? 'No appointments yet' : `${n} appointment${n === 1 ? '' : 's'}`),
+    quickLink: { href: '/client/staff', emoji: '💇', label: 'Stylists' },
+  },
+  coaching: {
+    heroTitle: (
+      <>
+        Students signing up <span className="zt-serif">round the clock</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — converting interest into demos.
+      </>
+    ),
+    todayLabel: "Today's demos",
+    scheduleTitle: "Today's demo classes",
+    scheduleEmpty: 'No demos booked yet today.',
+    scheduleSub: (n) => (n === 0 ? 'No demos yet' : `${n} demo${n === 1 ? '' : 's'}`),
+    quickLink: { href: '/client/staff', emoji: '📚', label: 'Faculty' },
+  },
+  realestate: {
+    heroTitle: (
+      <>
+        Property inquiries <span className="zt-serif">24/7</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — qualifying leads.
+      </>
+    ),
+    todayLabel: "Today's site visits",
+    scheduleTitle: "Today's site visits",
+    scheduleEmpty: 'No site visits scheduled yet.',
+    scheduleSub: (n) => (n === 0 ? 'No site visits yet' : `${n} site visit${n === 1 ? '' : 's'}`),
+    quickLink: { href: '/client/inventory', emoji: '🏠', label: 'Listings' },
+  },
+  d2c: {
+    heroTitle: (
+      <>
+        Orders dropping in <span className="zt-serif">your DMs</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — recovering carts and closing sales.
+      </>
+    ),
+    todayLabel: "Today's orders",
+    scheduleTitle: "Today's orders",
+    scheduleEmpty: 'No orders yet today.',
+    scheduleSub: (n) => (n === 0 ? 'No orders yet' : `${n} order${n === 1 ? '' : 's'}`),
+    quickLink: { href: '/client/inventory', emoji: '🛍️', label: 'Products' },
+  },
+};
 
 interface Stats {
   totalBookings: number;
@@ -90,6 +232,11 @@ export function ClientDashboard({
   });
 
   const isPending = activeBot.status === 'pending';
+  // Vertical-aware copy — gym/restaurant/etc. each get their own
+  // hero + stat labels + schedule wording. Falls back to generic
+  // for any unexpected type leak.
+  const copy: DashboardCopy = TYPE_COPY[activeBot.type] || DEFAULT_COPY;
+  const statsLoading = stats === null;
 
   return (
     <>
@@ -170,15 +317,11 @@ export function ClientDashboard({
               ? `${activeBot.business_name.toUpperCase()} — PENDING`
               : `${activeBot.business_name.toUpperCase()} · LIVE`
           }
-          title={
-            isPending
-              ? 'Bot under review.'
-              : <>Customers can chat <span className="zt-serif">24/7</span>, boss.</>
-          }
+          title={isPending ? 'Bot under review.' : copy.heroTitle}
           desc={
             isPending
               ? 'Our team is setting up your bot. It will be activated within 48 hours.'
-              : <>Your AI handled <b style={{ color: '#fff' }}>{stats?.totalMessages ?? 0}</b> messages total.</>
+              : copy.heroDesc(stats?.totalMessages ?? 0)
           }
           emoji={icon}
           chip={
@@ -189,24 +332,37 @@ export function ClientDashboard({
         />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
-          <StatCard emoji="📅" label="Today's bookings" value={stats?.todayBookings ?? 0} />
-          <StatCard emoji="💬" label="Messages total" value={stats?.totalMessages ?? 0} />
-          <StatCard emoji="👥" label="Unique customers" value={stats?.uniqueCustomers ?? 0} />
-          <StatCard emoji="⚡" label="Avg response" value="2.1s" sub="Instant replies" />
+          {statsLoading ? (
+            <>
+              <StatSkeleton />
+              <StatSkeleton />
+              <StatSkeleton />
+              <StatSkeleton />
+            </>
+          ) : (
+            <>
+              <StatCard emoji="📅" label={copy.todayLabel} value={stats?.todayBookings ?? 0} />
+              <StatCard emoji="💬" label="Messages total" value={stats?.totalMessages ?? 0} />
+              <StatCard emoji="👥" label="Unique customers" value={stats?.uniqueCustomers ?? 0} />
+              <StatCard emoji="⚡" label="Avg response" value="2.1s" sub="Instant replies" />
+            </>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-[1.4fr_1fr] gap-3.5">
           <Panel
-            title="Today's schedule"
-            sub={todayBookings.length === 0 ? 'No bookings yet today' : `${todayBookings.length} booked`}
+            title={copy.scheduleTitle}
+            sub={statsLoading ? 'Loading…' : copy.scheduleSub(todayBookings.length)}
             action={
               <Link href="/client/calendar" className="text-[var(--ink)]">
                 View calendar →
               </Link>
             }
           >
-            {todayBookings.length === 0 ? (
-              <p className="text-[13px] text-[var(--mute)] m-0">Nothing scheduled today.</p>
+            {statsLoading ? (
+              <ScheduleSkeleton rows={3} />
+            ) : todayBookings.length === 0 ? (
+              <p className="text-[13px] text-[var(--mute)] m-0">{copy.scheduleEmpty}</p>
             ) : (
               <div className="flex flex-col">
                 {todayBookings.map((b, i) => (
@@ -252,11 +408,55 @@ export function ClientDashboard({
               <div className="flex flex-wrap gap-1.5 mt-1">
                 <Pill variant="ghost" href="/client/settings">⚙ Bot settings</Pill>
                 <Pill variant="ghost" href="/client/availability">⏰ Hours</Pill>
+                {copy.quickLink && (
+                  <Pill variant="ghost" href={copy.quickLink.href}>
+                    {copy.quickLink.emoji} {copy.quickLink.label}
+                  </Pill>
+                )}
               </div>
             </div>
           </Panel>
         </div>
       </div>
     </>
+  );
+}
+
+// ─── Skeleton placeholders ───
+// Replace the silent "0" values that used to flash on first paint with
+// actual loading affordances. Keeps the layout dimensions identical to
+// the loaded state so nothing jumps when data arrives.
+
+function StatSkeleton() {
+  return (
+    <div
+      className="rounded-[14px] border border-[var(--line)] bg-[var(--card)] flex flex-col gap-2 animate-pulse"
+      style={{ padding: '14px 16px', minHeight: 88 }}
+    >
+      <div className="h-4 w-6 rounded bg-[var(--line)]" />
+      <div className="h-3 w-24 rounded bg-[var(--line)]" />
+      <div className="h-7 w-16 rounded bg-[var(--line)] mt-auto" />
+    </div>
+  );
+}
+
+function ScheduleSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="flex flex-col">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3.5 py-2.5 animate-pulse"
+          style={{ borderBottom: i < rows - 1 ? '1px solid var(--line)' : 'none' }}
+        >
+          <div className="h-7 w-14 rounded-[7px] bg-[var(--line)]" />
+          <div className="flex-1 flex flex-col gap-1.5">
+            <div className="h-3.5 w-32 rounded bg-[var(--line)]" />
+            <div className="h-3 w-20 rounded bg-[var(--line)]" />
+          </div>
+          <div className="h-3 w-24 rounded bg-[var(--line)]" />
+        </div>
+      ))}
+    </div>
   );
 }

@@ -364,6 +364,27 @@ export default function InventoryPage() {
   const inactive = items.filter((i) => !i.is_active);
   const lowStock = active.filter((i) => i.low_stock_threshold > 0 && i.stock <= i.low_stock_threshold);
 
+  // Group active items by category for display. Categories without items
+  // are dropped from the render so the page doesn't show a wall of empty
+  // panels for verticals that haven't filled in every default. Items with
+  // an unknown / blank category land under "Uncategorised" at the bottom.
+  const groupedActive: Array<{ name: string; tracks_stock: boolean; items: InventoryItem[] }> = (() => {
+    const map = new Map<string, { tracks_stock: boolean; items: InventoryItem[] }>();
+    for (const c of categories) {
+      map.set(c.name, { tracks_stock: c.tracks_stock, items: [] });
+    }
+    for (const it of active) {
+      const cat = it.category && map.has(it.category) ? it.category : 'Uncategorised';
+      if (!map.has(cat)) {
+        map.set(cat, { tracks_stock: it.tracks_stock !== false, items: [] });
+      }
+      map.get(cat)!.items.push(it);
+    }
+    return Array.from(map.entries())
+      .filter(([, g]) => g.items.length > 0)
+      .map(([name, g]) => ({ name, tracks_stock: g.tracks_stock, items: g.items }));
+  })();
+
   return (
     <>
       <PageTopbar
@@ -496,17 +517,27 @@ export default function InventoryPage() {
               </div>
             )}
 
-            <Panel title="Active items" sub={`${active.length} item${active.length === 1 ? '' : 's'}`} className="mt-4">
-              {active.length === 0 ? (
+            {active.length === 0 ? (
+              <Panel title="Active items" sub="0 items" className="mt-4">
                 <p className="text-[13px] text-[var(--mute)] m-0 text-center py-4">
                   No items yet. Add your first above.
                 </p>
-              ) : (
+              </Panel>
+            ) : groupedActive.map((group) => (
+              <Panel
+                key={group.name}
+                title={group.name}
+                sub={`${group.items.length} item${group.items.length === 1 ? '' : 's'}${group.tracks_stock ? '' : ' · no stock tracking'}`}
+                className="mt-4"
+              >
                 <div className="overflow-x-auto">
                   <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        {['Name', 'Price', 'Stock', 'Threshold', 'Updated', 'Actions'].map((h) => (
+                        {(group.tracks_stock
+                          ? ['Name', 'Price', 'Stock', 'Threshold', 'Updated', 'Actions']
+                          : ['Name', 'Price', 'Updated', 'Actions']
+                        ).map((h) => (
                           <th
                             key={h}
                             className="zt-mono text-[10.5px] uppercase tracking-[.08em] text-[var(--mute)] font-medium bg-[var(--bg-2)]"
@@ -518,7 +549,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {active.map((it) => {
+                      {group.items.map((it) => {
                         const isLow = it.low_stock_threshold > 0 && it.stock <= it.low_stock_threshold;
                         const isOut = it.stock === 0;
                         const availability = humanizeAvailability(it);
@@ -536,47 +567,51 @@ export default function InventoryPage() {
                             <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
                               {it.price > 0 ? `₹${it.price}` : '—'}
                             </td>
-                            <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => adjust(it.sku, -1)}
-                                  disabled={saving === it.sku || it.stock === 0}
-                                  className="w-7 h-7 rounded-[6px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-40"
-                                >
-                                  −
-                                </button>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={it.stock}
-                                  onChange={(e) => {
-                                    const v = parseInt(e.target.value || '0', 10);
-                                    setItems((prev) => prev.map((i) => (i.sku === it.sku ? { ...i, stock: v } : i)));
-                                  }}
-                                  onBlur={(e) => updateStock(it.sku, parseInt(e.target.value || '0', 10))}
-                                  className={`w-[72px] text-center rounded-[6px] border text-[13px] font-semibold ${
-                                    isOut
-                                      ? 'border-red-500/40 text-red-500'
-                                      : isLow
-                                      ? 'border-[#E89A1C] text-[#E89A1C]'
-                                      : 'border-[var(--line)]'
-                                  }`}
-                                  style={{ padding: '4px 6px' }}
-                                />
-                                <button
-                                  onClick={() => adjust(it.sku, 1)}
-                                  disabled={saving === it.sku}
-                                  className="w-7 h-7 rounded-[6px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-40"
-                                >
-                                  +
-                                </button>
-                                {isOut && <StatusPill variant="cancel">OUT</StatusPill>}
-                                {!isOut && isLow && <StatusPill variant="pending">LOW</StatusPill>}
-                              </div>
-                            </td>
-                            <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
-                              {it.low_stock_threshold > 0 ? it.low_stock_threshold : '—'}
-                            </td>
+                            {group.tracks_stock && (
+                              <>
+                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => adjust(it.sku, -1)}
+                                      disabled={saving === it.sku || it.stock === 0}
+                                      className="w-7 h-7 rounded-[6px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-40"
+                                    >
+                                      −
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={it.stock}
+                                      onChange={(e) => {
+                                        const v = parseInt(e.target.value || '0', 10);
+                                        setItems((prev) => prev.map((i) => (i.sku === it.sku ? { ...i, stock: v } : i)));
+                                      }}
+                                      onBlur={(e) => updateStock(it.sku, parseInt(e.target.value || '0', 10))}
+                                      className={`w-[72px] text-center rounded-[6px] border text-[13px] font-semibold ${
+                                        isOut
+                                          ? 'border-red-500/40 text-red-500'
+                                          : isLow
+                                          ? 'border-[#E89A1C] text-[#E89A1C]'
+                                          : 'border-[var(--line)]'
+                                      }`}
+                                      style={{ padding: '4px 6px' }}
+                                    />
+                                    <button
+                                      onClick={() => adjust(it.sku, 1)}
+                                      disabled={saving === it.sku}
+                                      className="w-7 h-7 rounded-[6px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-40"
+                                    >
+                                      +
+                                    </button>
+                                    {isOut && <StatusPill variant="cancel">OUT</StatusPill>}
+                                    {!isOut && isLow && <StatusPill variant="pending">LOW</StatusPill>}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                                  {it.low_stock_threshold > 0 ? it.low_stock_threshold : '—'}
+                                </td>
+                              </>
+                            )}
                             <td className="zt-mono text-[11.5px] text-[var(--mute)]" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
                               {it.updated_at ? it.updated_at.slice(0, 10) : '—'}
                             </td>
@@ -685,8 +720,8 @@ export default function InventoryPage() {
                     </tbody>
                   </table>
                 </div>
-              )}
-            </Panel>
+              </Panel>
+            ))}
 
             {inactive.length > 0 && (
               <Panel title="Inactive items" sub="Bot won't offer these. Toggle to bring back." className="mt-4">

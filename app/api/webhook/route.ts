@@ -201,8 +201,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // Gemini quota — log incoming, send a generic offline reply, skip AI.
     if (isSubscriptionExpired && !isOwner) {
       const offline =
-        `Hi! 👋 ${client.business_name} ka bot abhi temporarily offline hai. ` +
-        `Owner se directly contact karein, jaldi reply milega 🙏`;
+        `Hi! 👋 ${client.business_name}'s bot is temporarily offline. ` +
+        `Please contact the owner directly — they'll reply soon 🙏\n\n` +
+        `${client.business_name} ka bot abhi temporarily offline hai. ` +
+        `Owner se directly contact karein, jaldi reply milega.`;
       await addConversationMessage({
         timestamp, client_id: client.client_id, customer_phone: customerPhone,
         direction: 'incoming', message: msg.text || `[${msg.type}]`, message_type: msg.type,
@@ -223,7 +225,9 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
 
     // Handle other non-text messages
     if (msg.type !== 'text' || !msg.text) {
-      const fallback = 'Abhi main sirf text aur payment screenshot samajh sakta hoon. Kya aap text mein bata sakte hain? 🙏';
+      const fallback =
+        `Right now I can only understand text and payment screenshots. Could you please type your question? 🙏\n\n` +
+        `Abhi main sirf text aur payment screenshot samajh sakta hoon. Kya aap text mein bata sakte hain?`;
       await addConversationMessage({
         timestamp,
         client_id: client.client_id,
@@ -461,6 +465,25 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
         const staffNameMatch = safeService.match(new RegExp(`^${roleLabel.singular}\\s*[-–:]\\s*(.+)`, 'i'));
         const isStaffBooking = !!staffNameMatch;
 
+        // For staff bookings, resolve trainer name -> staff_id BEFORE
+        // createBooking so per-trainer availability check + per-trainer
+        // calendar scoping kick in. Without this, the gym-wide
+        // weekly_schedule blocks bookings even when the trainer is free
+        // (cause of the spurious "slot already taken" reply when no
+        // weekly_schedule was configured).
+        let resolvedStaffId: string | null = null;
+        let resolvedStaff: Awaited<ReturnType<typeof getActiveStaff>>[number] | undefined;
+        if (staffNameMatch) {
+          const staffName = staffNameMatch[1].trim();
+          const activeMembers = await getActiveStaff(client.client_id);
+          const needle = staffName.toLowerCase();
+          resolvedStaff =
+            activeMembers.find((m) => m.name.toLowerCase() === needle) ??
+            activeMembers.find((m) => m.name.toLowerCase().startsWith(needle)) ??
+            activeMembers.find((m) => m.name.toLowerCase().includes(needle));
+          resolvedStaffId = resolvedStaff?.staff_id ?? null;
+        }
+
         const newBooking = await createBooking({
           clientId: client.client_id,
           customerPhone,
@@ -471,17 +494,12 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
           service: safeService,
           notes: safeNotes,
           status: isStaffBooking ? 'pending_approval' : 'confirmed',
+          staffId: resolvedStaffId,
         });
         // Notify trainer directly if booking is for a specific trainer
         try {
           if (staffNameMatch) {
-            const staffName = staffNameMatch[1].trim();
-            const activeMembers = await getActiveStaff(client.client_id);
-            const needle = staffName.toLowerCase();
-            const matched =
-              activeMembers.find((m) => m.name.toLowerCase() === needle) ??
-              activeMembers.find((m) => m.name.toLowerCase().startsWith(needle)) ??
-              activeMembers.find((m) => m.name.toLowerCase().includes(needle));
+            const matched = resolvedStaff;
             if (matched?.whatsapp_phone) {
               // CRITICAL: use the REAL booking_id from the row we just inserted,
               // not Date.now(). The previous Date.now() id was never findable, so
@@ -535,7 +553,13 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
         }
       } catch (e) {
         if ((e as Error).message === 'SLOT_TAKEN') {
-          finalResponse = 'Sorry, yeh slot abhi kisi ne le liya. Kya doosra time dekhein?';
+          // Bilingual fallback — this string bypasses the LLM, so the
+          // language rules in system_prompt can't translate it. Sending
+          // both English and Hinglish lines lets either-language customers
+          // read it without us having to detect language here.
+          finalResponse =
+            `Sorry, that slot was just taken. Could we look at another time?\n\n` +
+            `Sorry, yeh slot abhi kisi ne le liya. Kya doosra time dekhein?`;
         }
       }
       finalResponse = finalResponse.replace(/\[BOOK:[^\]]+\]/, '').trim();
@@ -631,7 +655,8 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
               })
               .join('\n');
             const reply =
-              `Sorry boss 🙏 kuch items stock mein nahi:\n${problems}\n\nKya aap quantity kam karna chahenge ya kuch aur try karein?`;
+              `Sorry, some items are out of stock:\n${problems}\n\nWould you like to reduce the quantity or try something else?\n\n` +
+              `Sorry boss 🙏 kuch items stock mein nahi. Kya aap quantity kam karna chahenge ya kuch aur try karein?`;
             await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
             await addConversationMessage({
               timestamp: getISTTimestamp(),
@@ -749,11 +774,13 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
         await setPendingPayment(client.client_id, customerPhone, amount, note);
         finalResponse =
           finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim() +
-          `\n\n💳 Pay ₹${amount.toFixed(2)} here: ${upiLink}\nPaid hone ke baad screenshot bhej dena — hum confirm kar denge ✓`;
+          `\n\n💳 Pay ₹${amount.toFixed(2)} here: ${upiLink}\nSend a screenshot once paid — we'll confirm ✓\n` +
+          `Paid hone ke baad screenshot bhej dena — hum confirm kar denge.`;
       } else if (amount > 0 && !client.upi_id) {
         finalResponse =
           finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim() +
-          `\n\n💳 Amount: ₹${amount.toFixed(2)}. Payment ke liye hum aapko seedha contact karenge.`;
+          `\n\n💳 Amount: ₹${amount.toFixed(2)}. We'll contact you directly for payment.\n` +
+          `Payment ke liye hum aapko seedha contact karenge.`;
       } else {
         finalResponse = finalResponse.replace(/\[PAY:[^\]]+\]/, '').trim();
       }
@@ -811,7 +838,9 @@ async function handlePaymentScreenshot(
   // No pending payment → just forward to owner as-is
   if (!pending) {
     await forwardImageToOwner(phoneNumberId, client, customerPhone, imageId, caption, null);
-    const ack = 'Image mil gayi ✓ Owner ko bhej di hai. Wo confirm kar denge jaldi 🙏';
+    const ack =
+      `Image received ✓ I've forwarded it to the owner — they'll confirm soon 🙏\n\n` +
+      `Image mil gayi ✓ Owner ko bhej di hai, wo confirm kar denge jaldi.`;
     await sendWhatsAppMessage(phoneNumberId, customerPhone, ack);
     await addConversationMessage({
       timestamp: getISTTimestamp(),
@@ -840,10 +869,13 @@ async function handlePaymentScreenshot(
   // can be fooled by edited/prompt-injected screenshots. Owner must confirm
   // via the *paid <phone>* command. AI result is only a hint for the owner.
   const reply = check?.matchesExpected
-    ? `Screenshot mil gayi ✓ Owner confirm kar denge abhi — thodi der mein update milega 🙏`
+    ? `Screenshot received ✓ The owner will confirm shortly — you'll get an update soon 🙏\n` +
+      `Screenshot mil gayi, owner confirm kar denge — thodi der mein update milega.`
     : check
-      ? `Screenshot mila, owner manually check karenge aur confirm karenge 🤔`
-      : `Screenshot mil gayi ✓ Owner ko bhej di hai manual check ke liye 🙏`;
+      ? `Screenshot received — the owner will check it manually and confirm 🤔\n` +
+        `Screenshot mila, owner manually check karenge aur confirm karenge.`
+      : `Screenshot received ✓ Forwarded to the owner for manual check 🙏\n` +
+        `Screenshot mil gayi, owner ko bhej di hai manual check ke liye.`;
 
   await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
   await addConversationMessage({

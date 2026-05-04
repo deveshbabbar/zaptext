@@ -43,6 +43,9 @@ export interface Booking {
   time_slot: string;
   end_time: string;
   service: string;
+  // null = generic gym/business slot. Non-null = booked with this specific
+  // trainer/staff member; conflict checks and per-trainer calendar use it.
+  staff_id: string | null;
   status: 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'pending_approval';
   notes: string;
   created_at: string;
@@ -92,6 +95,7 @@ function dbRowToBooking(row: DbBookingRow): Booking {
     time_slot: row.time_slot,
     end_time: row.end_time ?? '',
     service: row.service ?? '',
+    staff_id: row.staff_id ?? null,
     status: row.status as Booking['status'],
     notes: row.notes ?? '',
     created_at: row.created_at ? row.created_at.toISOString() : '',
@@ -276,10 +280,14 @@ export async function getAvailableSlots(
   }
 
   // pending_approval blocks the slot too — two customers can't grab the
-  // same time while a trainer is reviewing.
+  // same time while a trainer is reviewing. Only count GENERIC bookings
+  // (staff_id IS NULL) here — per-trainer bookings live in their own
+  // availability map computed by getAvailableSlotsForStaff() and must not
+  // block the gym-wide slot grid (otherwise booking trainer A at 4 PM would
+  // block trainer B at 4 PM).
   const existingBookings = await getBookingsForDate(clientId, date);
   const bookedTimes = existingBookings
-    .filter((b) => b.status === 'confirmed' || b.status === 'pending_approval')
+    .filter((b) => (b.status === 'confirmed' || b.status === 'pending_approval') && b.staff_id == null)
     .map((b) => b.time_slot);
   slots = slots.filter((s) => !bookedTimes.includes(s.start_time));
 
@@ -296,6 +304,119 @@ export async function getAvailableSlots(
   }));
 }
 
+// ─── Per-trainer availability ───────────────────────────────────────────
+//
+// When a booking is for a SPECIFIC trainer (staff_id non-null), we use the
+// trainer's own availability JSON (stored on staff.availability) — NOT the
+// gym-wide weekly_schedule. That way:
+//   - A new gym with no weekly_schedule still allows trainer bookings
+//     (was the cause of the spurious "Sorry, yeh slot abhi kisi ne le liya"
+//     reply when the gym hadn't manually configured /client/schedule yet).
+//   - Trainers control their own hours via /client/staff or by texting
+//     "avail mon-fri 9am-6pm" to the bot.
+//   - Conflict checks only count bookings WITH the SAME staff_id, so two
+//     customers can book different trainers at the same hour.
+//
+// Slot duration defaults to 30 min. We synthesize start times in 30-min
+// steps inside each availability block — same granularity as the gym-wide
+// generator. The weekly_schedule table is bypassed entirely for staff bookings.
+
+interface StaffLikeForAvailability {
+  availability: Record<string, Array<{ start: string; end: string }>>;
+}
+
+function generateStaffSlots(
+  staff: StaffLikeForAvailability,
+  date: string,
+  slotDurationMinutes = 30
+): TimeSlot[] {
+  const day = getDayOfWeek(date);
+  const blocks = staff.availability?.[day] || [];
+  const out: TimeSlot[] = [];
+  for (const b of blocks) {
+    if (!b?.start || !b?.end) continue;
+    const [sh, sm] = b.start.split(':').map((n) => parseInt(n, 10));
+    const [eh, em] = b.end.split(':').map((n) => parseInt(n, 10));
+    if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) continue;
+    let cursor = sh * 60 + sm;
+    const end = eh * 60 + em;
+    while (cursor + slotDurationMinutes <= end) {
+      const startH = Math.floor(cursor / 60);
+      const startM = cursor % 60;
+      const finishMin = cursor + slotDurationMinutes;
+      const finishH = Math.floor(finishMin / 60);
+      const finishM = finishMin % 60;
+      out.push({
+        start_time: `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`,
+        end_time: `${String(finishH).padStart(2, '0')}:${String(finishM).padStart(2, '0')}`,
+        slot_duration_minutes: slotDurationMinutes,
+        service_type: 'staff',
+      });
+      cursor += slotDurationMinutes;
+    }
+  }
+  return out;
+}
+
+export async function getAvailableSlotsForStaff(
+  clientId: string,
+  staffId: string,
+  date: string,
+  slotDurationMinutes = 30
+): Promise<TimeSlot[]> {
+  // Block out the date if the gym set an "all-day blocked" override (e.g.
+  // gym closed for Holi). Custom-hours overrides only narrow the gym-wide
+  // window, not a trainer's personal hours, so we don't apply them here —
+  // a trainer can still take a slot inside their own availability even on
+  // a gym custom-hours day.
+  const override = await getDateOverride(clientId, date);
+  if (override?.override_type === 'blocked') return [];
+
+  // Lazy-load the staff row to avoid a circular import. lib/db/staff also
+  // imports from lib/utils, so going through the index keeps this clean.
+  const { getStaffById } = await import('./staff');
+  const member = await getStaffById(staffId);
+  if (!member || member.client_id !== clientId || !member.is_active) return [];
+
+  let slots = generateStaffSlots(
+    { availability: member.availability as unknown as Record<string, Array<{ start: string; end: string }>> },
+    date,
+    slotDurationMinutes
+  );
+
+  // Drop slots already taken by THIS trainer (other trainers don't matter).
+  const taken = await db
+    .select()
+    .from(bookingsTable)
+    .where(and(eq(bookingsTable.staff_id, staffId), eq(bookingsTable.date, date)));
+  const blockedTimes = taken
+    .filter((b) => b.status === 'confirmed' || b.status === 'pending_approval')
+    .map((b) => b.time_slot);
+  slots = slots.filter((s) => !blockedTimes.includes(s.start_time));
+
+  // Hide past slots when looking at today.
+  if (date === getTodayIST()) {
+    const currentTime = getCurrentTimeIST();
+    slots = slots.filter((s) => s.start_time > currentTime);
+  }
+  return slots;
+}
+
+export async function getBookingsForStaff(
+  staffId: string,
+  date?: string
+): Promise<Booking[]> {
+  const where = date
+    ? and(eq(bookingsTable.staff_id, staffId), eq(bookingsTable.date, date))
+    : eq(bookingsTable.staff_id, staffId);
+  const rows = await db
+    .select()
+    .from(bookingsTable)
+    .where(where)
+    .orderBy(asc(bookingsTable.date), asc(bookingsTable.time_slot));
+  return rows.map(dbRowToBooking);
+}
+
 // ─── Create / approve / cancel ──────────────────────────────────────────
 
 export async function createBooking(params: {
@@ -308,9 +429,15 @@ export async function createBooking(params: {
   service?: string;
   notes?: string;
   status?: Booking['status'];
+  // When set, validate against the trainer's personal availability
+  // (getAvailableSlotsForStaff) and tag the booking with this staff_id.
+  // When unset, fall back to gym-wide weekly_schedule (legacy behavior).
+  staffId?: string | null;
 }): Promise<Booking> {
-  // Double-check slot is still available
-  const available = await getAvailableSlots(params.clientId, params.date);
+  // Double-check slot is still available — per-trainer if staffId, else gym-wide
+  const available = params.staffId
+    ? await getAvailableSlotsForStaff(params.clientId, params.staffId, params.date)
+    : await getAvailableSlots(params.clientId, params.date);
   const slotExists = available.find((s) => s.start_time === params.timeSlot);
   if (!slotExists) throw new Error('SLOT_TAKEN');
 
@@ -323,6 +450,7 @@ export async function createBooking(params: {
     time_slot: params.timeSlot,
     end_time: params.endTime,
     service: params.service || '',
+    staff_id: params.staffId ?? null,
     status: params.status || 'confirmed',
     notes: params.notes || '',
     created_at: new Date().toISOString(),
@@ -339,6 +467,7 @@ export async function createBooking(params: {
     time_slot: booking.time_slot,
     end_time: booking.end_time,
     service: booking.service,
+    staff_id: booking.staff_id,
     status: booking.status,
     notes: booking.notes,
     created_at: new Date(booking.created_at),
@@ -347,14 +476,16 @@ export async function createBooking(params: {
   });
 
   // Race-detect: two requests that both passed availability can both
-  // insert. Re-read the same slot, keep the earliest by created_at, mark
-  // the rest cancelled. Same logic as legacy lib/booking.ts.
+  // insert. Per-trainer races only count rows with THE SAME staff_id;
+  // generic races only count rows with NULL staff_id.
   try {
     const sameSlot = (await getBookingsForDate(params.clientId, params.date))
       .filter(
         (b) =>
           b.time_slot === params.timeSlot &&
-          (b.status === 'confirmed' || b.status === 'pending_approval')
+          (b.status === 'confirmed' || b.status === 'pending_approval') &&
+          ((params.staffId && b.staff_id === params.staffId) ||
+            (!params.staffId && b.staff_id == null))
       )
       .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
     if (sameSlot.length > 1) {

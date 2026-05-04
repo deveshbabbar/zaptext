@@ -31,6 +31,8 @@ export {
   getBookingById,
   getBookingsForTomorrow,
   getAvailableSlots,
+  getAvailableSlotsForStaff,
+  getBookingsForStaff,
   createBooking,
   approveBooking,
   cancelBooking,

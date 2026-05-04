@@ -54,6 +54,13 @@ export default function ClientSettingsPage() {
   const [kbDirty, setKbDirty] = useState(false);
   const [kbError, setKbError] = useState('');
   const [syncingInv, setSyncingInv] = useState(false);
+  // Live prompt preview — fetches the FULL runtime prompt (system_prompt
+  // + AVAILABLE STAFF + LIVE STOCK as injected by the webhook). Lets the
+  // owner verify what Gemini actually sees, instead of guessing whether
+  // their staff/inventory edits made it through.
+  const [previewPrompt, setPreviewPrompt] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewAt, setPreviewAt] = useState('');
 
   useEffect(() => {
     fetch('/api/client/settings', { cache: 'no-store' })
@@ -236,6 +243,24 @@ export default function ClientSettingsPage() {
       setKbError('');
     } catch {
       setKbError('Cannot format — fix the JSON syntax first.');
+    }
+  };
+
+  const loadPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch('/api/client/settings/preview-prompt', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && typeof data.fullPrompt === 'string') {
+        setPreviewPrompt(data.fullPrompt);
+        setPreviewAt(data.generatedAt || new Date().toISOString());
+      } else {
+        toast.error(data.error || 'Preview failed');
+      }
+    } catch {
+      toast.error('Preview failed');
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -594,6 +619,35 @@ export default function ClientSettingsPage() {
               )}
               <p className="text-[11.5px] text-[var(--mute)] m-0">
                 Saving regenerates the system prompt automatically — unless you&apos;ve manually edited it below.
+              </p>
+            </Panel>
+
+            <Panel
+              title="Preview live prompt"
+              sub="See exactly what the bot's AI is told right now — your saved system prompt PLUS the live trainers/staff and current inventory the webhook injects on every customer message. Use this to confirm your latest edits actually reached the bot."
+            >
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <Pill variant="ink" onClick={loadPreview} disabled={previewLoading}>
+                  {previewLoading ? 'Loading…' : '🔍 Preview live prompt'}
+                </Pill>
+                {previewAt && (
+                  <span className="text-[11.5px] text-[var(--mute)]">
+                    Snapshot at {new Date(previewAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false })} IST
+                  </span>
+                )}
+              </div>
+              {previewPrompt && (
+                <textarea
+                  value={previewPrompt}
+                  readOnly
+                  rows={22}
+                  spellCheck={false}
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--bg-2)] focus:outline-none zt-mono text-[12px]"
+                  style={{ padding: 14, resize: 'vertical' }}
+                />
+              )}
+              <p className="text-[11.5px] text-[var(--mute)] mt-2 m-0">
+                Read-only snapshot. To change the static part, edit the System prompt or Business knowledge below. Staff/inventory parts come live from <b>/client/staff</b> and <b>/client/inventory</b>.
               </p>
             </Panel>
 

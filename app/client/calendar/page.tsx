@@ -14,11 +14,20 @@ interface Override { date: string; override_type: string; reason: string; }
 interface BookingItem {
   date: string; time_slot: string; end_time: string;
   customer_name: string; service: string; status: string;
+  // null = generic gym slot. Non-null = booked with this specific trainer.
+  // Drives the per-trainer calendar filter below.
+  staff_id: string | null;
 }
+interface StaffOption { staff_id: string; name: string; specialty: string; is_active: boolean; }
+
+const STAFF_FILTER_ALL = '__all__';
+const STAFF_FILTER_GENERIC = '__generic__';
 
 export default function CalendarPage() {
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [staffFilter, setStaffFilter] = useState<string>(STAFF_FILTER_ALL);
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -29,10 +38,13 @@ export default function CalendarPage() {
     Promise.all([
       fetch('/api/client/date-overrides').then((r) => r.json()),
       fetch('/api/client/bookings').then((r) => r.json()),
+      fetch('/api/client/staff').then((r) => r.json()).catch(() => ({ staff: [] })),
     ])
-      .then(([ovData, bkData]) => {
+      .then(([ovData, bkData, staffData]) => {
         setOverrides(ovData.overrides || []);
         setBookings(bkData.bookings || []);
+        const list = (staffData.staff || []) as StaffOption[];
+        setStaff(list.filter((s) => s.is_active));
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -48,8 +60,20 @@ export default function CalendarPage() {
     `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
   const isBlocked = (d: string) => overrides.some((o) => o.date === d && o.override_type === 'blocked');
-  const getBookingsForDay = (d: string) => bookings.filter((b) => b.date === d && b.status === 'confirmed');
+  // Per-trainer scoping — STAFF_FILTER_ALL: every booking; STAFF_FILTER_GENERIC:
+  // only generic gym slots (staff_id null); a specific id: only that trainer's
+  // rows. Drives both the day dots on the calendar grid AND the day-detail list.
+  const matchesStaffFilter = (b: BookingItem) =>
+    staffFilter === STAFF_FILTER_ALL ? true
+    : staffFilter === STAFF_FILTER_GENERIC ? b.staff_id == null
+    : b.staff_id === staffFilter;
+  const getBookingsForDay = (d: string) =>
+    bookings.filter((b) => b.date === d && b.status === 'confirmed' && matchesStaffFilter(b));
   const getOverride = (d: string) => overrides.find((o) => o.date === d);
+  const staffFilterLabel =
+    staffFilter === STAFF_FILTER_ALL ? 'All bookings'
+    : staffFilter === STAFF_FILTER_GENERIC ? 'Generic gym slots'
+    : (staff.find((s) => s.staff_id === staffFilter)?.name || 'Trainer');
 
   const handleBlockDate = async () => {
     if (!selectedDate) return;
@@ -74,9 +98,26 @@ export default function CalendarPage() {
   return (
     <>
       <PageTopbar
-        crumbs={<><b className="text-foreground">Calendar</b> · {MONTHS[month]} {year}</>}
+        crumbs={<><b className="text-foreground">Calendar</b> · {MONTHS[month]} {year} · <span className="text-[var(--mute)]">{staffFilterLabel}</span></>}
         actions={
           <>
+            {staff.length > 0 && (
+              <select
+                value={staffFilter}
+                onChange={(e) => setStaffFilter(e.target.value)}
+                className="rounded-full border border-[var(--line)] bg-[var(--card)] text-[12.5px] font-semibold focus:border-[var(--ink)] focus:outline-none"
+                style={{ padding: '6px 10px' }}
+                title="Filter by trainer / staff member"
+              >
+                <option value={STAFF_FILTER_ALL}>All bookings</option>
+                <option value={STAFF_FILTER_GENERIC}>Generic gym slots</option>
+                {staff.map((s) => (
+                  <option key={s.staff_id} value={s.staff_id}>
+                    {s.name}{s.specialty ? ` — ${s.specialty}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
             <Pill variant="ghost" onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}>← Prev</Pill>
             <Pill variant="ghost" onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}>Next →</Pill>
           </>

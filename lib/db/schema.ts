@@ -144,6 +144,11 @@ export const bookings = pgTable(
     time_slot: varchar('time_slot', { length: 5 }).notNull(), // 'HH:MM'
     end_time: varchar('end_time', { length: 5 }).default(''), // 'HH:MM'
     service: varchar('service', { length: 200 }).default(''),
+    // NULL = generic gym/business slot. Non-NULL = booked with this specific
+    // trainer/staff member; conflict checks and the per-trainer calendar
+    // view scope by staff_id when populated. Lets two customers book
+    // DIFFERENT trainers in the same hour without one blocking the other.
+    staff_id: text('staff_id'),
     status: varchar('status', { length: 32 }).notNull().default('pending_approval'),
     notes: text('notes').default(''),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -155,6 +160,7 @@ export const bookings = pgTable(
     dateIdx: index('bookings_client_date_idx').on(t.client_id, t.date),
     customerIdx: index('bookings_client_customer_idx').on(t.client_id, t.customer_phone),
     statusIdx: index('bookings_status_idx').on(t.status),
+    staffDateIdx: index('bookings_staff_date_idx').on(t.staff_id, t.date),
   })
 );
 

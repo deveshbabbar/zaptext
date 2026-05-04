@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { validateDisplayName } from '@/lib/whatsapp-naming';
 
 interface CommonFieldsProps {
   data: Record<string, unknown>;
@@ -113,6 +114,17 @@ function WorkingHoursPicker({ value, onChange }: { value: string; onChange: (v: 
 export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
   const languages = (data.languages as string[]) || ['Hindi', 'English', 'Hinglish'];
 
+  // Live WhatsApp display-name validation. Catches Meta-rejection patterns
+  // (generic-only names like "Gym Time Fitness", URLs, emojis, ALL CAPS,
+  // bare locations, etc.) BEFORE the bot is submitted to Meta — a Meta
+  // rejection takes days to surface, this is instant.
+  const businessNameRaw = (data.businessName as string) || '';
+  const nameValidation = useMemo(
+    () => validateDisplayName(businessNameRaw),
+    [businessNameRaw]
+  );
+  const showNameValidation = businessNameRaw.trim().length >= 3;
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold border-b border-border pb-2">Basic Information</h3>
@@ -123,9 +135,43 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           <Input
             id="businessName"
             placeholder="e.g., Dr. Sharma Clinic"
-            value={(data.businessName as string) || ''}
+            value={businessNameRaw}
             onChange={(e) => onChange('businessName', e.target.value)}
           />
+          {showNameValidation && (
+            <div className="mt-1.5 space-y-1 text-[12px]">
+              {nameValidation.errors.map((err, i) => (
+                <div key={`e-${i}`} className="text-red-500 flex gap-1">
+                  <span>⛔</span><span>{err}</span>
+                </div>
+              ))}
+              {nameValidation.warnings.map((w, i) => (
+                <div key={`w-${i}`} className="text-amber-500 flex gap-1">
+                  <span>⚠️</span><span>{w}</span>
+                </div>
+              ))}
+              {nameValidation.suggestions.length > 0 && (
+                <div className="text-muted-foreground">
+                  <span>Try: </span>
+                  {nameValidation.suggestions.map((s, i) => (
+                    <button
+                      key={`s-${i}`}
+                      type="button"
+                      onClick={() => onChange('businessName', s)}
+                      className="underline hover:text-foreground mr-2"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {nameValidation.valid && nameValidation.warnings.length === 0 && (
+                <div className="text-green-500 flex gap-1">
+                  <span>✓</span><span>Looks good — should pass Meta&apos;s display-name review.</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <Label htmlFor="ownerName">Owner / Contact Name *</Label>

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, isMessageProcessed } from '@/lib/whatsapp';
+import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppButtons, isMessageProcessed } from '@/lib/whatsapp';
 import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
-import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking } from '@/lib/booking';
+import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff } from '@/lib/booking';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
 import {
   buildUpiLink,
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string }>) {
+async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; interactiveButtonId?: string; interactiveButtonTitle?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
   if (!client) {
@@ -164,16 +164,28 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     }
 
     // Trainer-side commands (if msg.from matches a registered trainer's phone)
-    if (msg.type === 'text' && msg.text && !isOwner) {
+    // Accepts both typed text AND native WhatsApp button taps. Button taps
+    // arrive as type:'interactive' with interactiveButtonId set; the parser
+    // also synthesizes msg.text from the button title so existing string
+    // matching keeps working.
+    const isTrainerInbound =
+      ((msg.type === 'text' && msg.text) ||
+        (msg.type === 'interactive' && msg.interactiveButtonId)) && !isOwner;
+    if (isTrainerInbound) {
       const staffMember = await getStaffByPhoneAny(msg.from || '');
       if (staffMember && staffMember.client_id === client.client_id) {
+        const inboundText = (msg.text || '').trim();
         const handled = await handleStaffCommand(
-          phoneNumberId, staffMember, msg.text.trim(), client.client_id
+          phoneNumberId, staffMember, inboundText, client.client_id, msg.interactiveButtonId
         );
         if (handled) {
           await addConversationMessage({
             timestamp, client_id: client.client_id, customer_phone: customerPhone,
-            direction: 'incoming', message: `[trainer-cmd] ${msg.text}`, message_type: 'text',
+            direction: 'incoming',
+            message: msg.interactiveButtonId
+              ? `[trainer-tap] ${msg.interactiveButtonId} (${inboundText || 'no title'})`
+              : `[trainer-cmd] ${inboundText}`,
+            message_type: msg.type,
           });
           continue;
         }
@@ -505,19 +517,34 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
               // not Date.now(). The previous Date.now() id was never findable, so
               // approve/reject commands always returned "booking not found".
               const realBookingId = newBooking.booking_id;
-              const staffMsg =
-                `📅 *Naya booking request — ${client.business_name}*\n\n` +
-                `👤 *Customer:* ${safeName}\n` +
-                `📞 *Phone:* +${customerPhone.replace(/\D/g, '')}\n` +
-                `📅 *Date:* ${date}\n` +
-                `🕐 *Time:* ${time}\n` +
-                (safeService ? `💼 *Service:* ${safeService}\n` : '') +
-                (safeNotes ? `📝 *Notes:* ${safeNotes}\n` : '') +
-                (matched.price ? `💰 *Fee:* ₹${matched.price}/session\n` : '') +
-                `\nReply with one of:\n` +
-                `✅ *approve ${realBookingId}*\n` +
-                `❌ *reject ${realBookingId} <reason>*`;
-              await sendWhatsAppMessage(phoneNumberId, matched.whatsapp_phone, staffMsg);
+              const staffBody =
+                `📅 New booking request — ${client.business_name}\n\n` +
+                `👤 Customer: ${safeName}\n` +
+                `📞 Phone: +${customerPhone.replace(/\D/g, '')}\n` +
+                `📅 Date: ${date}\n` +
+                `🕐 Time: ${time}\n` +
+                (safeService ? `💼 Service: ${safeService}\n` : '') +
+                (safeNotes ? `📝 Notes: ${safeNotes}\n` : '') +
+                (matched.price ? `💰 Fee: ₹${matched.price}/session\n` : '') +
+                `\nTap a button below to respond — or just text "approve" / "reject".`;
+              // Native WhatsApp buttons → no booking ID typing needed.
+              // Fallback (plain text with explicit ID) is sent only if Meta
+              // rejects the interactive payload.
+              const fallbackText =
+                staffBody +
+                `\n\nManual fallback:\n` +
+                `✅ approve ${realBookingId}\n` +
+                `❌ reject ${realBookingId} <reason>`;
+              await sendWhatsAppButtons(
+                phoneNumberId,
+                matched.whatsapp_phone,
+                staffBody,
+                [
+                  { id: `appr|${realBookingId}`, title: '✅ Approve' },
+                  { id: `rej|${realBookingId}`, title: '❌ Reject' },
+                ],
+                fallbackText
+              );
             }
           }
         } catch (e) {
@@ -1179,22 +1206,91 @@ async function handleStaffCommand(
   phoneNumberId: string,
   trainer: StaffMember,
   text: string,
-  clientId: string
+  clientId: string,
+  // When the inbound was a native WhatsApp button tap, this is the
+  // button.id we sent — e.g. "appr|BK_xxx" or "rej|BK_xxx". Lets the
+  // trainer respond by tapping instead of typing the booking ID.
+  interactiveButtonId?: string
 ): Promise<boolean> {
   const normalized = text.trim().toLowerCase();
   const trainerPhone = trainer.whatsapp_phone;
 
-  // approve <BK_xxx>
-  const approveMatch = normalized.match(/^approve\s+(\S+)/);
-  if (approveMatch) {
-    const bookingId = text.match(/approve\s+(\S+)/i)?.[1] || approveMatch[1];
-    const booking = await getBookingById(bookingId);
+  // ─── Resolve approve/reject intent + booking id ──────────────────────
+  // Source priority: (1) button tap id, (2) "approve <id>" / "reject <id>",
+  // (3) bare "approve"/"reject"/"yes"/"no"/"ok"/"✅"/"❌" → smart-fallback
+  // to the trainer's oldest pending_approval booking.
+  let intent: 'approve' | 'reject' | null = null;
+  let resolvedBookingId: string | null = null;
+  let rejectReason = '';
+
+  if (interactiveButtonId) {
+    const [prefix, idPart] = interactiveButtonId.split('|');
+    if (prefix === 'appr' && idPart) { intent = 'approve'; resolvedBookingId = idPart; }
+    else if (prefix === 'rej' && idPart) { intent = 'reject'; resolvedBookingId = idPart; }
+  }
+  if (!intent) {
+    const approveWithIdMatch = normalized.match(/^approve\s+(\S+)/);
+    const rejectWithIdMatch = normalized.match(/^reject\s+(\S+)(?:\s+(.+))?/);
+    const approveBareMatch = /^(approve|approved|yes|ok|okay|haan|✅|👍)$/.test(normalized);
+    const rejectBareMatch = normalized === 'reject' || normalized === 'no' || normalized === 'nahi'
+      || normalized === '❌' || normalized === '👎';
+
+    if (approveWithIdMatch) {
+      intent = 'approve';
+      resolvedBookingId = text.match(/approve\s+(\S+)/i)?.[1] || approveWithIdMatch[1];
+    } else if (rejectWithIdMatch) {
+      intent = 'reject';
+      resolvedBookingId = text.match(/reject\s+(\S+)/i)?.[1] || rejectWithIdMatch[1];
+      rejectReason = rejectWithIdMatch[2] || '';
+    } else if (approveBareMatch) {
+      intent = 'approve';
+    } else if (rejectBareMatch) {
+      intent = 'reject';
+    }
+  }
+
+  if (intent && !resolvedBookingId) {
+    // Smart-fallback: find this trainer's pending_approval bookings.
+    // Exactly 1 → confirm/reject it. 0 → tell them. >1 → ask which.
+    const allForStaff = await getBookingsForStaff(trainer.staff_id);
+    const pending = allForStaff
+      .filter((b) => b.status === 'pending_approval')
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    if (pending.length === 0) {
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+        `No pending booking requests right now. ✨\n\n` +
+        `Koi pending booking request nahi hai abhi.`);
+      return true;
+    }
+    if (pending.length === 1) {
+      resolvedBookingId = pending[0].booking_id;
+    } else {
+      // Multiple pending — list them with short references so trainer can
+      // reply "approve 1" or "reject 2 trainer busy". We use a 1-based
+      // index so it reads naturally.
+      const lines = pending
+        .slice(0, 5)
+        .map((b, i) =>
+          `${i + 1}. ${b.date} ${b.time_slot} · ${b.customer_name || b.customer_phone}`
+            + ` — ID: ${b.booking_id.slice(0, 12)}…`)
+        .join('\n');
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+        `You have ${pending.length} pending booking requests. Reply with the FULL ID, e.g. *${intent} ${pending[0].booking_id}*\n\n${lines}\n\n` +
+        `Aapke ${pending.length} pending requests hain. Full ID ke saath reply karein, jaise *${intent} ${pending[0].booking_id}*.`);
+      return true;
+    }
+  }
+
+  if (intent === 'approve' && resolvedBookingId) {
+    const booking = await getBookingById(resolvedBookingId);
     if (!booking || booking.client_id !== clientId) {
-      await sendWhatsAppMessage(phoneNumberId, trainerPhone, `❌ Booking ${bookingId} not found.`);
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+        `❌ Booking ${resolvedBookingId} not found.\n` +
+        `Booking nahi mili.`);
       return true;
     }
     // Flip pending_approval → confirmed in the DB. Idempotent if already confirmed.
-    await approveBooking(bookingId);
+    await approveBooking(resolvedBookingId);
     // Notify the customer
     try {
       const { getClientById } = await import('@/lib/google-sheets');
@@ -1209,21 +1305,22 @@ async function handleStaffCommand(
       }
     } catch (e) { console.error('Trainer approve notify failed:', e); }
     await sendWhatsAppMessage(phoneNumberId, trainerPhone,
-      `✅ Confirmed ${bookingId} — customer has been notified.`);
+      `✅ Confirmed — customer notified.\n` +
+      `${booking.customer_name || booking.customer_phone} · ${booking.date} ${booking.time_slot}\n` +
+      `Customer ko bata diya.`);
     return true;
   }
 
-  // reject <BK_xxx> [reason]
-  const rejectMatch = normalized.match(/^reject\s+(\S+)(?:\s+(.+))?/);
-  if (rejectMatch) {
-    const bookingId = text.match(/reject\s+(\S+)/i)?.[1] || rejectMatch[1];
-    const reason = rejectMatch[2] || 'Trainer unavailable';
-    const booking = await getBookingById(bookingId);
+  if (intent === 'reject' && resolvedBookingId) {
+    const reason = rejectReason || 'Trainer unavailable';
+    const booking = await getBookingById(resolvedBookingId);
     if (!booking || booking.client_id !== clientId) {
-      await sendWhatsAppMessage(phoneNumberId, trainerPhone, `❌ Booking ${bookingId} not found.`);
+      await sendWhatsAppMessage(phoneNumberId, trainerPhone,
+        `❌ Booking ${resolvedBookingId} not found.\n` +
+        `Booking nahi mili.`);
       return true;
     }
-    await cancelBooking(bookingId, `Rejected by trainer ${trainer.name}: ${reason}`);
+    await cancelBooking(resolvedBookingId, `Rejected by trainer ${trainer.name}: ${reason}`);
     try {
       const { getClientById } = await import('@/lib/google-sheets');
       const client = await getClientById(clientId);
@@ -1235,7 +1332,9 @@ async function handleStaffCommand(
       }
     } catch (e) { console.error('Trainer reject notify failed:', e); }
     await sendWhatsAppMessage(phoneNumberId, trainerPhone,
-      `✅ Declined ${bookingId} — customer notified.`);
+      `✅ Declined — customer notified.\n` +
+      `${booking.customer_name || booking.customer_phone} · ${booking.date} ${booking.time_slot}\n` +
+      `Customer ko bata diya.`);
     return true;
   }
 
@@ -1274,8 +1373,11 @@ async function handleStaffCommand(
   if (normalized === 'help' || normalized === '?') {
     await sendWhatsAppMessage(phoneNumberId, trainerPhone,
       `🏋️ *Trainer commands*:\n\n` +
-      `• *approve BK_xxx* — confirm a booking\n` +
-      `• *reject BK_xxx reason* — decline\n` +
+      `• Tap *✅ Approve* / *❌ Reject* on a booking request — no typing needed\n` +
+      `• *approve* / *yes* / *✅* — confirm your only pending request\n` +
+      `• *reject* / *no* / *❌* — decline your only pending request\n` +
+      `• *approve BK_xxx* — confirm a specific booking (when you have many)\n` +
+      `• *reject BK_xxx reason* — decline a specific booking\n` +
       `• *avail mon-fri 9am-6pm* — update schedule\n` +
       `• *schedule* — see your current availability\n` +
       `• *help* — this list`);

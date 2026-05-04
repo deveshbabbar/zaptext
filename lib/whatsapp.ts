@@ -37,6 +37,76 @@ export async function sendWhatsAppMessage(
   }
 }
 
+// Send a message with up to 3 native WhatsApp reply buttons. Used to give
+// trainers tappable Approve/Reject for booking requests so they don't have
+// to type the booking ID. Falls back to a plain-text message if Meta rejects
+// the interactive payload (e.g. on tenancies without interactive support).
+//
+// Limits per Meta:
+//   - max 3 buttons per message
+//   - button.title <= 20 chars (WhatsApp truncates beyond)
+//   - button.id <= 256 chars
+//
+// Button IDs are echoed back verbatim in the inbound webhook as
+// `interactive.button_reply.id` — surfaced via parseWebhookPayload's
+// `interactiveButtonId` field. Use a short prefix like "appr|<booking_id>"
+// so the handler can split + dispatch.
+export async function sendWhatsAppButtons(
+  phoneNumberId: string,
+  to: string,
+  bodyText: string,
+  buttons: Array<{ id: string; title: string }>,
+  fallbackText?: string
+): Promise<{ success: boolean; error?: string }> {
+  // Defensive: clip to Meta's limits so a too-long title doesn't make Meta
+  // reject the whole payload silently.
+  const safeButtons = buttons.slice(0, 3).map((b) => ({
+    type: 'reply' as const,
+    reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) },
+  }));
+
+  try {
+    const response = await fetch(
+      `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: { text: bodyText.slice(0, 1024) },
+            action: { buttons: safeButtons },
+          },
+        }),
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('WhatsApp buttons error:', data);
+      // Fall back to plain text so the trainer still gets the info even when
+      // interactive isn't available — they can text "approve" instead of tapping.
+      if (fallbackText) {
+        return await sendWhatsAppMessage(phoneNumberId, to, fallbackText);
+      }
+      return { success: false, error: data.error?.message || 'Unknown error' };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('WhatsApp buttons exception:', error);
+    if (fallbackText) {
+      return await sendWhatsAppMessage(phoneNumberId, to, fallbackText);
+    }
+    return { success: false, error: String(error) };
+  }
+}
+
 export async function sendWhatsAppImage(
   phoneNumberId: string,
   to: string,
@@ -152,6 +222,11 @@ export interface WhatsAppMessage {
   timestamp: string;
   imageId?: string;
   caption?: string;
+  // Set when the inbound message is an interactive button_reply — value is
+  // the button.id we sent (e.g. "appr|BK_xxx"). Webhook handler treats this
+  // like a typed command so trainers can tap instead of typing the booking ID.
+  interactiveButtonId?: string;
+  interactiveButtonTitle?: string;
 }
 
 export interface WhatsAppWebhookPayload {
@@ -196,14 +271,27 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
       phoneNumberId,
       messages: messages.map((m) => {
         const image = m.image as Record<string, string> | undefined;
+        // Interactive button replies come through as type:'interactive' with
+        // interactive.button_reply.{id,title}. Surface the id verbatim and
+        // also synthesize a `text` field so existing string-matching paths
+        // (handleStaffCommand etc.) accept the tap as if the trainer had
+        // typed the title (e.g. "✅ Approve").
+        const interactive = m.interactive as Record<string, unknown> | undefined;
+        const buttonReply = (interactive?.button_reply as Record<string, string> | undefined);
+        const interactiveButtonId = buttonReply?.id;
+        const interactiveButtonTitle = buttonReply?.title;
         return {
           id: (m.id as string) || '',
           from: (m.from as string) || '',
-          text: (m.text as Record<string, string>)?.body,
+          text:
+            (m.text as Record<string, string>)?.body ??
+            interactiveButtonTitle, // tap → behaves like text for existing handlers
           type: (m.type as string) || 'unknown',
           timestamp: (m.timestamp as string) || '',
           imageId: image?.id,
           caption: image?.caption,
+          interactiveButtonId,
+          interactiveButtonTitle,
         };
       }),
     };

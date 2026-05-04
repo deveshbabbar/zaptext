@@ -11,7 +11,9 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:seed-from-sheets": "tsx --env-file=.env.local scripts/migrate-sheets-to-neon.ts"
+    "db:seed-from-sheets": "tsx --env-file=.env.local scripts/migrate-sheets-to-neon.ts",
+    "clerk:list": "tsx --env-file=.env.local scripts/remap-clerk-user-id.ts --list",
+    "clerk:remap": "tsx --env-file=.env.local scripts/remap-clerk-user-id.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

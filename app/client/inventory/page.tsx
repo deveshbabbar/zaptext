@@ -17,6 +17,15 @@ interface InventoryItem {
   available_from?: string;
   available_to?: string;
   available_days?: string[];
+  category?: string;
+  tracks_stock?: boolean;
+}
+
+interface InventoryCategory {
+  id: string;
+  name: string;
+  tracks_stock: boolean;
+  display_order: number;
 }
 
 const ALL_DAYS: { key: string; label: string }[] = [
@@ -52,6 +61,8 @@ export default function InventoryPage() {
   const [newPrice, setNewPrice] = useState('');
   const [newStock, setNewStock] = useState('');
   const [newThreshold, setNewThreshold] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [categories, setCategories] = useState<InventoryCategory[]>([]);
 
   // Per-row availability editor state (keyed by sku).
   // File-import preview state
@@ -199,9 +210,19 @@ export default function InventoryPage() {
 
   const load = async () => {
     try {
-      const res = await fetch('/api/client/inventory');
-      const data = await res.json();
-      setItems(data.items || []);
+      // Items + categories in parallel — both feed the inventory page render.
+      const [itemsRes, catsRes] = await Promise.all([
+        fetch('/api/client/inventory'),
+        fetch('/api/client/inventory/categories'),
+      ]);
+      const itemsData = await itemsRes.json();
+      setItems(itemsData.items || []);
+      // Categories endpoint may 404 on legacy bots that haven't been seeded
+      // yet — treat that as an empty list rather than an error.
+      if (catsRes.ok) {
+        const catsData = await catsRes.json();
+        setCategories(Array.isArray(catsData.categories) ? catsData.categories : []);
+      }
     } catch {
       toast.error('Failed to load inventory');
     } finally {
@@ -220,15 +241,22 @@ export default function InventoryPage() {
     }
     setSaving('add');
     try {
+      // If the chosen category has tracks_stock=false, don't write a stock
+      // value — leaves the item with stock=0 / tracks_stock=false at the
+      // server which the bot prompt then surfaces as "always available".
+      const selectedCat = categories.find((c) => c.name === newCategory);
+      const tracksStock = selectedCat ? selectedCat.tracks_stock : true;
       const res = await fetch('/api/client/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newName,
           price: newPrice ? parseFloat(newPrice) : 0,
-          stock: newStock ? parseInt(newStock, 10) : 0,
-          low_stock_threshold: newThreshold ? parseInt(newThreshold, 10) : 0,
+          stock: tracksStock && newStock ? parseInt(newStock, 10) : 0,
+          low_stock_threshold: tracksStock && newThreshold ? parseInt(newThreshold, 10) : 0,
           is_active: true,
+          category: newCategory || '',
+          tracks_stock: tracksStock,
         }),
       });
       if (res.ok) {
@@ -237,6 +265,7 @@ export default function InventoryPage() {
         setNewPrice('');
         setNewStock('');
         setNewThreshold('');
+        setNewCategory('');
         await load();
       } else {
         toast.error('Failed to add item');
@@ -372,8 +401,8 @@ export default function InventoryPage() {
           sub="Menu / services / plans from your onboarding form auto-sync here. Bot auto-decrements on every order. Adjust stock or mark items unavailable anytime."
         />
 
-        <Panel title="Add new item" sub="Price + stock optional. Set a low-stock threshold to get alerts.">
-          <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2.5">
+        <Panel title="Add new item" sub="Pick a category — stock fields auto-hide for service-style categories like memberships, services, and courses.">
+          <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1.2fr_auto] gap-2.5">
             <input
               placeholder="Name (e.g. Dum Biryani)"
               value={newName}
@@ -392,30 +421,56 @@ export default function InventoryPage() {
               className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
               style={{ padding: '10px 12px' }}
             />
-            <input
-              placeholder="Stock"
-              type="number"
-              min={0}
-              value={newStock}
-              onChange={(e) => setNewStock(e.target.value)}
+            <select
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
               disabled={saving === 'add'}
               className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
               style={{ padding: '10px 12px' }}
-            />
-            <input
-              placeholder="Low alert at"
-              type="number"
-              min={0}
-              value={newThreshold}
-              onChange={(e) => setNewThreshold(e.target.value)}
-              disabled={saving === 'add'}
-              className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
-              style={{ padding: '10px 12px' }}
-            />
+            >
+              <option value="">— Category (optional) —</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}{c.tracks_stock ? '' : ' (no stock)'}
+                </option>
+              ))}
+            </select>
             <Pill variant="ink" onClick={addItem} disabled={saving === 'add'}>
               {saving === 'add' ? 'Adding…' : '+ Add'}
             </Pill>
           </div>
+          {/* Stock + threshold only shown when the chosen category tracks stock.
+              For service-style categories (memberships, services, courses,
+              listings) those fields would be misleading. */}
+          {(() => {
+            const selected = categories.find((c) => c.name === newCategory);
+            const showStock = !selected || selected.tracks_stock;
+            if (!showStock) return null;
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-2.5">
+                <input
+                  placeholder="Stock"
+                  type="number"
+                  min={0}
+                  value={newStock}
+                  onChange={(e) => setNewStock(e.target.value)}
+                  disabled={saving === 'add'}
+                  className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
+                  style={{ padding: '10px 12px' }}
+                />
+                <input
+                  placeholder="Low alert at"
+                  type="number"
+                  min={0}
+                  value={newThreshold}
+                  onChange={(e) => setNewThreshold(e.target.value)}
+                  disabled={saving === 'add'}
+                  className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] disabled:opacity-50"
+                  style={{ padding: '10px 12px' }}
+                />
+              </div>
+            );
+          })()}
         </Panel>
 
         {loading ? (

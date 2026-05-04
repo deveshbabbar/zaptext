@@ -31,6 +31,10 @@ export default function ClientSettingsPage() {
   const [workingHours, setWorkingHours] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [bizDirty, setBizDirty] = useState(false);
+  const [ptAvailable, setPtAvailable] = useState(false);
+  const [ptPrice, setPtPrice] = useState('');
+  const [ptTrainerInfo, setPtTrainerInfo] = useState('');
+  const [ptDirty, setPtDirty] = useState(false);
   // Per-bot inventory categories. Loaded from /api/client/inventory/categories
   // and managed via the "Inventory categories" panel below — owners can add
   // custom labels (e.g. "Diet Plans" for a gym) or delete defaults they
@@ -85,12 +89,23 @@ export default function ClientSettingsPage() {
             setCity(typeof parsed.city === 'string' ? parsed.city : '');
             setWorkingHours(typeof parsed.workingHours === 'string' ? parsed.workingHours : '');
             setWelcomeMessage(typeof parsed.welcomeMessage === 'string' ? parsed.welcomeMessage : '');
+            const pt = (parsed as { personalTraining?: { available?: unknown; pricePerSession?: unknown; trainerInfo?: unknown } }).personalTraining;
+            if (pt && typeof pt === 'object') {
+              setPtAvailable(pt.available === true);
+              setPtPrice(typeof pt.pricePerSession === 'string' ? pt.pricePerSession : '');
+              setPtTrainerInfo(typeof pt.trainerInfo === 'string' ? pt.trainerInfo : '');
+            } else {
+              setPtAvailable(false);
+              setPtPrice('');
+              setPtTrainerInfo('');
+            }
           }
         } catch {
           // Corrupt KB — leave fields blank, the JSON editor below will
           // surface the parse error.
         }
         setBizDirty(false);
+        setPtDirty(false);
         setPromptDirty(false);
         setKbDirty(false);
         setKbError('');
@@ -288,7 +303,7 @@ export default function ClientSettingsPage() {
       // start from whatever the user has typed in the raw KB editor (or
       // the originally-loaded value) so this never clobbers their other
       // edits, then overlay the four fields.
-      if (bizDirty || kbDirty) {
+      if (bizDirty || kbDirty || ptDirty) {
         let baseKb: Record<string, unknown> = {};
         try { baseKb = JSON.parse(config || '{}'); } catch { baseKb = {}; }
         if (!baseKb || typeof baseKb !== 'object' || Array.isArray(baseKb)) baseKb = {};
@@ -297,6 +312,13 @@ export default function ClientSettingsPage() {
           baseKb.city = city.trim();
           baseKb.workingHours = workingHours.trim();
           baseKb.welcomeMessage = welcomeMessage.trim();
+        }
+        if (ptDirty) {
+          baseKb.personalTraining = {
+            available: ptAvailable,
+            pricePerSession: ptAvailable ? ptPrice.trim() : '',
+            trainerInfo: ptAvailable ? ptTrainerInfo.trim() : '',
+          };
         }
         bulk.knowledge_base_json = JSON.stringify(baseKb);
       }
@@ -312,6 +334,7 @@ export default function ClientSettingsPage() {
         setPromptDirty(false);
         setKbDirty(false);
         setBizDirty(false);
+        setPtDirty(false);
         setKbError('');
         if (kbDirty) {
           toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
@@ -405,6 +428,53 @@ export default function ClientSettingsPage() {
                 </p>
               )}
             </Panel>
+
+            {botType === 'gym' && (
+              <Panel
+                title="Personal training"
+                sub="The default rate and trainer description shown when no specific trainer is added in the Staff section. Add specific trainers (with their own prices) under Client → Staff to override this."
+              >
+                <div className="grid gap-3">
+                  <label className="flex items-center gap-2 text-[13px]">
+                    <input
+                      type="checkbox"
+                      checked={ptAvailable}
+                      onChange={(e) => { setPtAvailable(e.target.checked); setPtDirty(true); }}
+                    />
+                    <span>Personal training is available at this gym</span>
+                  </label>
+                  {ptAvailable && (
+                    <>
+                      <div className="grid gap-1">
+                        <label className="text-[12px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold">Default price per session</label>
+                        <input
+                          type="text"
+                          value={ptPrice}
+                          onChange={(e) => { setPtPrice(e.target.value); setPtDirty(true); }}
+                          placeholder="e.g., Rs. 2000"
+                          className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-[12px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold">Trainer description (optional)</label>
+                        <textarea
+                          rows={2}
+                          value={ptTrainerInfo}
+                          onChange={(e) => { setPtTrainerInfo(e.target.value); setPtDirty(true); }}
+                          placeholder="e.g., Certified, 5+ years experience"
+                          className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-foreground px-3 py-2 text-sm resize-none"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+                {ptDirty && (
+                  <p className="text-[11px] text-[var(--mute)] mt-2">
+                    Unsaved personal-training info — click <b>Save all changes</b> at the top.
+                  </p>
+                )}
+              </Panel>
+            )}
 
             <Panel
               title="Inventory categories"

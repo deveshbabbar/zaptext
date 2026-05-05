@@ -321,6 +321,41 @@ export const date_overrides = pgTable(
   })
 );
 
+// ─── template_submissions (Meta WhatsApp template approval state) ────────
+// One row per (waba_id, template_name, language). Tracks the lifecycle of
+// each template we submit to Meta's /message_templates endpoint, so the
+// admin UI can show which templates are APPROVED vs PENDING vs REJECTED
+// without re-querying Meta on every render. The submit script upserts on
+// the natural key; the Meta webhook (`message_template_status_update`) is
+// what later flips status PENDING -> APPROVED/REJECTED.
+//
+// Stored states (mirrors Meta's enum verbatim so we can store whatever
+// Meta returns without translation):
+//   PENDING | APPROVED | REJECTED | PAUSED | DISABLED | IN_APPEAL
+export const template_submissions = pgTable(
+  'template_submissions',
+  {
+    waba_id: varchar('waba_id', { length: 64 }).notNull(),
+    template_name: varchar('template_name', { length: 100 }).notNull(),
+    language: varchar('language', { length: 8 }).notNull(),
+    category: varchar('category', { length: 32 }).notNull(),
+    status: varchar('status', { length: 32 }).notNull().default('PENDING'),
+    // Meta's template ID (returned on creation); useful for the GET
+    // status endpoint and for distinguishing two submissions of the same
+    // name (Meta only allows one APPROVED per (name, language) pair).
+    meta_template_id: varchar('meta_template_id', { length: 64 }).default(''),
+    // Last error/reason text from Meta — surfaced verbatim in the admin
+    // UI so the operator can fix the template body and resubmit.
+    last_error: text('last_error').default(''),
+    submitted_at: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.waba_id, t.template_name, t.language] }),
+    statusIdx: index('template_submissions_status_idx').on(t.status),
+  })
+);
+
 // ─── inferred row types ──────────────────────────────────────────────────
 
 export type ClientRow = typeof clients.$inferSelect;
@@ -343,3 +378,5 @@ export type DateOverrideRow = typeof date_overrides.$inferSelect;
 export type NewDateOverrideRow = typeof date_overrides.$inferInsert;
 export type InventoryCategoryRow = typeof inventoryCategories.$inferSelect;
 export type NewInventoryCategoryRow = typeof inventoryCategories.$inferInsert;
+export type TemplateSubmissionRow = typeof template_submissions.$inferSelect;
+export type NewTemplateSubmissionRow = typeof template_submissions.$inferInsert;

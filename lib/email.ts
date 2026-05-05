@@ -18,6 +18,22 @@ interface SendEmailParams {
   attachments?: EmailAttachment[];
 }
 
+// Strip CR/LF from any user-controlled subject text — guards against
+// header injection if a business name accidentally contains a newline.
+function sanitizeSubject(s: string): string {
+  return s.replace(/[\r\n]+/g, ' ').slice(0, 200);
+}
+
+// Whether an HTTP error is worth retrying. 4xx (except 429) means our
+// request is wrong — retrying won't help. 5xx and 429 are transient.
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export async function sendEmail({ to, toName, subject, html, attachments }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
   const apiKey = process.env.ZEPTO_API_KEY;
   if (!apiKey) {
@@ -34,55 +50,75 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
   // any customer reply to a noreply@ message would bounce. Route replies to
   // a real inbox (Gmail by default). Override with ZEPTO_REPLY_TO_EMAIL.
   const replyToEmail = process.env.ZEPTO_REPLY_TO_EMAIL || 'zaptextofficial@gmail.com';
+  const safeSubject = sanitizeSubject(subject);
 
-  try {
-    console.log(`[Email] Sending to ${to} | Subject: ${subject} | From: ${senderName} <${senderEmail}> | Reply-To: ${replyToEmail}`);
+  const body: Record<string, unknown> = {
+    from: { address: senderEmail, name: senderName },
+    to: [{ email_address: { address: to, name: toName || to } }],
+    reply_to: [{ address: replyToEmail, name: senderName }],
+    subject: safeSubject,
+    htmlbody: html,
+  };
+  if (attachments && attachments.length > 0) {
+    body.attachments = attachments.map((a) => ({
+      name: a.filename,
+      content: a.content,
+      mime_type: a.contentType || 'application/octet-stream',
+    }));
+  }
 
-    const body: Record<string, unknown> = {
-      from: { address: senderEmail, name: senderName },
-      to: [{ email_address: { address: to, name: toName || to } }],
-      reply_to: [{ address: replyToEmail, name: senderName }],
-      subject,
-      htmlbody: html,
-    };
+  // Retry on transient (5xx/429) failures. Booking notifications are
+  // critical — a single Zepto blip used to drop them silently. Worst
+  // case wall-clock under ~5.5s so we don't blow webhook latency budgets.
+  const MAX_ATTEMPTS = 3;
+  const BASE_DELAY_MS = 750;
+  console.log(`[Email] Sending to ${to} | Subject: ${safeSubject} | From: ${senderName} <${senderEmail}> | Reply-To: ${replyToEmail}`);
 
-    if (attachments && attachments.length > 0) {
-      body.attachments = attachments.map((a) => ({
-        name: a.filename,
-        content: a.content,
-        mime_type: a.contentType || 'application/octet-stream',
-      }));
-    }
+  let lastError = '';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(ZEPTO_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
-    const res = await fetch(ZEPTO_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': apiKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+      if (res.ok) {
+        const result = await res.json().catch(() => ({})) as Record<string, unknown>;
+        console.log(`[Email] Sent to ${to} | ID: ${result.message_id || result.request_id || 'ok'}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
+        return { success: true };
+      }
 
-    if (!res.ok) {
       const errorData = await res.text();
-      console.error(`[Email] ZeptoMail error (${res.status}):`, errorData);
+      lastError = `${res.status} ${errorData}`.slice(0, 500);
+      console.error(`[Email] ZeptoMail error (${res.status}, attempt ${attempt}/${MAX_ATTEMPTS}):`, errorData);
       if (res.status === 401) {
         console.error('[Email] Invalid ZEPTO_API_KEY — check ZeptoMail dashboard → Mail Agents → API token.');
       }
       if (res.status === 400) {
         console.error('[Email] Bad request — verify noreply@zaptext.shop is added as sender in ZeptoMail.');
       }
-      return { success: false, error: errorData };
+      if (!isRetryableStatus(res.status) || attempt === MAX_ATTEMPTS) {
+        return { success: false, error: lastError };
+      }
+    } catch (error) {
+      // Network errors are retryable.
+      lastError = String(error).slice(0, 500);
+      console.error(`[Email] Network/send error (attempt ${attempt}/${MAX_ATTEMPTS}):`, error);
+      if (attempt === MAX_ATTEMPTS) {
+        return { success: false, error: lastError };
+      }
     }
 
-    const result = await res.json().catch(() => ({})) as Record<string, unknown>;
-    console.log(`[Email] Sent to ${to} | ID: ${result.message_id || result.request_id || 'ok'}`);
-    return { success: true };
-  } catch (error) {
-    console.error('[Email] Network/send error:', error);
-    return { success: false, error: String(error) };
+    // Exponential backoff with light jitter: ~750ms, ~1500ms, ~3000ms.
+    const delay = BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
+    await sleep(delay);
   }
+  return { success: false, error: lastError || 'Email send failed' };
 }
 
 // ─── Template Wrapper ───

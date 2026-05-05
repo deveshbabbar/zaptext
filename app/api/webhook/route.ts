@@ -449,8 +449,15 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       allMessages.some((m) => m.toLowerCase().includes(kw))
     );
 
+    // Only inject booking context when the plan actually has bookings
+    // enabled. Without this gate, trial bots got a full BOOKING INSTRUCTIONS
+    // block in the prompt, AI would emit [BOOK:] tags, and the
+    // feature-gate strip-step would chop them out — leaving the customer
+    // with sentences like "Great! Let me confirm: " and nothing else.
+    // Skipping the inject is cleaner than stripping the output.
+    const bookingsEnabled = canUse(planKey, 'bookings').allowed;
     let availabilityContext = '';
-    if (isBookingRelated) {
+    if (isBookingRelated && bookingsEnabled) {
       try {
         const today = getTodayIST();
         const tomorrow = getDateOffset(today, 1);
@@ -487,9 +494,12 @@ BOOKING INSTRUCTIONS:
       }
     }
 
-    // Payment context: teach bot the [PAY:] tag if this client has UPI configured
+    // Payment context: teach bot the [PAY:] tag only when UPI is configured
+    // AND the plan permits payment tags (otherwise the strip-step removes
+    // [PAY:] downstream and leaves a half-finished response).
+    const paymentsEnabled = canUse(planKey, 'payments').allowed;
     let paymentContext = '';
-    if (client.upi_id) {
+    if (client.upi_id && paymentsEnabled) {
       paymentContext = `
 
 PAYMENT INSTRUCTIONS:
@@ -502,11 +512,11 @@ PAYMENT INSTRUCTIONS:
     }
 
     // Order context: teach bot the [ORDER:] tag for food/product orders.
-    // Available for ALL non-trial bots — gyms can sell supplements, salons can
-    // sell products, coaching centers can sell course packages, etc. The owner
-    // controls availability by what they put in /client/inventory; if there's
-    // nothing in inventory the [ORDER:] tag is effectively dormant.
-    const orderCapable = !isTrialBot;
+    // Gated on plan having inventory enabled — same rationale as booking
+    // and payment contexts above (avoids prompts that promise tags the
+    // strip-step will silently remove).
+    const inventoryEnabled = canUse(planKey, 'inventory').allowed;
+    const orderCapable = !isTrialBot && inventoryEnabled;
     let orderContext = '';
     if (orderCapable) {
       // Live inventory snapshot for the bot

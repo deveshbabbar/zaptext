@@ -7,6 +7,7 @@ import { setActiveBotId } from '@/lib/active-bot';
 import { GymFields, RestaurantFields, SalonFields, ClientConfig, ClientRow, BusinessType } from '@/lib/types';
 import { generateId, getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
 import { clerkClient } from '@clerk/nextjs/server';
+import { writeAuditLog } from '@/lib/db/audit-log';
 
 const SUPPORTED_SEED_TYPES: BusinessType[] = ['gym', 'restaurant', 'salon'];
 
@@ -268,6 +269,23 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error('[seed-test-bot] auto-sync products failed:', e);
     }
+
+    // Audit trail — especially important when admins seed bots onto OTHER
+    // users' accounts (targetEmail). Records who seeded what for whom so
+    // a victim can trace an unexpected bot back to its origin.
+    await writeAuditLog({
+      actorUserId: user.userId,
+      actorEmail: user.email || '',
+      action: 'bot.seed',
+      targetUserId: ownerUserId,
+      targetEmail: ownerEmailForReport,
+      targetResource: clientId,
+      details: {
+        businessType: bizType,
+        whatsappNumber,
+        onBehalfOfOther: ownerUserId !== user.userId,
+      },
+    });
 
     return NextResponse.json({
       success: true,

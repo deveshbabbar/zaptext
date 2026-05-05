@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { createSubscription, PLANS, type PlanKey } from '@/lib/subscription';
 import { clerkClient } from '@clerk/nextjs/server';
+import { writeAuditLog } from '@/lib/db/audit-log';
 
 export async function POST(req: NextRequest) {
   const user = await getUserRole();
@@ -39,6 +40,23 @@ export async function POST(req: NextRequest) {
       startDate: now.toISOString(),
       endDate: end.toISOString(),
       createdAt: now.toISOString(),
+    });
+
+    // Audit trail: who granted what plan to whom and for how long. Lets us
+    // resolve billing disputes and abuse questions later. Best-effort —
+    // never blocks the underlying grant.
+    await writeAuditLog({
+      actorUserId: user.userId,
+      actorEmail: user.email,
+      action: 'plan.grant',
+      targetUserId: targetUser.id,
+      targetEmail: email,
+      details: {
+        plan,
+        months: durationMonths,
+        amount: PLANS[plan as PlanKey].price,
+        validUntil: end.toISOString(),
+      },
     });
 
     return NextResponse.json({

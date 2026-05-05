@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { BusinessType } from '@/lib/types';
-import { rateLimit, getClientKey } from '@/lib/rate-limit';
+import { rateLimit } from '@/lib/rate-limit';
+import { auth } from '@clerk/nextjs/server';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -129,7 +130,21 @@ function platformNote(platform: string, url: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const rl = rateLimit(getClientKey(request, '/api/scrape'), 10, 60_000);
+  // Require a signed-in user. Previously this route was unauthenticated and
+  // rate-limited only by IP, which let any caller burn Gemini quota and
+  // also acted as an SSRF stepping-stone (the SSRF guards below are still
+  // necessary defence-in-depth, but auth keeps abusers out of the LLM
+  // budget). Onboarding flows already happen inside Clerk's session so
+  // this is invisible to legitimate users.
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Rate-limit per userId now (was per IP). 10 requests/min/user is plenty
+  // for the onboarding "scrape my website" flow and prevents a single
+  // compromised account from torching the Gemini bill.
+  const rl = rateLimit(`scrape:${userId}`, 10, 60_000);
   if (!rl.ok) {
     return NextResponse.json(
       { error: 'Too many requests. Try again shortly.' },

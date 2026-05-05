@@ -411,6 +411,37 @@ export const template_submissions = pgTable(
   })
 );
 
+// ─── admin_audit_log ─────────────────────────────────────────────────────
+//
+// Immutable record of every admin-side mutation: granting a plan, seeding
+// a test bot onto someone else's account, deleting a client, etc. Lets us
+// answer "who did this and when" after the fact — previously these
+// actions were untraceable, which is a real problem for billing disputes
+// and abuse investigations. Append-only: nothing in the app deletes from
+// here. Old rows can be archived out-of-band if the table grows large.
+export const admin_audit_log = pgTable(
+  'admin_audit_log',
+  {
+    id: text('id').primaryKey(),               // synthetic UUID
+    actor_user_id: varchar('actor_user_id', { length: 100 }).notNull(),
+    actor_email: varchar('actor_email', { length: 200 }).default(''),
+    action: varchar('action', { length: 64 }).notNull(),  // e.g. 'plan.grant', 'bot.seed', 'client.delete'
+    target_user_id: varchar('target_user_id', { length: 100 }).default(''),
+    target_email: varchar('target_email', { length: 200 }).default(''),
+    target_resource: varchar('target_resource', { length: 200 }).default(''),
+    // Free-form JSON blob (stored as text) so callers can attach plan
+    // names, durations, prior values, etc. without a schema change.
+    details_json: text('details_json').default(''),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    actionIdx: index('admin_audit_log_action_idx').on(t.action),
+    actorIdx: index('admin_audit_log_actor_idx').on(t.actor_user_id),
+    targetUserIdx: index('admin_audit_log_target_user_idx').on(t.target_user_id),
+    createdIdx: index('admin_audit_log_created_idx').on(t.created_at),
+  })
+);
+
 // ─── processed_webhook_messages (dedup) ──────────────────────────────────
 //
 // Meta's WhatsApp webhook can retry the same message_id when our 200 OK

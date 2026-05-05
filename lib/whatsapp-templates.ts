@@ -577,9 +577,44 @@ export function pickTemplateLanguage(customerLang?: string | null): TemplateLang
   return 'en';
 }
 
+// Local lookup for Meta-side template status, mirrored from
+// `message_template_status_update` webhook events into our DB.
+// Returns null when no row exists (template never submitted, or webhook
+// hasn't fired yet) — caller treats null as "okay to attempt".
+async function getStoredTemplateStatus(
+  templateName: string,
+  languageCode: string
+): Promise<string | null> {
+  try {
+    const { db } = await import('./db');
+    const { template_submissions } = await import('./db/schema');
+    const { and, eq } = await import('drizzle-orm');
+    const rows = await db
+      .select({ status: template_submissions.status })
+      .from(template_submissions)
+      .where(
+        and(
+          eq(template_submissions.template_name, templateName),
+          eq(template_submissions.language, languageCode)
+        )
+      )
+      .limit(1);
+    return rows[0]?.status ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Sends an APPROVED WhatsApp template message. Returns { success, error }.
 // On failure, callers MUST NOT fall back to free-form text outside the 24h
 // window — Meta will downgrade the account's quality rating.
+//
+// Pre-flight: if our local template_submissions row says the template is
+// REJECTED / PAUSED / DISABLED for this language, refuse early and return
+// a meaningful error. Without this, we'd POST anyway, Meta would 400, and
+// the failure would land in the generic catch — masking the real reason
+// from the operator. PENDING is treated as "ok to attempt" because
+// approval can land between our last status webhook and a send.
 export async function sendWhatsAppTemplate(
   phoneNumberId: string,
   to: string,
@@ -592,6 +627,17 @@ export async function sendWhatsAppTemplate(
     return { success: false, error: 'WHATSAPP_ACCESS_TOKEN not set' };
   }
   const lang = languageCode || process.env.WHATSAPP_TEMPLATE_LOCALE || 'en';
+
+  // Best-effort pre-flight gate. Failures (DB blip, no row yet) fall through
+  // to the live send — better to over-attempt than under-deliver.
+  const localStatus = await getStoredTemplateStatus(templateName, lang);
+  if (localStatus === 'REJECTED' || localStatus === 'DISABLED' || localStatus === 'PAUSED') {
+    console.warn(`[whatsapp-template] refusing to send "${templateName}" (${lang}) — local status=${localStatus}. Resubmit/reapprove before retrying.`);
+    return {
+      success: false,
+      error: `Template "${templateName}" (${lang}) is ${localStatus}. Resubmit or fix the body before retrying.`,
+    };
+  }
 
   const components: TemplateComponent[] = [];
   if (bodyParams.length > 0) {

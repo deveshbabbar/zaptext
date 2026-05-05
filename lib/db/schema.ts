@@ -122,6 +122,12 @@ export const subscriptions = pgTable(
     start_date: timestamp('start_date', { withTimezone: true }).notNull(),
     end_date: timestamp('end_date', { withTimezone: true }).notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // Tracks which expiry-warning email has been sent for this row.
+    // null  = nothing sent yet
+    // '7d'  = 7-day warning sent (still need to send 1d warning)
+    // '1d'  = 1-day warning sent (final state until renewal)
+    // Cron uses this to avoid re-sending the same warning every day.
+    last_warned_period: varchar('last_warned_period', { length: 8 }),
   },
   (t) => ({
     userIdIdx: index('subscriptions_user_id_idx').on(t.user_id),
@@ -444,6 +450,38 @@ export const admin_audit_log = pgTable(
     actorIdx: index('admin_audit_log_actor_idx').on(t.actor_user_id),
     targetUserIdx: index('admin_audit_log_target_user_idx').on(t.target_user_id),
     createdIdx: index('admin_audit_log_created_idx').on(t.created_at),
+  })
+);
+
+// ─── email_send_log (deliverability observability) ────────────────────
+//
+// Every transactional email passes through sendEmail in lib/email.ts.
+// Failures used to be logged to console only — operators couldn't see
+// which owner missed which booking notification or trace deliverability
+// trends. This table captures one row per send attempt outcome.
+//
+// status:
+//   'sent'      — ZeptoMail accepted (200 OK)
+//   'retrying'  — last attempt failed but more retries remain
+//   'failed'    — all retries exhausted
+// attempt_count is the final attempt number (1..MAX_ATTEMPTS).
+// last_error is the truncated upstream error (first 500 chars) on failure.
+// Powers the upcoming /admin/email-log dashboard.
+export const email_send_log = pgTable(
+  'email_send_log',
+  {
+    id: text('id').primaryKey(),
+    to_email: varchar('to_email', { length: 200 }).notNull(),
+    subject: text('subject').notNull(),
+    status: varchar('status', { length: 16 }).notNull(),
+    attempt_count: integer('attempt_count').notNull().default(1),
+    last_error: text('last_error').default(''),
+    sent_at: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sentAtIdx: index('email_send_log_sent_at_idx').on(t.sent_at),
+    statusIdx: index('email_send_log_status_idx').on(t.status),
+    toIdx: index('email_send_log_to_idx').on(t.to_email),
   })
 );
 

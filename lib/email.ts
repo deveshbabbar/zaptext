@@ -2,6 +2,8 @@
 // Dashboard: https://app.zeptomail.com
 // Env vars required: ZEPTO_API_KEY, ZEPTO_SENDER_EMAIL, ZEPTO_SENDER_NAME
 
+import { recordEmailAttempt } from './db/email-send-log';
+
 const ZEPTO_API_URL = 'https://api.zeptomail.in/v1.1/email';
 
 export interface EmailAttachment {
@@ -90,6 +92,12 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
       if (res.ok) {
         const result = await res.json().catch(() => ({})) as Record<string, unknown>;
         console.log(`[Email] Sent to ${to} | ID: ${result.message_id || result.request_id || 'ok'}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
+        await recordEmailAttempt({
+          toEmail: to,
+          subject: safeSubject,
+          status: 'sent',
+          attemptCount: attempt,
+        });
         return { success: true };
       }
 
@@ -103,6 +111,13 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
         console.error('[Email] Bad request — verify noreply@zaptext.shop is added as sender in ZeptoMail.');
       }
       if (!isRetryableStatus(res.status) || attempt === MAX_ATTEMPTS) {
+        await recordEmailAttempt({
+          toEmail: to,
+          subject: safeSubject,
+          status: 'failed',
+          attemptCount: attempt,
+          lastError,
+        });
         return { success: false, error: lastError };
       }
     } catch (error) {
@@ -110,6 +125,13 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
       lastError = String(error).slice(0, 500);
       console.error(`[Email] Network/send error (attempt ${attempt}/${MAX_ATTEMPTS}):`, error);
       if (attempt === MAX_ATTEMPTS) {
+        await recordEmailAttempt({
+          toEmail: to,
+          subject: safeSubject,
+          status: 'failed',
+          attemptCount: attempt,
+          lastError,
+        });
         return { success: false, error: lastError };
       }
     }
@@ -118,6 +140,13 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
     const delay = BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
     await sleep(delay);
   }
+  await recordEmailAttempt({
+    toEmail: to,
+    subject: safeSubject,
+    status: 'failed',
+    attemptCount: MAX_ATTEMPTS,
+    lastError: lastError || 'Email send failed',
+  });
   return { success: false, error: lastError || 'Email send failed' };
 }
 

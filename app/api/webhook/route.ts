@@ -10,6 +10,7 @@ import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/s
 import { resolvePlanKey } from '@/lib/plans';
 import { canUse, checkMessageQuota } from '@/lib/feature-gates';
 import { isCustomerPaused } from '@/lib/db/paused-customers';
+import { markMessageProcessedIfNew } from '@/lib/db/processed-messages';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
@@ -64,17 +65,30 @@ export async function POST(request: NextRequest) {
     // Read raw body ONCE as text so we can HMAC-verify before parsing JSON.
     const rawBody = await request.text();
 
-    // Verify Meta signed this request. If WHATSAPP_APP_SECRET is unset we
-    // log a warning and accept (to not break existing deploys) — set it in
-    // production to actually enforce the check.
-    if (process.env.WHATSAPP_APP_SECRET) {
-      const sig = request.headers.get('x-hub-signature-256');
-      if (!verifyWebhookSignature(rawBody, sig)) {
-        console.warn('[webhook] HMAC signature mismatch — rejecting request');
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+    // Verify Meta signed this request.
+    //
+    // Production enforces strictly: if WHATSAPP_APP_SECRET is unset, reject
+    // EVERY incoming webhook. Previously we logged a warning and accepted —
+    // that meant a misconfigured deploy silently allowed anyone to inject
+    // fake "customer" messages, trigger AI replies, or burn Groq quota.
+    // In non-production (dev/preview) we keep the soft-warn so local
+    // tunnelled testing without a secret still works.
+    {
+      const appSecret = process.env.WHATSAPP_APP_SECRET;
+      const isProd = process.env.NODE_ENV === 'production';
+      if (!appSecret) {
+        if (isProd) {
+          console.error('[webhook] WHATSAPP_APP_SECRET is not set — refusing to process webhook in production. Set this env var.');
+          return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+        }
+        console.warn('[webhook] WHATSAPP_APP_SECRET not set — skipping HMAC verify (dev/preview only).');
+      } else {
+        const sig = request.headers.get('x-hub-signature-256');
+        if (!verifyWebhookSignature(rawBody, sig)) {
+          console.warn('[webhook] HMAC signature mismatch — rejecting request');
+          return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+        }
       }
-    } else {
-      console.warn('[webhook] WHATSAPP_APP_SECRET not set — skipping HMAC verify. SET THIS IN PROD.');
     }
 
     let body: Record<string, unknown>;
@@ -164,8 +178,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ status: 'ok' });
   } catch (error) {
+    // Top-level catastrophic failure (e.g. JSON parse blew up before we
+    // could schedule processMessages, signature read failed, etc.). Return
+    // 500 so Meta retries — previously we returned 200, which meant Meta
+    // marked the message delivered and moved on, silently losing customer
+    // messages on transient infra blips. processMessages() itself runs
+    // inside `after()` with its own try/catch (above), so post-response
+    // failures don't bubble here and won't trigger Meta retries.
     console.error('[webhook] top-level error', error);
-    return NextResponse.json({ status: 'ok' });
+    return NextResponse.json({ error: 'internal' }, { status: 500 });
   }
 }
 
@@ -207,10 +228,25 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   const isSubscriptionExpired = !ownerSubscription;
 
   for (const msg of messages) {
-    // Skip duplicate messages (WhatsApp may retry delivery)
-    if (msg.id && isMessageProcessed(msg.id)) {
-      console.log(`[Webhook] Skipping duplicate message: ${msg.id}`);
-      continue;
+    // Skip duplicate messages — Meta retries the same message_id when our
+    // 200 OK doesn't reach them in time. Old in-memory check was wiped on
+    // cold starts, so retries hitting a fresh lambda reprocessed and caused
+    // duplicate orders/bookings. Postgres-backed check survives cold starts
+    // and concurrent invocations alike — first writer wins.
+    if (msg.id) {
+      let isNew = true;
+      try {
+        isNew = await markMessageProcessedIfNew(msg.id);
+      } catch (err) {
+        // If the dedup table isn't reachable, fall back to the in-memory
+        // best-effort check rather than blocking the entire webhook.
+        console.error('[Webhook] dedup check failed, falling back to in-memory:', err);
+        isNew = !isMessageProcessed(msg.id);
+      }
+      if (!isNew) {
+        console.log(`[Webhook] Skipping duplicate message: ${msg.id}`);
+        continue;
+      }
     }
     const timestamp = getISTTimestamp();
     const customerPhone = msg.from;
@@ -530,8 +566,14 @@ ORDER INSTRUCTIONS (food / product orders):
     // no negative evidence to override it — that's how a removed trainer keeps
     // getting mentioned. The empty-state block is the negative signal.
     let staffContext = '';
+    // Hoisted so the prompt-generator step below can use it to scrub the gym
+    // KB's free-text personalTraining.trainerInfo (which would otherwise leak
+    // a removed trainer's name even when the AVAILABLE TRAINERS section is
+    // empty).
+    let activeStaffCount = 0;
     try {
       const activeStaff = await getActiveStaff(client.client_id);
+      activeStaffCount = activeStaff.length;
       const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
       if (activeStaff.length > 0) {
         const staffLines = activeStaff.map((m) => {
@@ -611,6 +653,19 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         ? (JSON.parse(client.knowledge_base_json) as ClientConfig)
         : null;
       if (kb && (kb as { type?: string }).type) {
+        // Scrub gym-only `personalTraining.trainerInfo` when no active staff:
+        // this is a free-text field that owners may have populated with a
+        // specific trainer's name/credentials when adding them. Removing the
+        // staff row alone leaves this string in the prompt, so the LLM still
+        // names a trainer that no longer exists. The AVAILABLE TRAINERS
+        // section already handles the structured staff list; this clears the
+        // unstructured side-channel.
+        if ((kb as { type?: string }).type === 'gym' && activeStaffCount === 0) {
+          const gymKb = kb as Extract<ClientConfig, { type: 'gym' }>;
+          if (gymKb.personalTraining) {
+            gymKb.personalTraining = { ...gymKb.personalTraining, trainerInfo: '' };
+          }
+        }
         basePrompt = generateSystemPrompt(kb);
       }
     } catch (e) {

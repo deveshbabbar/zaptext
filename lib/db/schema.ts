@@ -411,6 +411,28 @@ export const template_submissions = pgTable(
   })
 );
 
+// ─── processed_webhook_messages (dedup) ──────────────────────────────────
+//
+// Meta's WhatsApp webhook can retry the same message_id when our 200 OK
+// reply doesn't reach them in time. The previous in-memory Set was wiped
+// on Vercel cold starts, so a retry hitting a fresh instance reprocessed
+// the message — creating duplicate orders, double-bookings, and burning
+// extra Groq quota. This table is the durable replacement: we INSERT the
+// message_id with ON CONFLICT DO NOTHING and treat zero affected rows as
+// "duplicate, skip processing". Cleanup of old rows is handled by a
+// daily cron (entries older than 7 days can be dropped — Meta retries
+// stop well within 24 hours).
+export const processed_webhook_messages = pgTable(
+  'processed_webhook_messages',
+  {
+    message_id: varchar('message_id', { length: 200 }).primaryKey(),
+    processed_at: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    processedAtIdx: index('processed_webhook_messages_processed_at_idx').on(t.processed_at),
+  })
+);
+
 // ─── inferred row types ──────────────────────────────────────────────────
 
 export type ClientRow = typeof clients.$inferSelect;

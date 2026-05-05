@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import {
   createSubscription,
   getSubscriptionByPaymentId,
+  cancelSubscriptionByPaymentId,
   PLANS,
   PlanKey,
   DURATIONS,
@@ -34,11 +35,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
     }
 
-    // Verify HMAC-SHA256 signature
-    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-    const a = Buffer.from(expected, 'utf8');
-    const b = Buffer.from(signature, 'utf8');
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    // Verify HMAC-SHA256 signature.
+    //
+    // Razorpay sends the signature as a hex string. Decode BOTH the expected
+    // and the received signature as hex (not utf8) before comparing — utf8
+    // decoding pulls in multi-byte expansion for any non-ASCII char, which
+    // changes byte length and trips length checks unpredictably. Hex decode
+    // also catches malformed signatures (invalid hex chars produce a shorter
+    // buffer, so length comparison fails fast and timingSafeEqual never sees
+    // mismatched-size inputs).
+    const expectedHex = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    let expectedBuf: Buffer;
+    let receivedBuf: Buffer;
+    try {
+      expectedBuf = Buffer.from(expectedHex, 'hex');
+      receivedBuf = Buffer.from(signature, 'hex');
+    } catch {
+      console.warn('[razorpay-webhook] signature buffer decode failed');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+    }
+    if (
+      expectedBuf.length === 0 ||
+      receivedBuf.length === 0 ||
+      expectedBuf.length !== receivedBuf.length ||
+      !crypto.timingSafeEqual(expectedBuf, receivedBuf)
+    ) {
       console.warn('[razorpay-webhook] signature mismatch');
       return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
     }
@@ -50,7 +71,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Only act on payment.captured. payment.failed is logged for audit.
+    // We act on three events:
+    //   - payment.captured   → create the subscription row
+    //   - payment.refunded   → mark the matching subscription cancelled so
+    //                          the user loses bot access immediately
+    //   - everything else    → 200 OK and log (e.g. payment.failed, audit)
+    if (body.event === 'payment.refunded') {
+      const refundedPaymentId = String(body.payload?.payment?.entity?.id || '');
+      if (!refundedPaymentId) {
+        console.warn('[razorpay-webhook] refund event without payment id');
+        return NextResponse.json({ ok: true, skipped: true });
+      }
+      const cancelled = await cancelSubscriptionByPaymentId(refundedPaymentId);
+      console.log('[razorpay-webhook] refund processed', {
+        paymentId: refundedPaymentId,
+        cancelledSubscription: cancelled,
+      });
+      return NextResponse.json({ ok: true, refunded: true, cancelled });
+    }
     if (body.event !== 'payment.captured') {
       console.log('[razorpay-webhook] event ignored:', body.event);
       return NextResponse.json({ ok: true });
@@ -66,11 +104,17 @@ export async function POST(req: NextRequest) {
     const monthsNote = notes.months ? parseInt(String(notes.months), 10) : 1;
 
     if (!paymentId || !orderId || !userId || !planNote) {
+      // We previously returned 200 here so Razorpay wouldn't retry, but that
+      // turned a real "money captured, subscription never created" bug into
+      // a silent failure. Return 400 instead — Razorpay will retry a small
+      // number of times, giving the platform a chance to recover (e.g. if
+      // a transient infra issue dropped notes mid-payload). After retry
+      // budget is exhausted the event lands in the Razorpay webhook log
+      // for manual reconciliation, which is what we want.
       console.warn('[razorpay-webhook] missing fields — cannot create subscription', {
         paymentId, orderId, userId, planNote,
       });
-      // 200 OK so Razorpay doesn't retry forever; we logged the gap.
-      return NextResponse.json({ ok: true, skipped: true });
+      return NextResponse.json({ error: 'missing notes', paymentId }, { status: 400 });
     }
 
     // Idempotency: skip if this payment_id already produced a subscription row.

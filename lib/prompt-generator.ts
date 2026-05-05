@@ -110,23 +110,28 @@ function buildTypeSpecificPrompt(config: ClientConfig): string {
 }
 
 function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant' }>): string {
-  const menuText = (config.menuCategories || [])
-    .map((cat) => {
-      const items = (cat.items || [])
-        .map((item) => {
-          const foodTypeLabel = item.foodType === 'egg' ? '🟡 Egg' : item.foodType === 'non-veg' || !item.isVeg ? '🔴 Non-Veg' : '🟢 Veg';
-          const tags = [foodTypeLabel, item.isBestseller ? '⭐ Bestseller' : ''].filter(Boolean).join(' ');
-          return `  • ${item.name} - ${item.price} ${tags}\n    ${item.description}`;
+  const totalItems = (config.menuCategories || []).reduce((n, c) => n + (c.items?.length || 0), 0);
+  const menuText = totalItems > 0
+    ? (config.menuCategories || [])
+        .map((cat) => {
+          const items = (cat.items || [])
+            .map((item) => {
+              const foodTypeLabel = item.foodType === 'egg' ? '🟡 Egg' : item.foodType === 'non-veg' || !item.isVeg ? '🔴 Non-Veg' : '🟢 Veg';
+              const tags = [foodTypeLabel, item.isBestseller ? '⭐ Bestseller' : ''].filter(Boolean).join(' ');
+              return `  • ${item.name} - ${item.price} ${tags}\n    ${item.description}`;
+            })
+            .join('\n');
+          return `*${cat.category}*\n${items}`;
         })
-        .join('\n');
-      return `*${cat.category}*\n${items}`;
-    })
-    .join('\n\n');
+        .join('\n\n')
+    : `(none — there are currently NO menu items configured for this restaurant)
+
+CRITICAL: If earlier messages in this conversation mentioned specific dishes by name, prices, or descriptions, those items have been removed and are NO LONGER on the menu. Do NOT repeat them, do NOT confirm orders for them, and do NOT quote their prices. If the customer asks for the menu, tell them politely the menu is being updated and to contact the owner directly.`;
 
   return `BUSINESS TYPE: Restaurant / Food Business
 CUISINE: ${config.cuisineType}
 
-FULL MENU:
+FULL MENU (AUTHORITATIVE — overrides any earlier message in this chat):
 ${menuText}
 
 DELIVERY: ${config.deliveryAvailable ? `Available within ${config.deliveryRadius}` : 'Not available'}
@@ -143,14 +148,19 @@ STRICT RULES FOR RESTAURANT BOT:
 }
 
 function buildCoachingPrompt(config: Extract<ClientConfig, { type: 'coaching' }>): string {
-  const coursesText = (config.coursesOffered || [])
-    .map((c) => `- ${c.name}\n  Target: ${c.targetAudience}\n  Duration: ${c.duration}\n  Fee: ${c.fee}\n  Schedule: ${c.schedule}\n  Mode: ${c.mode}`)
-    .join('\n\n');
+  const courses = config.coursesOffered || [];
+  const coursesText = courses.length > 0
+    ? courses
+        .map((c) => `- ${c.name}\n  Target: ${c.targetAudience}\n  Duration: ${c.duration}\n  Fee: ${c.fee}\n  Schedule: ${c.schedule}\n  Mode: ${c.mode}`)
+        .join('\n\n')
+    : `(none — there are currently NO courses configured for this institute)
+
+CRITICAL: If earlier messages mentioned specific course names, fees, batches, or schedules, those courses have been discontinued or removed and are NO LONGER offered. Do NOT repeat them, do NOT quote old fees, and do NOT promise enrolment. If the customer asks about courses, tell them politely the course list is being updated and ask them to contact the institute directly.`;
 
   return `BUSINESS TYPE: Coaching Center / Educational Institute
 INSTITUTE: ${config.instituteName}
 
-COURSES OFFERED:
+COURSES OFFERED (AUTHORITATIVE — overrides any earlier message in this chat):
 ${coursesText}
 
 FACULTY: ${config.facultyInfo}
@@ -168,9 +178,14 @@ STRICT RULES FOR COACHING BOT:
 }
 
 function buildRealEstatePrompt(config: Extract<ClientConfig, { type: 'realestate' }>): string {
-  const listingsText = (config.currentListings || [])
-    .map((l) => `- ${l.title}\n  Type: ${l.type}\n  Price: ${l.price}\n  Area: ${l.area}\n  Highlights: ${l.highlights}`)
-    .join('\n\n');
+  const listings = config.currentListings || [];
+  const listingsText = listings.length > 0
+    ? listings
+        .map((l) => `- ${l.title}\n  Type: ${l.type}\n  Price: ${l.price}\n  Area: ${l.area}\n  Highlights: ${l.highlights}`)
+        .join('\n\n')
+    : `(none — there are currently NO active property listings)
+
+CRITICAL: If earlier messages named specific properties, prices, areas, or highlights, those listings are SOLD or REMOVED and are NO LONGER available. Do NOT repeat them, do NOT quote old prices, and do NOT schedule site visits for them. If the customer asks about properties, ask what they're looking for and direct them to the agent for current options.`;
 
   return `BUSINESS TYPE: Real Estate
 AGENT: ${config.agentName}
@@ -179,7 +194,7 @@ OPERATING AREAS: ${(config.operatingAreas || []).join(', ')}
 PROPERTY TYPES: ${(config.propertyTypes || []).join(', ')}
 SERVICES: ${(config.services || []).join(', ')}
 
-CURRENT LISTINGS:
+CURRENT LISTINGS (AUTHORITATIVE — overrides any earlier message in this chat):
 ${listingsText}
 
 SITE VISIT: ${config.siteVisitProcess}
@@ -194,23 +209,29 @@ STRICT RULES FOR REAL ESTATE BOT:
 }
 
 function buildSalonPrompt(config: Extract<ClientConfig, { type: 'salon' }>): string {
-  const servicesText = (config.services || [])
-    .map((cat) => {
-      const items = (cat.items || []).map((i) => `  • ${i.name} - ${i.price} (${i.duration})`).join('\n');
-      return `*${cat.category}*\n${items}`;
-    })
-    .join('\n\n');
+  const totalServices = (config.services || []).reduce((n, c) => n + (c.items?.length || 0), 0);
+  const servicesText = totalServices > 0
+    ? (config.services || [])
+        .map((cat) => {
+          const items = (cat.items || []).map((i) => `  • ${i.name} - ${i.price} (${i.duration})`).join('\n');
+          return `*${cat.category}*\n${items}`;
+        })
+        .join('\n\n')
+    : `(none — there are currently NO services configured for this salon)
 
-  const packagesText = (config.packages || [])
-    .map((p) => `- ${p.name}: ${p.price}\n  Includes: ${p.includes}`)
-    .join('\n');
+CRITICAL: If earlier messages named specific services or prices, those have been removed and are NO LONGER offered. Do NOT repeat them and do NOT confirm bookings for them. Tell the customer the service menu is being updated and to contact the salon directly.`;
+
+  const packages = config.packages || [];
+  const packagesText = packages.length > 0
+    ? packages.map((p) => `- ${p.name}: ${p.price}\n  Includes: ${p.includes}`).join('\n')
+    : '(none currently)';
 
   return `BUSINESS TYPE: Salon / Spa
 SALON: ${config.salonName}
 TYPE: ${config.gender}
 BRANDS USED: ${(config.brands || []).join(', ')}
 
-SERVICES:
+SERVICES (AUTHORITATIVE — overrides any earlier message in this chat):
 ${servicesText}
 
 PACKAGES:
@@ -227,15 +248,20 @@ STRICT RULES FOR SALON BOT:
 }
 
 function buildD2CPrompt(config: Extract<ClientConfig, { type: 'd2c' }>): string {
-  const productsText = (config.products || [])
-    .map((p) => `- ${p.name}: ${p.price}${p.bestseller ? ' ⭐ Bestseller' : ''}\n  ${p.description}`)
-    .join('\n\n');
+  const products = config.products || [];
+  const productsText = products.length > 0
+    ? products
+        .map((p) => `- ${p.name}: ${p.price}${p.bestseller ? ' ⭐ Bestseller' : ''}\n  ${p.description}`)
+        .join('\n\n')
+    : `(none — there are currently NO products in this brand's catalog)
+
+CRITICAL: If earlier messages named specific products, prices, or descriptions, those products have been removed and are NO LONGER on sale. Do NOT repeat them, do NOT take orders for them, and do NOT direct customers to buy them. Tell the customer the catalog is being updated and to check the website later.`;
 
   return `BUSINESS TYPE: D2C E-commerce Brand
 BRAND: ${config.brandName}
 CATEGORY: ${config.productCategory}
 
-PRODUCTS:
+PRODUCTS (AUTHORITATIVE — overrides any earlier message in this chat):
 ${productsText}
 
 SHIPPING: ${config.shippingPolicy}
@@ -256,25 +282,32 @@ STRICT RULES FOR D2C BOT:
 }
 
 function buildGymPrompt(config: Extract<ClientConfig, { type: 'gym' }>): string {
-  const plansText = (config.membershipPlans || [])
-    .map((p) => `- ${p.name} (${p.duration}): ${p.price}\n  Includes: ${p.includes}`)
-    .join('\n');
+  const plans = config.membershipPlans || [];
+  const plansText = plans.length > 0
+    ? plans.map((p) => `- ${p.name} (${p.duration}): ${p.price}\n  Includes: ${p.includes}`).join('\n')
+    : `(none — there are currently NO membership plans configured)
+
+CRITICAL: If earlier messages named specific plan names or prices, those plans have been removed and are NO LONGER offered. Do NOT repeat them, do NOT quote old prices, and do NOT enrol customers into them. Direct the customer to the owner for current options.`;
 
   const ownerCallNumber = config.contactNumber?.trim() || config.whatsappNumber;
   const ptLine = config.personalTraining.available
     ? `Default rate: ${config.personalTraining.pricePerSession}${config.personalTraining.trainerInfo ? ` — ${config.personalTraining.trainerInfo}` : ''}`
     : 'Not available';
+  const groupClasses = config.groupClasses || [];
+  const groupClassesText = groupClasses.length > 0
+    ? groupClasses.join(', ')
+    : '(none currently scheduled — do NOT mention any class names from earlier messages, those have been removed)';
   return `BUSINESS TYPE: Gym / Fitness Studio
 GYM: ${config.gymName}
 TIMINGS: ${config.timings}
 
 FACILITIES: ${(config.facilities || []).join(', ')}
 
-MEMBERSHIP PLANS:
+MEMBERSHIP PLANS (AUTHORITATIVE — overrides any earlier message in this chat):
 ${plansText}
 
 PERSONAL TRAINING (default — overridden by AVAILABLE TRAINERS section if present): ${ptLine}
-GROUP CLASSES: ${(config.groupClasses || []).join(', ')}
+GROUP CLASSES: ${groupClassesText}
 FREE TRIAL: ${config.trialAvailable ? config.trialDetails : 'Not available'}
 
 STRICT RULES FOR GYM BOT:

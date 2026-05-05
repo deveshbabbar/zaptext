@@ -117,6 +117,27 @@ export async function getSubscriptionHistory(userId: string): Promise<Subscripti
   return rows.map(dbRowToRecord);
 }
 
+// Mark a subscription as cancelled — used by the Razorpay webhook on
+// payment.refunded events so a user who got their money back loses bot
+// access immediately, instead of staying active until end_date. Looks up by
+// razorpay_payment_id (the only Razorpay-side identifier we store) and
+// updates status='cancelled'. Idempotent — re-running on an already-
+// cancelled row is a no-op.
+export async function cancelSubscriptionByPaymentId(paymentId: string): Promise<boolean> {
+  if (!paymentId) return false;
+  const rows = await db
+    .select()
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.razorpay_payment_id, paymentId))
+    .limit(1);
+  if (!rows[0]) return false;
+  await db
+    .update(subscriptionsTable)
+    .set({ status: 'cancelled' })
+    .where(eq(subscriptionsTable.razorpay_payment_id, paymentId));
+  return true;
+}
+
 // Admin-only — returns every subscription row across all users, newest first.
 // Used by /api/admin/revenue and /api/admin/subscriptions to compute MRR,
 // per-plan stats, etc. Replaces the old Sheets-backed read of the

@@ -15,6 +15,7 @@ export {
   getActiveSubscription,
   getSubscriptionByPaymentId,
   createSubscription,
+  cancelSubscriptionByPaymentId,
   getSubscriptionHistory,
   getAllSubscriptions,
 } from './db/subscriptions';

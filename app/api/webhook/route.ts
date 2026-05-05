@@ -520,12 +520,20 @@ ORDER INSTRUCTIONS (food / product orders):
 - Use EXACT item names as shown in LIVE STOCK below. Never confirm or [ORDER:] an item that shows OUT OF STOCK. If customer insists, politely say it's unavailable and suggest an alternative.${stockBlock}`;
     }
 
-    // Staff context: inject active staff/trainers/doctors etc. into bot prompt
+    // Staff context: inject active staff/trainers/doctors etc. into bot prompt.
+    //
+    // We always emit this block — even when zero staff are active. Soft-deleted
+    // staff still leave their names in past assistant messages (the LLM sees
+    // them via conversation history), and LLMs strongly pattern-match on prior
+    // assistant turns. Silently omitting the section when activeStaff is empty
+    // leaves the model with positive evidence ("earlier I said we have X") and
+    // no negative evidence to override it — that's how a removed trainer keeps
+    // getting mentioned. The empty-state block is the negative signal.
     let staffContext = '';
     try {
       const activeStaff = await getActiveStaff(client.client_id);
+      const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
       if (activeStaff.length > 0) {
-        const roleLabel = STAFF_ROLE_LABELS[client.type] || DEFAULT_STAFF_LABEL;
         const staffLines = activeStaff.map((m) => {
           const avail = formatAvailabilityForBot(m);
           const price = m.price > 0 ? ` · ₹${m.price}/session` : '';
@@ -534,8 +542,10 @@ ORDER INSTRUCTIONS (food / product orders):
         }).join('\n');
         staffContext = `
 
-AVAILABLE ${roleLabel.plural.toUpperCase()}:
+AVAILABLE ${roleLabel.plural.toUpperCase()} (AUTHORITATIVE — overrides any earlier message in this chat):
 ${staffLines}
+
+If earlier messages in this conversation mentioned a ${roleLabel.singular.toLowerCase()} name NOT in the list above, that person is no longer available — do NOT mention them again. Only the names above are valid.
 
 When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
 1. Confirm the ${roleLabel.singular.toLowerCase()} name + preferred date/time from the customer
@@ -543,6 +553,15 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
 3. The system will notify them directly on WhatsApp for approval
 4. Tell the customer: "Booking request bhej diya hai, woh confirm karenge jaldi."
 5. Do NOT book a slot that falls outside their listed available hours.`;
+      } else {
+        staffContext = `
+
+AVAILABLE ${roleLabel.plural.toUpperCase()} (AUTHORITATIVE — overrides any earlier message in this chat):
+(none — there are currently NO active ${roleLabel.plural.toLowerCase()} for this business)
+
+CRITICAL: If earlier messages in this conversation mentioned a specific ${roleLabel.singular.toLowerCase()} by name (e.g. "our trainer is X", "₹2000/session with Y", any schedule like "09:00–18:00 Monday to Sunday"), that person has been removed and is NO LONGER available. Do NOT repeat their name, price, or schedule. Do NOT confirm to the customer that any specific ${roleLabel.singular.toLowerCase()} exists, even if you previously said so in this chat.
+
+If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the empty-trainers rule in the system prompt and direct them to the owner. Do not invent or recall names from earlier in the chat.`;
       }
     } catch { /* ignore */ }
 

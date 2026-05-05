@@ -327,6 +327,51 @@ export function isMessageProcessed(messageId: string): boolean {
   return false;
 }
 
+// Meta sends template approval/rejection events to the SAME webhook URL
+// that handles messages, but with a different `field` ('message_template_status_update').
+// Returns null when the payload isn't a template-status event so the
+// caller can fall through to message parsing.
+//
+// Sample event shape:
+//   { entry:[{ id:'WABA_ID', changes:[{ field:'message_template_status_update',
+//     value:{ event:'APPROVED'|'REJECTED'|'PAUSED'|'FLAGGED'|'IN_APPEAL'|'PENDING_DELETION'|'DELETED',
+//             message_template_id:'12345', message_template_name:'booking_reminder',
+//             message_template_language:'en', reason:'...' } }] }] }
+export interface TemplateStatusEvent {
+  wabaId: string;
+  metaTemplateId: string;
+  templateName: string;
+  language: string;
+  status: string;          // verbatim Meta enum, mirrored into our DB
+  reason: string;          // empty string when no reason provided
+}
+
+export function parseTemplateStatusEvent(
+  body: Record<string, unknown>
+): TemplateStatusEvent | null {
+  try {
+    const entry = body.entry as Array<Record<string, unknown>>;
+    if (!entry || entry.length === 0) return null;
+    const wabaId = (entry[0].id as string) || '';
+    const changes = entry[0].changes as Array<Record<string, unknown>>;
+    if (!changes || changes.length === 0) return null;
+    const ch = changes[0];
+    if (ch.field !== 'message_template_status_update') return null;
+    const value = ch.value as Record<string, unknown>;
+    if (!value) return null;
+    return {
+      wabaId,
+      metaTemplateId: String(value.message_template_id || ''),
+      templateName: String(value.message_template_name || ''),
+      language: String(value.message_template_language || ''),
+      status: String(value.event || 'PENDING'),
+      reason: String(value.reason || ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebhookPayload | null {
   try {
     const entry = body.entry as Array<Record<string, unknown>>;

@@ -12,6 +12,7 @@ import { clerkClient } from '@clerk/nextjs/server';
 import { getBotsByOwner } from '@/lib/owner-clients';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
+import { checkBotLimit } from '@/lib/feature-gates';
 import { rateLimit, getClientKey } from '@/lib/rate-limit';
 import type { BusinessType } from '@/lib/types';
 
@@ -50,11 +51,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check bot limit based on plan
-      const planConfig = PLANS[subscription.plan];
-      if (planConfig && existingBots.length >= planConfig.bots) {
+      // Check bot limit based on plan. Uses checkBotLimit() so the
+      // unlimited (-1) cap on Scale/Enterprise is handled correctly —
+      // the previous direct ">= planConfig.bots" comparison incorrectly
+      // blocked everyone when bots was -1.
+      const gate = checkBotLimit(subscription.plan, existingBots.length);
+      if (!gate.allowed) {
         return NextResponse.json(
-          { error: 'BOT_LIMIT', message: `Your ${planConfig.name} plan allows ${planConfig.bots} bot(s). Please upgrade to add more bots.` },
+          { error: 'BOT_LIMIT', message: gate.reason || 'Bot limit reached for your plan.', upgradeTo: gate.upgradeTo },
           { status: 403 }
         );
       }

@@ -6,6 +6,8 @@ import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
 import { syncProductsFromConfig } from '@/lib/inventory-sync';
+import { getActiveSubscription } from '@/lib/subscription';
+import { canUse } from '@/lib/feature-gates';
 
 function parseKb(raw: string): Record<string, unknown> {
   try { return JSON.parse(raw || '{}'); } catch { return {}; }
@@ -56,11 +58,28 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // Plan-feature gate: custom system prompts are gated to Growth+ plans.
+    // The auto-regenerated prompt (built from KB) is always allowed; only
+    // a user-supplied system_prompt string is restricted.
+    const ownerSub = await getActiveSubscription(user.userId).catch(() => null);
+    const customPromptAllowed = canUse(ownerSub?.plan, 'custom_system_prompt').allowed;
+
     // Bulk save: one request writes multiple fields atomically. Used by the
     // unified "Save" button on /client/settings.
     if (body && typeof body === 'object' && body.bulk && typeof body.bulk === 'object') {
       const bulk = body.bulk as Record<string, unknown>;
       const writes: Record<string, string> = {};
+
+      if (typeof bulk.system_prompt === 'string' && !customPromptAllowed) {
+        return NextResponse.json(
+          {
+            error: 'PLAN_LIMIT',
+            message: 'Custom bot personality (system prompt) is available on Growth (₹1,499/mo) and above. Your other settings can still be saved.',
+            upgradeTo: 'growth',
+          },
+          { status: 403 }
+        );
+      }
 
       // Knowledge base + languages both touch the same JSON cell. Process them
       // together so the final KB has both the user's edits AND the language
@@ -202,6 +221,19 @@ export async function POST(request: NextRequest) {
     ];
     if (!ALLOWED_FIELDS.includes(field)) {
       return NextResponse.json({ error: 'Field not allowed' }, { status: 403 });
+    }
+
+    // Same plan gate as the bulk path — owner can't directly write a
+    // system_prompt unless their plan allows custom personalities.
+    if (field === 'system_prompt' && !customPromptAllowed) {
+      return NextResponse.json(
+        {
+          error: 'PLAN_LIMIT',
+          message: 'Custom bot personality is available on Growth (₹1,499/mo) and above.',
+          upgradeTo: 'growth',
+        },
+        { status: 403 }
+      );
     }
 
     // Prevent storing invalid JSON in knowledge_base_json — a corrupted value

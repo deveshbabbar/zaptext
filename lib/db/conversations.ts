@@ -75,6 +75,27 @@ export async function addConversationMessage(msg: ConversationRow): Promise<void
 // IMPORTANT: assumes the caller has ALREADY logged the current incoming.
 // We exclude messages newer than `excludeAfter` (the timestamp of the
 // current message) so the freshly-logged row doesn't count itself.
+// Returns the number of outbound messages for a client in the CURRENT
+// calendar month (UTC-based; close enough for IST since the rollover
+// difference is at most 5h30m). Used by the webhook to enforce monthly
+// AI-reply caps for paid plans (Starter 2k / Growth 10k / Scale 50k /
+// Enterprise 200k). Trial keeps using lifetime count via getClientConversations.
+export async function getOutboundCountThisMonth(clientId: string): Promise<number> {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const rows = await db
+    .select({ id: conversationsTable.id })
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.client_id, clientId),
+        eq(conversationsTable.direction, 'outgoing'),
+        gte(conversationsTable.timestamp, start)
+      )
+    );
+  return rows.length;
+}
+
 export async function hasRecentInboundMessage(
   clientId: string,
   customerPhone: string,

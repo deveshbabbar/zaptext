@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppButtons, sendWhatsAppList, isMessageProcessed } from '@/lib/whatsapp';
+import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, parseTemplateStatusEvent, sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppButtons, sendWhatsAppList, isMessageProcessed } from '@/lib/whatsapp';
+import { db } from '@/lib/db';
+import { template_submissions } from '@/lib/db/schema';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import type { ClientConfig } from '@/lib/types';
-import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage } from '@/lib/google-sheets';
+import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage, getOutboundCountThisMonth } from '@/lib/google-sheets';
 import { getWelcomeMenu } from '@/lib/welcome-menu';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { resolvePlanKey } from '@/lib/plans';
-import { canUse } from '@/lib/feature-gates';
+import { canUse, checkMessageQuota } from '@/lib/feature-gates';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
@@ -80,6 +82,47 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ status: 'ok' });
     }
+
+    // Meta sends template approval/rejection events on the same webhook URL.
+    // Detect and dispatch first; messages parser only fires when this is
+    // not a template event.
+    const tplEvent = parseTemplateStatusEvent(body);
+    if (tplEvent) {
+      after(async () => {
+        try {
+          await db
+            .insert(template_submissions)
+            .values({
+              waba_id: tplEvent.wabaId,
+              template_name: tplEvent.templateName,
+              language: tplEvent.language,
+              category: 'UTILITY', // unknown from this event; preserved on conflict
+              status: tplEvent.status,
+              meta_template_id: tplEvent.metaTemplateId,
+              last_error: tplEvent.reason,
+              updated_at: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: [
+                template_submissions.waba_id,
+                template_submissions.template_name,
+                template_submissions.language,
+              ],
+              set: {
+                status: tplEvent.status,
+                meta_template_id: tplEvent.metaTemplateId,
+                last_error: tplEvent.reason,
+                updated_at: new Date(),
+              },
+            });
+          console.log(`[template-status] ${tplEvent.templateName}/${tplEvent.language} -> ${tplEvent.status}`);
+        } catch (err) {
+          console.error('[template-status] DB upsert failed:', err);
+        }
+      });
+      return NextResponse.json({ status: 'ok' });
+    }
+
     const payload = parseWebhookPayload(body);
 
     // Always return 200 to WhatsApp immediately
@@ -143,10 +186,16 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   // tags (BOOK / PAY / etc.) are silently stripped before they fire.
   // Defaults to 'trial' (most restrictive) when no active sub.
   const planKey = resolvePlanKey(ownerSubscription?.plan);
+  // Trial uses LIFETIME count (50 hard cap). Paid plans use CURRENT-MONTH
+  // count (resets on the 1st). Both run a single small SQL query so the
+  // hot path stays fast.
   let trialOutboundCount = 0;
+  let monthlyOutboundCount = 0;
   if (isTrialBot) {
     const allConvos = await getClientConversations(client.client_id).catch(() => []);
     trialOutboundCount = allConvos.filter((c) => c.direction === 'outgoing').length;
+  } else {
+    monthlyOutboundCount = await getOutboundCountThisMonth(client.client_id).catch(() => 0);
   }
 
   // Subscription-expired gate: client.status is 'active' but owner has no
@@ -486,9 +535,13 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
       }
     } catch { /* ignore */ }
 
-    // Trial lifetime cap: once hit, reply with an upgrade prompt and skip Gemini.
-    if (isTrialBot && trialOutboundCount >= TRIAL_MESSAGE_LIMIT) {
-      // Bilingual — customer probably wasn't messaging in English.
+    // Plan quota check via feature-gates. Trial = hard lifetime cap (refuse
+    // to send beyond TRIAL_MESSAGE_LIMIT). Paid plans = soft monthly cap
+    // (allow with overage warning logged; metered billing TBD when the
+    // overage invoicing system ships).
+    const used = isTrialBot ? trialOutboundCount : monthlyOutboundCount;
+    const quota = checkMessageQuota(planKey, used);
+    if (!quota.allowed && quota.hardCap) {
       const upgradeMsg =
         `Free trial khatam ho gaya 🎉 (${TRIAL_MESSAGE_LIMIT} replies done). ` +
         `Owner ko upgrade karna hoga taaki main aapki madad continue kar sakoon. ` +
@@ -505,6 +558,11 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
       });
       trialOutboundCount += 1;
       continue;
+    }
+    if (!isTrialBot && quota.remaining === 0) {
+      // Paid plan over cap — service continues but we log so overage can
+      // be reconciled at month end. Owner-facing dashboard banner TBD.
+      console.warn(`[quota-overage] client=${client.client_id} plan=${planKey} used=${used} cap=${quota.cap}`);
     }
 
     // Generate the system prompt FRESH from the bot's knowledge_base_json
@@ -527,6 +585,18 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
       }
     } catch (e) {
       console.error('[webhook] generateSystemPrompt fresh failed, using stored snapshot:', e);
+    }
+
+    // Plan-feature language gate. Free tier is English-only — append a
+    // hard rule the AI is instructed to follow, even if the customer
+    // messages in Hindi/Tamil/etc. (multi_language is gated to paid plans
+    // for upsell value.) Paid plans get no append, so generateSystemPrompt's
+    // existing language autodetection runs as before.
+    if (!canUse(planKey, 'multi_language').allowed) {
+      basePrompt +=
+        '\n\nLANGUAGE RULE (STRICT, FREE TIER): Reply in English ONLY. ' +
+        'Even if the customer writes in Hindi, Hinglish, Tamil, Bengali, or any other language, your reply MUST be in English. ' +
+        'You may briefly acknowledge their language ("Got it!") but the substantive answer must be in English.';
     }
 
     // Generate AI response with booking + payment + order + staff context

@@ -27,6 +27,7 @@ export {
   addConversationMessage,
   getClientConversations,
   hasRecentInboundMessage,
+  getOutboundCountThisMonth,
 } from './db/conversations';
 
 export {

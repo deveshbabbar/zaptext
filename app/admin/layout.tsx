@@ -52,6 +52,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <nav className="flex flex-col gap-px">
           <SideLink href="/admin/workspace" icon="⚙️" label="Workspace" />
           <SideLink href="/admin/api-keys" icon="🔑" label="API keys" />
+          <SideLink href="/admin/templates" icon="📝" label="WhatsApp templates" />
         </nav>
 
         <div className="mt-auto pt-3 border-t border-white/10 flex items-center gap-2.5">

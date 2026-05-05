@@ -71,17 +71,93 @@ export default function ConversationsPage() {
   const [loading, setLoading] = useState(true);
   const [activePhone, setActivePhone] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // Set of customer phones currently in "owner takeover" mode — comes
+  // from /api/client/conversations on each load + flips locally on
+  // toggle so the UI feels instant.
+  const [pausedSet, setPausedSet] = useState<Set<string>>(new Set());
+  const [composer, setComposer] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [pauseBusy, setPauseBusy] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  function reload() {
     fetch('/api/client/conversations')
       .then((res) => res.json())
       .then((data) => {
         setConversations(data.conversations || {});
+        if (Array.isArray(data.paused_customers)) {
+          setPausedSet(new Set(data.paused_customers as string[]));
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    reload();
   }, []);
+
+  async function togglePause(phone: string, paused: boolean) {
+    setPauseBusy(true);
+    try {
+      const res = await fetch('/api/client/conversations/pause-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_phone: phone, paused }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPausedSet((prev) => {
+          const next = new Set(prev);
+          if (data.paused) next.add(phone); else next.delete(phone);
+          return next;
+        });
+      }
+    } finally {
+      setPauseBusy(false);
+    }
+  }
+
+  async function sendOwnerMessage() {
+    if (!activePhone || !composer.trim() || sending) return;
+    setSendError(null);
+    setSending(true);
+    try {
+      const text = composer.trim();
+      const res = await fetch('/api/client/conversations/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_phone: activePhone, message: text }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSendError(data?.message || data?.error || 'Send failed');
+        return;
+      }
+      // Optimistic: append a synthetic outgoing row so the thread updates
+      // instantly. Reload pulls the canonical row + timestamp from server.
+      setConversations((prev) => ({
+        ...prev,
+        [activePhone]: [
+          ...(prev[activePhone] || []),
+          {
+            timestamp: new Date().toISOString(),
+            customer_phone: activePhone,
+            direction: 'outgoing',
+            message: `[owner] ${text}`,
+          },
+        ],
+      }));
+      setComposer('');
+      // Pull canonical state in the background so the badge / count refresh.
+      setTimeout(reload, 800);
+    } catch (e) {
+      setSendError(String(e));
+    } finally {
+      setSending(false);
+    }
+  }
 
   const phones = useMemo(() => Object.keys(conversations), [conversations]);
 
@@ -278,6 +354,26 @@ export default function ConversationsPage() {
                         {thread.length} message{thread.length === 1 ? '' : 's'}
                       </div>
                     </div>
+                    {/* Live takeover toggle. When ON, AI stops auto-replying for this customer
+                        and the owner is responsible — they type in the send box at the bottom. */}
+                    <button
+                      type="button"
+                      onClick={() => togglePause(activePhone, !pausedSet.has(activePhone))}
+                      disabled={pauseBusy}
+                      className={`text-[11.5px] font-semibold rounded-full border transition disabled:opacity-50 ${
+                        pausedSet.has(activePhone)
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-700 dark:text-amber-400'
+                          : 'border-[var(--line)] text-[var(--ink)] hover:border-[var(--ink)]'
+                      }`}
+                      style={{ padding: '5px 11px' }}
+                      title={
+                        pausedSet.has(activePhone)
+                          ? 'Resume AI for this customer'
+                          : 'Pause AI — you reply manually from the box below'
+                      }
+                    >
+                      {pausedSet.has(activePhone) ? '⏸ AI paused — Resume' : '🤝 Take over'}
+                    </button>
                     <a
                       href={`https://wa.me/${activePhone.replace(/\D/g, '')}`}
                       target="_blank"
@@ -299,6 +395,7 @@ export default function ConversationsPage() {
                       backgroundSize: '160px 160px',
                     }}
                   >
+                    {/* placeholder removed — JSX block below */}
                     {threadEntries.map((entry, i) => {
                       const incoming = entry.msg.direction === 'incoming';
                       return (
@@ -340,6 +437,55 @@ export default function ConversationsPage() {
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* ─── Composer (live takeover send box) ───
+                      Visible always; the server gates on the 24hr window
+                      and on the live_takeover plan feature. Showing the
+                      box even when the AI is on lets the owner jump in
+                      mid-conversation without first toggling pause. */}
+                  <div
+                    className="border-t border-[var(--line)] bg-[var(--card)]"
+                    style={{ padding: '12px 16px' }}
+                  >
+                    {sendError ? (
+                      <div className="text-[11.5px] text-red-500 mb-2" style={{ wordBreak: 'break-word' }}>
+                        {sendError}
+                      </div>
+                    ) : null}
+                    <div className="flex gap-2 items-end">
+                      <textarea
+                        value={composer}
+                        onChange={(e) => setComposer(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            void sendOwnerMessage();
+                          }
+                        }}
+                        placeholder={
+                          pausedSet.has(activePhone)
+                            ? 'AI is paused — type your reply (Enter to send, Shift+Enter for newline)'
+                            : "Jump in as the owner — your message goes from the bot's number"
+                        }
+                        rows={2}
+                        disabled={sending}
+                        className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--bg-2)] text-[13px] focus:outline-none focus:border-[var(--ink)] resize-none disabled:opacity-50"
+                        style={{ padding: '9px 12px', fontFamily: 'inherit' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void sendOwnerMessage()}
+                        disabled={sending || !composer.trim()}
+                        className="rounded-[10px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[13px] disabled:opacity-50 hover:opacity-90 transition"
+                        style={{ padding: '10px 16px' }}
+                      >
+                        {sending ? 'Sending…' : 'Send'}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-[var(--mute)] zt-mono mt-1.5">
+                      Replies are sent from the bot&apos;s WhatsApp number — customer sees the same chat thread.
+                    </div>
                   </div>
                 </>
               )}

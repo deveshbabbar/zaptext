@@ -3,7 +3,7 @@ import { cancelBooking, getBookingById } from '@/lib/booking';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
 import { getClientById } from '@/lib/google-sheets';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { notifyBookingCancellation } from '@/lib/booking-notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,19 +34,25 @@ export async function POST(request: NextRequest) {
     const success = await cancelBooking(bookingId, reason);
     if (!success) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
-    // Auto-notify the customer on WhatsApp
+    // Auto-notify the customer on WhatsApp. The helper checks the 24hr
+    // free-form window and falls back to the booking_cancellation template
+    // when the customer has been silent for >24h. Free-form sends would
+    // silently fail outside the window.
     try {
       const client = await getClientById(booking.client_id);
       if (client?.phone_number_id && booking.customer_phone) {
-        const reasonLine = reason ? `\nReason: ${reason}` : '';
-        const isOrder = (booking.service || '').startsWith('ORDER');
-        const subject = isOrder ? 'order' : 'booking';
-        const msg =
-          `🙏 Sorry ${booking.customer_name || ''}, your ${subject} for ` +
-          `${booking.date}${booking.time_slot ? ` at ${booking.time_slot}` : ''} (${client.business_name}) ` +
-          `has been cancelled.${reasonLine}\n\n` +
-          `Reply here and we'll help you rebook.`;
-        await sendWhatsAppMessage(client.phone_number_id, booking.customer_phone, msg);
+        await notifyBookingCancellation({
+          phoneNumberId: client.phone_number_id,
+          clientId: booking.client_id,
+          customerPhone: booking.customer_phone,
+          customerName: booking.customer_name || '',
+          service: booking.service || '',
+          date: booking.date,
+          time: booking.time_slot || '',
+          bookingId: booking.booking_id || '',
+          businessName: client.business_name,
+          reason,
+        });
       }
     } catch (notifyErr) {
       console.error('Customer cancel-notify failed:', notifyErr);

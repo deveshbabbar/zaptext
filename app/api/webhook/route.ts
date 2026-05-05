@@ -9,6 +9,7 @@ import { getWelcomeMenu } from '@/lib/welcome-menu';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { resolvePlanKey } from '@/lib/plans';
 import { canUse, checkMessageQuota } from '@/lib/feature-gates';
+import { isCustomerPaused } from '@/lib/db/paused-customers';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
@@ -341,6 +342,16 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       message: msg.text,
       message_type: 'text',
     });
+
+    // ─── Live-takeover pause check ────────────────────────────────────
+    // If the owner has clicked "Take over" for this customer in the
+    // dashboard, we LOG the inbound (so they see it in the thread view)
+    // but do NOT run AI. The owner is responsible for replying via the
+    // /api/client/conversations/send endpoint.
+    if (await isCustomerPaused(client.client_id, customerPhone).catch(() => false)) {
+      console.log(`[paused-customer] AI skipped for ${client.client_id}/${customerPhone}`);
+      continue;
+    }
 
     // ─── Welcome menu ─────────────────────────────────────────────────
     // First message in the last 7 days (and not itself a list-tap)?

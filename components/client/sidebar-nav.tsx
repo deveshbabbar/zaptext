@@ -28,6 +28,7 @@ const SECTIONS: NavSection[] = [
     title: 'Workspace',
     items: [
       { href: '/client/dashboard', icon: '📊', label: 'Dashboard' },
+      { href: '/client/analytics', icon: '📈', label: 'Analytics' },
       { href: '/client/conversations', icon: '💬', label: 'Conversations' },
       { href: '/client/bookings', icon: '📅', label: 'Bookings' },
       { href: '/client/inventory', icon: '📦', label: 'Inventory' },

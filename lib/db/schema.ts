@@ -321,6 +321,30 @@ export const date_overrides = pgTable(
   })
 );
 
+// ─── paused_customers (per-customer "human is taking over" flag) ────────
+// When the owner clicks "Take over" on the conversations page for a
+// specific customer, a row is inserted here. Webhook checks this table
+// BEFORE running AI — if the customer is paused, the bot stays silent
+// and the owner is responsible for replying via the dashboard's send-box.
+//
+// Pauses are typically permanent until the owner clicks "Resume" — but
+// the schema includes paused_until so a future "auto-resume after 24h"
+// option can be added without a migration. NULL = paused indefinitely.
+export const paused_customers = pgTable(
+  'paused_customers',
+  {
+    client_id: text('client_id').notNull(),
+    customer_phone: text('customer_phone').notNull(),
+    paused_at: timestamp('paused_at', { withTimezone: true }).notNull().defaultNow(),
+    paused_until: timestamp('paused_until', { withTimezone: true }),
+    paused_by: text('paused_by').notNull().default(''), // clerk userId who paused
+    reason: text('reason').notNull().default(''),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.client_id, t.customer_phone] }),
+  })
+);
+
 // ─── welcome_menus (per-client first-message interactive menu) ────────
 // When a customer sends their first message in a 7-day window, the bot
 // replies with a list message: a greeting, a body prompt, and up to 10
@@ -413,3 +437,5 @@ export type TemplateSubmissionRow = typeof template_submissions.$inferSelect;
 export type NewTemplateSubmissionRow = typeof template_submissions.$inferInsert;
 export type WelcomeMenuRow = typeof welcome_menus.$inferSelect;
 export type NewWelcomeMenuRow = typeof welcome_menus.$inferInsert;
+export type PausedCustomerRow = typeof paused_customers.$inferSelect;
+export type NewPausedCustomerRow = typeof paused_customers.$inferInsert;

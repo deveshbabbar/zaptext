@@ -35,6 +35,7 @@ const SECTIONS: NavSection[] = [
       { href: '/client/availability', icon: '⏰', label: 'Availability' },
       { href: '/client/calendar', icon: '📆', label: 'Calendar' },
       { href: '/client/settings', icon: '⚙️', label: 'Bot Settings' },
+      { href: '/client/welcome-menu', icon: '👋', label: 'Welcome menu' },
     ],
   },
   {

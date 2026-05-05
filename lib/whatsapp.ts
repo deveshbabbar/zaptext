@@ -107,6 +107,79 @@ export async function sendWhatsAppButtons(
   }
 }
 
+// Sends a WhatsApp list message — up to 10 tappable rows in a dropdown
+// menu. Used for the first-message welcome menu so customers can pick
+// "Talk to a trainer" / "See pricing" / etc. without typing.
+//
+// Limits per Meta:
+//   - max 10 rows total across all sections (we use one section)
+//   - row.title <= 24 chars, row.description <= 72 chars
+//   - row.id <= 200 chars (we cap at 200 here defensively)
+//   - header <= 60, body <= 1024, footer <= 60, buttonText <= 20
+//
+// Row IDs come back through the inbound webhook as
+// `interactive.list_reply.id` — surfaced via parseWebhookPayload's
+// `interactiveListId` field.
+export async function sendWhatsAppList(
+  phoneNumberId: string,
+  to: string,
+  header: string,
+  bodyText: string,
+  footer: string,
+  buttonText: string,
+  items: Array<{ id: string; title: string; description?: string }>,
+  fallbackText?: string
+): Promise<{ success: boolean; error?: string }> {
+  const safeRows = items.slice(0, 10).map((it) => ({
+    id: it.id.slice(0, 200),
+    title: it.title.slice(0, 24),
+    ...(it.description ? { description: it.description.slice(0, 72) } : {}),
+  }));
+
+  const payload: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      ...(header ? { header: { type: 'text', text: header.slice(0, 60) } } : {}),
+      body: { text: bodyText.slice(0, 1024) },
+      ...(footer ? { footer: { text: footer.slice(0, 60) } } : {}),
+      action: {
+        button: (buttonText || 'Choose').slice(0, 20),
+        sections: [{ title: 'Options', rows: safeRows }],
+      },
+    },
+  };
+
+  try {
+    const response = await fetch(
+      `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('WhatsApp list error:', data);
+      // Fall back to plain text so the customer at least gets the welcome
+      // message even if the interactive shape is rejected.
+      if (fallbackText) return await sendWhatsAppMessage(phoneNumberId, to, fallbackText);
+      return { success: false, error: data.error?.message || 'Unknown error' };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('WhatsApp list exception:', error);
+    if (fallbackText) return await sendWhatsAppMessage(phoneNumberId, to, fallbackText);
+    return { success: false, error: String(error) };
+  }
+}
+
 export async function sendWhatsAppImage(
   phoneNumberId: string,
   to: string,
@@ -227,6 +300,11 @@ export interface WhatsAppMessage {
   // like a typed command so trainers can tap instead of typing the booking ID.
   interactiveButtonId?: string;
   interactiveButtonTitle?: string;
+  // Set when the inbound message is an interactive list_reply — value is
+  // the row.id we sent in sendWhatsAppList (e.g. "talk_to_trainer").
+  // Webhook routes welcome-menu taps via this id.
+  interactiveListId?: string;
+  interactiveListTitle?: string;
 }
 
 export interface WhatsAppWebhookPayload {
@@ -280,18 +358,26 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
         const buttonReply = (interactive?.button_reply as Record<string, string> | undefined);
         const interactiveButtonId = buttonReply?.id;
         const interactiveButtonTitle = buttonReply?.title;
+        // List replies (interactive list message taps) — same idea as
+        // button_reply, but sourced from interactive.list_reply.
+        const listReply = (interactive?.list_reply as Record<string, string> | undefined);
+        const interactiveListId = listReply?.id;
+        const interactiveListTitle = listReply?.title;
         return {
           id: (m.id as string) || '',
           from: (m.from as string) || '',
           text:
             (m.text as Record<string, string>)?.body ??
-            interactiveButtonTitle, // tap → behaves like text for existing handlers
+            interactiveButtonTitle ??
+            interactiveListTitle, // tap → behaves like text for existing handlers
           type: (m.type as string) || 'unknown',
           timestamp: (m.timestamp as string) || '',
           imageId: image?.id,
           caption: image?.caption,
           interactiveButtonId,
           interactiveButtonTitle,
+          interactiveListId,
+          interactiveListTitle,
         };
       }),
     };

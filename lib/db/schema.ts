@@ -321,6 +321,37 @@ export const date_overrides = pgTable(
   })
 );
 
+// ─── welcome_menus (per-client first-message interactive menu) ────────
+// When a customer sends their first message in a 7-day window, the bot
+// replies with a list message: a greeting, a body prompt, and up to 10
+// tappable options (e.g. "Talk to a trainer", "Today's timings"). Tapping
+// an option becomes the user's effective intent and is fed to the AI.
+//
+// `use_auto_generated=true` (default): the bot ignores items_json and
+// builds the menu live from the client's actual data — staff names from
+// the staff table, services from inventory, plus per-vertical defaults
+// (gym vs salon vs clinic vs restaurant vs coaching).
+//
+// `use_auto_generated=false`: the owner takes control via /client/welcome-menu
+// and items_json is honored as-is. Used by clients who want bespoke wording.
+export const welcome_menus = pgTable(
+  'welcome_menus',
+  {
+    client_id: text('client_id').primaryKey(),
+    is_enabled: boolean('is_enabled').notNull().default(true),
+    use_auto_generated: boolean('use_auto_generated').notNull().default(true),
+    header_text: varchar('header_text', { length: 60 }).notNull().default(''),
+    body_text: varchar('body_text', { length: 1024 }).notNull().default(''),
+    footer_text: varchar('footer_text', { length: 60 }).notNull().default(''),
+    // JSON array of { id: string, label: string, description?: string }.
+    // Up to 10 items per Meta's list-message limit. Stored as text to keep
+    // schema portable and avoid Drizzle JSON-column quirks.
+    items_json: text('items_json').notNull().default('[]'),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  }
+);
+
 // ─── template_submissions (Meta WhatsApp template approval state) ────────
 // One row per (waba_id, template_name, language). Tracks the lifecycle of
 // each template we submit to Meta's /message_templates endpoint, so the
@@ -380,3 +411,5 @@ export type InventoryCategoryRow = typeof inventoryCategories.$inferSelect;
 export type NewInventoryCategoryRow = typeof inventoryCategories.$inferInsert;
 export type TemplateSubmissionRow = typeof template_submissions.$inferSelect;
 export type NewTemplateSubmissionRow = typeof template_submissions.$inferInsert;
+export type WelcomeMenuRow = typeof welcome_menus.$inferSelect;
+export type NewWelcomeMenuRow = typeof welcome_menus.$inferInsert;

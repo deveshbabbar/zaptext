@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppButtons, isMessageProcessed } from '@/lib/whatsapp';
+import { verifyWebhook, verifyWebhookSignature, parseWebhookPayload, sendWhatsAppMessage, sendWhatsAppImage, sendWhatsAppButtons, sendWhatsAppList, isMessageProcessed } from '@/lib/whatsapp';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import type { ClientConfig } from '@/lib/types';
-import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField } from '@/lib/google-sheets';
+import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage } from '@/lib/google-sheets';
+import { getWelcomeMenu } from '@/lib/welcome-menu';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
@@ -122,7 +123,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; interactiveButtonId?: string; interactiveButtonTitle?: string }>) {
+async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; interactiveButtonId?: string; interactiveButtonTitle?: string; interactiveListId?: string; interactiveListTitle?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
   if (!client) {
@@ -248,8 +249,11 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       continue;
     }
 
-    // Handle other non-text messages
-    if (msg.type !== 'text' || !msg.text) {
+    // Handle other non-text messages — but let interactive list-reply
+    // taps through (the parser synthesizes msg.text from the row title,
+    // so they're effectively text from this point on).
+    const isListReplyTap = msg.type === 'interactive' && !!msg.interactiveListId;
+    if ((msg.type !== 'text' && !isListReplyTap) || !msg.text) {
       const fallback =
         `Right now I can only understand text and payment screenshots. Could you please type your question? 🙏\n\n` +
         `Abhi main sirf text aur payment screenshot samajh sakta hoon. Kya aap text mein bata sakte hain?`;
@@ -282,6 +286,50 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       message: msg.text,
       message_type: 'text',
     });
+
+    // ─── Welcome menu ─────────────────────────────────────────────────
+    // First message in the last 7 days (and not itself a list-tap)?
+    // Send the configured welcome menu and skip AI for THIS turn — the
+    // customer's chosen option will arrive as the next inbound (a
+    // list_reply) and flow through normally with msg.text = the row
+    // title and msg.interactiveListId = the row id.
+    const incomingTs = new Date(timestamp);
+    if (!isListReplyTap) {
+      const isFirstContact = !(await hasRecentInboundMessage(
+        client.client_id, customerPhone, 7, incomingTs
+      ));
+      if (isFirstContact) {
+        try {
+          const menu = await getWelcomeMenu(client);
+          if (menu) {
+            const fallback =
+              `${menu.header}\n\n${menu.body}\n\n` +
+              menu.items.map((i, idx) => `${idx + 1}. ${i.label}`).join('\n');
+            await sendWhatsAppList(
+              phoneNumberId,
+              customerPhone,
+              menu.header,
+              menu.body,
+              menu.footer,
+              menu.buttonText,
+              menu.items.map((i) => ({ id: i.id, title: i.label, description: i.description })),
+              fallback
+            );
+            await addConversationMessage({
+              timestamp: getISTTimestamp(),
+              client_id: client.client_id,
+              customer_phone: customerPhone,
+              direction: 'outgoing',
+              message: `[welcome-menu] ${menu.items.map((i) => i.label).join(' | ')}`,
+              message_type: 'interactive',
+            });
+            continue; // skip AI for the first-contact turn
+          }
+        } catch (err) {
+          console.error('[welcome-menu] failed; falling back to AI', err);
+        }
+      }
+    }
 
     // Get conversation history (last 10 messages)
     const history = await getConversationHistory(client.client_id, customerPhone, 10);

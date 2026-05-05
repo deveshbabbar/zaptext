@@ -14,7 +14,7 @@
 // - timestamp Date → ISO string at the boundary, same as clients.ts.
 
 import { v4 as uuid } from 'uuid';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gte } from 'drizzle-orm';
 import { db } from './index';
 import { conversations as conversationsTable } from './schema';
 import type { ConversationRow } from '../types';
@@ -66,6 +66,38 @@ export async function addConversationMessage(msg: ConversationRow): Promise<void
     message: msg.message,
     message_type: msg.message_type || 'text',
   });
+}
+
+// Returns true if the customer has an INCOMING message older than the
+// just-arrived one within the last `days` window. Used by the welcome-menu
+// flow to decide whether the current message counts as "first contact".
+//
+// IMPORTANT: assumes the caller has ALREADY logged the current incoming.
+// We exclude messages newer than `excludeAfter` (the timestamp of the
+// current message) so the freshly-logged row doesn't count itself.
+export async function hasRecentInboundMessage(
+  clientId: string,
+  customerPhone: string,
+  days: number,
+  excludeAfter: Date
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({ ts: conversationsTable.timestamp })
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.client_id, clientId),
+        eq(conversationsTable.customer_phone, customerPhone),
+        eq(conversationsTable.direction, 'incoming'),
+        gte(conversationsTable.timestamp, cutoff)
+      )
+    )
+    .limit(50);
+  // Exclude the current message via JS — comparing timestamps in Drizzle
+  // with Date objects has occasionally been flaky on Neon plans.
+  const excludeMs = excludeAfter.getTime();
+  return rows.some((r) => r.ts.getTime() < excludeMs);
 }
 
 export async function getClientConversations(clientId: string): Promise<ConversationRow[]> {

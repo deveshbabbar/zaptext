@@ -26,6 +26,7 @@ export {
   getConversationHistory,
   addConversationMessage,
   getClientConversations,
+  hasRecentInboundMessage,
 } from './db/conversations';
 
 export {

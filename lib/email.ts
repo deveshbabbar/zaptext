@@ -329,6 +329,59 @@ export function tplAdminBotError(p: { businessName: string; errorMessage: string
   return { subject: `Bot error: ${p.businessName}`, html: wrap('Bot Error', body) };
 }
 
+// 7-day expiry heads-up. Sent once when end_date crosses inside the
+// 7-day window — gives the owner time to renew before the bot goes
+// silent. The cron records last_warned_period='7d' so this template
+// doesn't fire daily for the same subscription.
+export function tplSubscriptionExpiringSoon(p: {
+  ownerName: string;
+  businessName: string;
+  plan: string;
+  endDate: string;
+  daysLeft: number;
+}) {
+  const body = `
+    <p>Hi ${esc(p.ownerName)},</p>
+    <p>Heads up — your <strong>${esc(p.businessName)}</strong> bot's subscription is ending in <strong>${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'}</strong>.</p>
+    ${infoBox([
+      { label: 'Plan', value: p.plan },
+      { label: 'Expires', value: p.endDate },
+    ])}
+    <p>If you renew before then, there's no interruption — the bot keeps replying to customers normally. After the end date the bot goes offline and customers get a polite "we'll be in touch" message instead of an AI response.</p>
+    <p>Renew with one click from your dashboard.</p>
+  `;
+  return {
+    subject: `Renewal reminder: ${p.businessName} bot expires in ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'}`,
+    html: wrap('Subscription Expiring Soon', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/subscription`, 'Renew Now'),
+  };
+}
+
+// 1-day final warning. Sent once when end_date is within 24h. After
+// this fires the cron sets last_warned_period='1d' (final state until
+// renewal). If the owner doesn't renew they'll see the bot go offline
+// the next morning — at that point the webhook hot-path returns the
+// canned "subscription expired" reply for any new customer message.
+export function tplSubscriptionExpiringTomorrow(p: {
+  ownerName: string;
+  businessName: string;
+  plan: string;
+  endDate: string;
+}) {
+  const body = `
+    <p>Hi ${esc(p.ownerName)},</p>
+    <p><strong>Final reminder</strong> — your <strong>${esc(p.businessName)}</strong> bot's subscription expires within 24 hours.</p>
+    ${infoBox([
+      { label: 'Plan', value: p.plan },
+      { label: 'Expires', value: p.endDate },
+    ])}
+    <p>Renew now to keep the bot replying to customers without interruption. After the expiry timestamp, new customer messages will get a polite offline reply until you renew.</p>
+  `;
+  return {
+    subject: `Last day: ${p.businessName} bot subscription expires in 24h`,
+    html: wrap('Subscription Expires Tomorrow', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/subscription`, 'Renew Now'),
+  };
+}
+
 // ─── SUBSCRIPTION LIFECYCLE EMAILS ───
 
 export function tplWelcome(p: { name: string; }) {

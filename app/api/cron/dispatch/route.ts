@@ -20,7 +20,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const TASK_PIPELINES: Record<string, string[]> = {
-  morning: ['/api/cron/morning-summary', '/api/cron/auto-cancel-stale'],
+  morning: [
+    '/api/cron/morning-summary',
+    '/api/cron/expiry-warning',
+    '/api/cron/auto-cancel-stale',
+  ],
   evening: [
     '/api/cron/evening-summary',
     '/api/cron/reminders',

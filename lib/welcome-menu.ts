@@ -228,12 +228,18 @@ export async function buildAutoMenu(client: ClientRow): Promise<MenuItem[]> {
   // Surface a "talk to <role>" if at least one staff is active. We don't
   // list every staff member here — the customer picks the category, and
   // the AI walks them through choosing a specific person in chat.
+  //
+  // IMPORTANT: descriptions are static. The auto-menu is sent once at
+  // first contact and stays in the customer's WhatsApp chat for days.
+  // Embedding the live count (e.g. "3 available") goes stale the moment
+  // staff or inventory changes; the customer would still see "3
+  // available" after we removed everyone. Generic copy stays accurate.
   if (staff && staff.length > 0) {
     const roleLabel = staffRoleLabel(vertical);
     push({
       id: 'talk_to_staff',
       label: `Talk to a ${roleLabel}`,
-      description: `${staff.length} available`,
+      description: 'Book or ask a question',
     });
   }
 
@@ -242,7 +248,7 @@ export async function buildAutoMenu(client: ClientRow): Promise<MenuItem[]> {
     push({
       id: 'services',
       label: servicesLabel(vertical),
-      description: `${inventory.length} options`,
+      description: 'See what we offer',
     });
   }
 

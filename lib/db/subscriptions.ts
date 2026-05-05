@@ -117,6 +117,51 @@ export async function getSubscriptionHistory(userId: string): Promise<Subscripti
   return rows.map(dbRowToRecord);
 }
 
+// Mark which expiry warning has been sent for a subscription. Used by
+// the expiry-warning cron so it doesn't keep emailing the same owner
+// every day. Two values: '7d' (sent the 7-day heads-up) and '1d' (sent
+// the 1-day final warning, terminal state).
+export async function markSubscriptionWarned(
+  subscriptionId: string,
+  period: '7d' | '1d'
+): Promise<void> {
+  if (!subscriptionId) return;
+  await db
+    .update(subscriptionsTable)
+    .set({ last_warned_period: period })
+    .where(eq(subscriptionsTable.id, subscriptionId));
+}
+
+// Returns the active-and-soon-expiring subscriptions, with the
+// last_warned_period flag included so the cron can decide what to send.
+// `endsBeforeDays` bounds how far ahead we look; the cron uses 8.
+export async function getExpiringActiveSubscriptions(endsBeforeDays: number): Promise<
+  Array<SubscriptionRecord & { id: string; lastWarnedPeriod: string | null }>
+> {
+  const now = new Date();
+  const horizon = new Date(now.getTime() + endsBeforeDays * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select()
+    .from(subscriptionsTable)
+    .where(
+      and(
+        eq(subscriptionsTable.status, 'active'),
+        gt(subscriptionsTable.end_date, now),
+        // end_date < horizon — using the existing `lt` import would
+        // duplicate the logic; fall back to a JS filter on a small
+        // result set since this cron runs at most once per day.
+      )
+    )
+    .orderBy(desc(subscriptionsTable.end_date));
+  return rows
+    .filter((r) => r.end_date && r.end_date.getTime() < horizon.getTime())
+    .map((r) => ({
+      ...dbRowToRecord(r),
+      id: r.id,
+      lastWarnedPeriod: r.last_warned_period ?? null,
+    }));
+}
+
 // Mark a subscription as cancelled — used by the Razorpay webhook on
 // payment.refunded events so a user who got their money back loses bot
 // access immediately, instead of staying active until end_date. Looks up by

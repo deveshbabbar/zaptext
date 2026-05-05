@@ -10,6 +10,7 @@ import {
   isDurationKey,
   computePlanPrice,
 } from '@/lib/subscription';
+import { cancelPendingBookingsForOwner } from '@/lib/booking';
 import { getISTTimestamp } from '@/lib/utils';
 
 // Razorpay server-to-server webhook.
@@ -82,12 +83,34 @@ export async function POST(req: NextRequest) {
         console.warn('[razorpay-webhook] refund event without payment id');
         return NextResponse.json({ ok: true, skipped: true });
       }
+      // Look up the subscription FIRST so we have the userId before we
+      // mark it cancelled — needed to cascade-cancel orphan bookings.
+      const sub = await getSubscriptionByPaymentId(refundedPaymentId).catch(() => null);
       const cancelled = await cancelSubscriptionByPaymentId(refundedPaymentId);
+
+      // Cascade: any pending_approval bookings can never get approved
+      // once the plan lapses (feature gates strip the trainer's tags),
+      // so free those slots proactively. Confirmed bookings stay — the
+      // customer is supposed to attend them; the owner can manually
+      // cancel if they choose.
+      let bookingsCancelled = 0;
+      if (sub?.userId) {
+        try {
+          bookingsCancelled = await cancelPendingBookingsForOwner(
+            sub.userId,
+            'subscription_refunded'
+          );
+        } catch (err) {
+          console.error('[razorpay-webhook] cascade cancel failed (non-fatal):', err);
+        }
+      }
+
       console.log('[razorpay-webhook] refund processed', {
         paymentId: refundedPaymentId,
         cancelledSubscription: cancelled,
+        cascadedBookings: bookingsCancelled,
       });
-      return NextResponse.json({ ok: true, refunded: true, cancelled });
+      return NextResponse.json({ ok: true, refunded: true, cancelled, bookingsCancelled });
     }
     if (body.event !== 'payment.captured') {
       console.log('[razorpay-webhook] event ignored:', body.event);

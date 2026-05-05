@@ -251,6 +251,10 @@ export interface ClientRow {
   export_format?: 'csv' | 'json';
   contact_number?: string; // owner personal phone for OTP/calls (distinct from whatsapp_number)
   opt_in_accepted?: boolean; // owner confirmed they have WhatsApp opt-in consent from their customers
+  // Per-bot override for the stale-pending-booking auto-cancel timeout
+  // (minutes). Null/undefined means use the platform default (60).
+  // Clamped to [30, 240] at the API boundary.
+  stale_booking_minutes?: number | null;
 }
 
 export interface ConversationRow {

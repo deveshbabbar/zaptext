@@ -19,7 +19,18 @@ import { getClientById } from '@/lib/google-sheets';
 import { getStaffById } from '@/lib/staff';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
-const STALE_MINUTES = 60;
+// Platform default + per-client override. Each client row may set
+// stale_booking_minutes (clamped 30..240); when null we use the default.
+// We pull every booking older than the absolute floor (30 min) and apply
+// each client's actual cutoff in JS so a 120-minute client doesn't get
+// their bookings cancelled at 60.
+const STALE_DEFAULT_MINUTES = 60;
+const STALE_LOWER_BOUND_MINUTES = 30;
+
+function clampStaleMinutes(raw: number | null | undefined): number {
+  if (raw == null || !Number.isFinite(raw)) return STALE_DEFAULT_MINUTES;
+  return Math.max(30, Math.min(240, Math.floor(raw)));
+}
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -28,35 +39,44 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const stale = await getStalePendingBookings(STALE_MINUTES);
+  const stale = await getStalePendingBookings(STALE_LOWER_BOUND_MINUTES);
   let cancelled = 0;
   let customerNotified = 0;
   let trainerNotified = 0;
+  let skippedNotYetEligible = 0;
   const errors: string[] = [];
+  const now = Date.now();
 
   for (const b of stale) {
     try {
+      const client = await getClientById(b.client_id).catch(() => null);
+      const cutoffMinutes = clampStaleMinutes(client?.stale_booking_minutes);
+      const ageMinutes = b.created_at
+        ? (now - new Date(b.created_at).getTime()) / 60000
+        : Infinity;
+      if (ageMinutes < cutoffMinutes) {
+        skippedNotYetEligible += 1;
+        continue;
+      }
+
       // Cancel first — even if notifications fail, the slot must free up so
       // it doesn't keep blocking other customers.
       await cancelBooking(
         b.booking_id,
-        `[AUTO-CANCEL: trainer did not respond within ${STALE_MINUTES} minutes]`
+        `[AUTO-CANCEL: trainer did not respond within ${cutoffMinutes} minutes]`
       );
       cancelled += 1;
 
-      const client = await getClientById(b.client_id).catch(() => null);
       if (!client?.phone_number_id) continue;
 
-      // Customer notification — bilingual (matches the rest of the bot's
-      // hardcoded fallbacks). Customer's first message was within the last
-      // ~60 min so the 24h window is wide open.
+      // Customer notification — bilingual.
       if (b.customer_phone) {
         try {
           const trainerLine = b.service ? ` with ${b.service}` : '';
           const msg =
-            `🙏 Sorry, we couldn't confirm your booking${trainerLine} for ${b.date} at ${b.time_slot} — no response from our side within an hour.\n\n` +
+            `🙏 Sorry, we couldn't confirm your booking${trainerLine} for ${b.date} at ${b.time_slot} — no response from our side within ${cutoffMinutes} minutes.\n\n` +
             `Please reply with another preferred time and we'll set it up.\n\n` +
-            `Hindi: 🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking confirm nahi ho payi (1 ghante mein response nahi mila). Doosra time bhej dijiye, hum set kar denge.`;
+            `Hindi: 🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking confirm nahi ho payi. Doosra time bhej dijiye, hum set kar denge.`;
           await sendWhatsAppMessage(client.phone_number_id, b.customer_phone, msg);
           customerNotified += 1;
         } catch (e) {
@@ -64,8 +84,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Trainer notification (if this was a per-trainer booking) — heads-up
-      // so they know why the customer might re-ping them.
+      // Trainer notification (if this was a per-trainer booking).
       if (b.staff_id) {
         try {
           const staff = await getStaffById(b.staff_id).catch(() => null);
@@ -74,7 +93,7 @@ export async function GET(request: NextRequest) {
               `⏰ Booking auto-cancelled\n\n` +
               `Customer: ${b.customer_name || b.customer_phone}\n` +
               `Slot: ${b.date} at ${b.time_slot}\n\n` +
-              `No approve/reject response within ${STALE_MINUTES} minutes — slot was freed automatically. ` +
+              `No approve/reject response within ${cutoffMinutes} minutes — slot was freed automatically. ` +
               `If you still want this booking, ask the customer to rebook.`;
             await sendWhatsAppMessage(client.phone_number_id, staff.whatsapp_phone, msg);
             trainerNotified += 1;
@@ -94,6 +113,7 @@ export async function GET(request: NextRequest) {
     cancelled,
     customerNotified,
     trainerNotified,
-    errors,
+    skippedNotYetEligible,
+    errors: errors.slice(0, 50),
   });
 }

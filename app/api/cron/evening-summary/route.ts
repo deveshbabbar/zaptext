@@ -4,6 +4,10 @@ import { getBookingsForDate, getTodayIST, getDateOffset } from '@/lib/booking';
 import { sendTemplate, tplDailyEveningSummary } from '@/lib/email';
 import { buildDailyDigest, digestSubject, digestIntroHtml } from '@/lib/daily-digest';
 import { clerkClient } from '@clerk/nextjs/server';
+import { claimCronRun, finishCronRun } from '@/lib/db/cron-runs';
+
+const CRON_TASK = 'evening-summary';
+const CRON_LOCKOUT_SEC = 12 * 60 * 60;
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -11,6 +15,15 @@ export async function GET(request: NextRequest) {
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // Idempotency claim — Vercel may retry the cron on timeout. Prevents
+  // sending duplicate digests to every owner.
+  const claim: { claimed: boolean; runId?: string; reason?: string } =
+    await claimCronRun(CRON_TASK, CRON_LOCKOUT_SEC).catch(() => ({ claimed: true }));
+  if (!claim.claimed) {
+    return NextResponse.json({ ok: true, skipped: true, reason: claim.reason });
+  }
+  const runId = claim.runId;
 
   const clients = await getAllClients();
   const today = getTodayIST();
@@ -82,8 +95,9 @@ export async function GET(request: NextRequest) {
     })
   );
   for (const r of results) {
-    if (r.status === 'rejected') errors.push(String(r.reason));
+    if (r.status === 'rejected') errors.push(String(r.reason).slice(0, 200));
   }
 
-  return NextResponse.json({ success: true, sent, digestsSent, errors });
+  if (runId) await finishCronRun(runId, true, { sent, digestsSent, errorCount: errors.length });
+  return NextResponse.json({ success: true, sent, digestsSent, errors: errors.slice(0, 50), errorCount: errors.length });
 }

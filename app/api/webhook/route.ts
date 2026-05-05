@@ -4,13 +4,14 @@ import { db } from '@/lib/db';
 import { template_submissions } from '@/lib/db/schema';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import type { ClientConfig } from '@/lib/types';
-import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage, getOutboundCountThisMonth } from '@/lib/google-sheets';
+import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage, getOutboundCountThisMonth, getOutboundCountForOwner } from '@/lib/google-sheets';
 import { getWelcomeMenu } from '@/lib/welcome-menu';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { resolvePlanKey } from '@/lib/plans';
 import { canUse, checkMessageQuota } from '@/lib/feature-gates';
 import { isCustomerPaused } from '@/lib/db/paused-customers';
 import { markMessageProcessedIfNew } from '@/lib/db/processed-messages';
+import { incrementUsageAtomic, monthKey } from '@/lib/db/usage-counters';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
@@ -214,8 +215,11 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   let trialOutboundCount = 0;
   let monthlyOutboundCount = 0;
   if (isTrialBot) {
-    const allConvos = await getClientConversations(client.client_id).catch(() => []);
-    trialOutboundCount = allConvos.filter((c) => c.direction === 'outgoing').length;
+    // PER-OWNER count, summed across every bot the same Clerk user owns.
+    // Previously this was per-bot (getClientConversations(client.client_id))
+    // which let a single owner reset their 50-message trial cap by
+    // creating a second bot — each bot started its own 0-counter.
+    trialOutboundCount = await getOutboundCountForOwner(client.owner_user_id).catch(() => 0);
   } else {
     monthlyOutboundCount = await getOutboundCountThisMonth(client.client_id).catch(() => 0);
   }
@@ -1082,6 +1086,20 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     await sendWhatsAppMessage(phoneNumberId, customerPhone, finalResponse);
     if (isTrialBot) trialOutboundCount += 1;
 
+    // Atomic post-send counter bump. The earlier read-based quota check
+    // is still authoritative for the current message's gate, but this
+    // counter is the authoritative source for the NEXT message's check
+    // (and for /admin/quota dashboards). On heavy concurrency, two
+    // messages that both passed the read-based gate will both increment
+    // here too — but the next inbound on the same bot will see the true
+    // post-increment value and reject if over cap. Best-effort: never
+    // block reply send on counter errors.
+    try {
+      await incrementUsageAtomic(client.client_id, isTrialBot ? 'lifetime' : monthKey());
+    } catch (err) {
+      console.error('[usage-counter] increment failed (non-fatal):', err);
+    }
+
     // Log outgoing message
     await addConversationMessage({
       timestamp: getISTTimestamp(),
@@ -1667,30 +1685,49 @@ async function handleStaffCommand(
 // the common case (most bots won't have a stuck pending booking at any
 // given moment). Cheap to call on every message.
 
-const STALE_SWEEP_MINUTES = 60;
+// Platform default + per-client override. Each client row may set
+// stale_booking_minutes (clamped 30..240); when null we use the default.
+// We query the global lower bound (30) and filter the rest in JS so the
+// cron + webhook sweep don't have to issue per-client queries.
+const STALE_SWEEP_DEFAULT_MINUTES = 60;
+const STALE_SWEEP_LOWER_BOUND_MINUTES = 30;
+
+function clampStaleMinutes(raw: number | null | undefined): number {
+  if (raw == null || !Number.isFinite(raw)) return STALE_SWEEP_DEFAULT_MINUTES;
+  return Math.max(30, Math.min(240, Math.floor(raw)));
+}
 
 async function sweepStalePendings() {
-  const stale = await getStalePendingBookings(STALE_SWEEP_MINUTES);
+  // Pull every booking older than the absolute floor; per-client cutoffs
+  // are applied below so a client with a 120-minute setting doesn't get
+  // their bookings cancelled at 60.
+  const stale = await getStalePendingBookings(STALE_SWEEP_LOWER_BOUND_MINUTES);
   if (stale.length === 0) return;
+
+  const { getClientById } = await import('@/lib/google-sheets');
+  const now = Date.now();
 
   for (const b of stale) {
     try {
+      const realClient = await getClientById(b.client_id).catch(() => null);
+      const cutoffMinutes = clampStaleMinutes(realClient?.stale_booking_minutes);
+      const ageMinutes = b.created_at ? (now - new Date(b.created_at).getTime()) / 60000 : Infinity;
+      if (ageMinutes < cutoffMinutes) continue; // not yet eligible for THIS client
+
       await cancelBooking(
         b.booking_id,
-        `[AUTO-CANCEL: trainer did not respond within ${STALE_SWEEP_MINUTES} minutes]`
+        `[AUTO-CANCEL: trainer did not respond within ${cutoffMinutes} minutes]`
       );
 
-      const { getClientById } = await import('@/lib/google-sheets');
-      const realClient = await getClientById(b.client_id).catch(() => null);
       if (!realClient?.phone_number_id) continue;
 
       if (b.customer_phone) {
         try {
           const trainerLine = b.service ? ` with ${b.service}` : '';
           const msg =
-            `🙏 Sorry, we couldn't confirm your booking${trainerLine} for ${b.date} at ${b.time_slot} — no response from our side within an hour.\n\n` +
+            `🙏 Sorry, we couldn't confirm your booking${trainerLine} for ${b.date} at ${b.time_slot} — no response from our side within ${cutoffMinutes} minutes.\n\n` +
             `Please reply with another preferred time and we'll set it up.\n\n` +
-            `Hindi: 🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking confirm nahi ho payi (1 ghante mein response nahi mila). Doosra time bhej dijiye, hum set kar denge.`;
+            `Hindi: 🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking confirm nahi ho payi. Doosra time bhej dijiye, hum set kar denge.`;
           await sendWhatsAppMessage(realClient.phone_number_id, b.customer_phone, msg);
         } catch (e) {
           console.error('[stale-sweep] customer-notify failed:', e);
@@ -1706,7 +1743,7 @@ async function sweepStalePendings() {
               `⏰ Booking auto-cancelled\n\n` +
               `Customer: ${b.customer_name || b.customer_phone}\n` +
               `Slot: ${b.date} at ${b.time_slot}\n\n` +
-              `No approve/reject response within ${STALE_SWEEP_MINUTES} minutes — slot was freed automatically. ` +
+              `No approve/reject response within ${cutoffMinutes} minutes — slot was freed automatically. ` +
               `If you still want this booking, ask the customer to rebook.`;
             await sendWhatsAppMessage(realClient.phone_number_id, staff.whatsapp_phone, msg);
           }

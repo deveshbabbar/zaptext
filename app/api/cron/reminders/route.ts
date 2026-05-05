@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBookingsForTomorrow, getDateOffset, getTodayIST } from '@/lib/booking';
 import { getClientById } from '@/lib/google-sheets';
 import { sendWhatsAppTemplate, TEMPLATE_NAMES } from '@/lib/whatsapp-templates';
+import { claimCronRun, finishCronRun } from '@/lib/db/cron-runs';
+
+const CRON_TASK = 'reminders';
+// Reminders run once per evening pipeline (~8pm IST). 12h lockout safely
+// covers the 23h gap until the next intended run.
+const CRON_LOCKOUT_SEC = 12 * 60 * 60;
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -10,50 +16,70 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Idempotency claim — without this a Vercel retry would re-send every
+  // tomorrow-reminder template, which both annoys customers and burns
+  // ~₹0.115 per duplicate UTILITY template.
+  const claim: { claimed: boolean; runId?: string; reason?: string } =
+    await claimCronRun(CRON_TASK, CRON_LOCKOUT_SEC).catch(() => ({ claimed: true }));
+  if (!claim.claimed) {
+    return NextResponse.json({ ok: true, skipped: true, reason: claim.reason });
+  }
+  const runId = claim.runId;
+
   const tomorrow = getDateOffset(getTodayIST(), 1);
   const bookings = await getBookingsForTomorrow(tomorrow);
 
   let smsSent = 0;
   const errors: string[] = [];
 
-  for (const b of bookings) {
-    if (b.reminded) continue;
-    try {
-      const client = await getClientById(b.client_id);
-      if (!client) continue;
-      if (!client.phone_number_id || !b.customer_phone) continue;
+  try {
+    for (const b of bookings) {
+      if (b.reminded) continue;
+      try {
+        const client = await getClientById(b.client_id);
+        if (!client) continue;
+        if (!client.phone_number_id || !b.customer_phone) continue;
 
-      // COMPLIANCE: reminders fire outside the 24h customer-service window,
-      // so MUST use an approved WhatsApp template — never free-form text.
-      // The `booking_reminder` template must exist and be APPROVED in Meta
-      // Business Manager (Category: UTILITY). Expected body:
-      //   "Reminder: your appointment at {{1}} is on {{2}} at {{3}}.
-      //    Reply to this message to reschedule."
-      const result = await sendWhatsAppTemplate(
-        client.phone_number_id,
-        b.customer_phone,
-        TEMPLATE_NAMES.BOOKING_REMINDER,
-        [
-          client.business_name || 'us',
-          b.date,
-          b.time_slot,
-        ]
-      );
-      if (result.success) {
-        smsSent++;
-      } else {
-        errors.push(`Booking ${b.booking_id}: template send failed — ${result.error}`);
+        // COMPLIANCE: reminders fire outside the 24h customer-service window,
+        // so MUST use an approved WhatsApp template — never free-form text.
+        // The `booking_reminder` template must exist and be APPROVED in Meta
+        // Business Manager (Category: UTILITY).
+        const result = await sendWhatsAppTemplate(
+          client.phone_number_id,
+          b.customer_phone,
+          TEMPLATE_NAMES.BOOKING_REMINDER,
+          [
+            client.business_name || 'us',
+            b.date,
+            b.time_slot,
+          ]
+        );
+        if (result.success) {
+          smsSent++;
+        } else {
+          errors.push(`Booking ${b.booking_id}: template send failed — ${result.error}`.slice(0, 200));
+        }
+      } catch (e) {
+        errors.push(`Booking ${b.booking_id} failed: ${String(e).slice(0, 100)}`);
       }
-    } catch (e) {
-      errors.push(`Booking ${b.booking_id} failed: ${e}`);
     }
-  }
 
-  return NextResponse.json({
-    success: true,
-    date: tomorrow,
-    bookingsProcessed: bookings.length,
-    smsSent,
-    errors,
-  });
+    if (runId) await finishCronRun(runId, true, {
+      date: tomorrow,
+      bookingsProcessed: bookings.length,
+      smsSent,
+      errorCount: errors.length,
+    });
+    return NextResponse.json({
+      success: true,
+      date: tomorrow,
+      bookingsProcessed: bookings.length,
+      smsSent,
+      errors: errors.slice(0, 50),
+      errorCount: errors.length,
+    });
+  } catch (err) {
+    if (runId) await finishCronRun(runId, false, { error: String(err).slice(0, 300) }).catch(() => {});
+    throw err;
+  }
 }

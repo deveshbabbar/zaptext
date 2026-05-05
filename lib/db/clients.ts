@@ -49,6 +49,7 @@ function dbRowToClient(row: DbClientRow): ClientRow {
     export_format: (row.export_format === 'json' ? 'json' : 'csv') as 'csv' | 'json',
     contact_number: row.contact_number ?? '',
     opt_in_accepted: row.opt_in_accepted,
+    stale_booking_minutes: row.stale_booking_minutes,
   };
 }
 

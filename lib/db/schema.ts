@@ -50,6 +50,11 @@ export const clients = pgTable(
     export_format: varchar('export_format', { length: 10 }).default('csv'),
     contact_number: varchar('contact_number', { length: 32 }).default(''),
     opt_in_accepted: boolean('opt_in_accepted').notNull().default(false),
+    // Per-bot override for the auto-cancel-pending-booking timeout. NULL =
+    // use the platform default (60 min). Lets a gym with slow-responding
+    // trainers raise this to 120 or 240 without changing global behaviour.
+    // Range guard is enforced at the API boundary (clamp to [30, 240]).
+    stale_booking_minutes: integer('stale_booking_minutes'),
   },
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every
@@ -439,6 +444,70 @@ export const admin_audit_log = pgTable(
     actorIdx: index('admin_audit_log_actor_idx').on(t.actor_user_id),
     targetUserIdx: index('admin_audit_log_target_user_idx').on(t.target_user_id),
     createdIdx: index('admin_audit_log_created_idx').on(t.created_at),
+  })
+);
+
+// ─── usage_counters (atomic quota) ──────────────────────────────────────
+//
+// Replaces the read-then-act pattern in the webhook (count outbound rows
+// → check quota → process → insert). With high concurrency, two messages
+// could BOTH read used=N, BOTH pass the cap check, and BOTH process — so a
+// bot on a 10k/month plan could end the month at 10,002. Atomic counter
+// with INSERT ... ON CONFLICT DO UPDATE ... RETURNING count gives us the
+// post-increment value in one round-trip, eliminating the window.
+//
+// `period_key` is 'YYYY-MM' (UTC) for monthly cycles. Trial bots use
+// 'lifetime' as the period_key — a single row that just keeps growing.
+// `period_start` is a proper timestamptz for human readability and
+// future analytics; the gate uses period_key for equality.
+export const usage_counters = pgTable(
+  'usage_counters',
+  {
+    client_id: text('client_id').notNull(),
+    period_key: varchar('period_key', { length: 16 }).notNull(),
+    count: integer('count').notNull().default(0),
+    period_start: timestamp('period_start', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.client_id, t.period_key] }),
+  })
+);
+
+// ─── cron_runs (idempotency + observability) ───────────────────────────
+//
+// Vercel Cron has retry semantics: if our cron handler times out the next
+// scheduled tick can fire on a fresh lambda WHILE the prior one is still
+// running, leading to duplicate sends (digests, reminders, auto-cancels).
+// Each cron route now records a row here at start, and refuses to re-run
+// the same task if a successful run finished within the lockout window.
+// Doubles as a /admin/cron observability source.
+//
+// Lifecycle:
+//   1. Cron handler reads recent rows for `task`. If any successful run
+//      finished within `lockoutSec`, return early ("already done").
+//   2. Otherwise INSERT a row with started_at = now, ok = false.
+//   3. After processing, UPDATE finished_at + ok + result_json.
+//
+// Columns:
+//   id            synthetic UUID
+//   task          short identifier ('morning-summary', 'reminders', ...)
+//   started_at    when the handler claimed the run
+//   finished_at   nullable until completion
+//   ok            true on clean completion, false until then
+//   result_json   summary blob (counts, errors slice) — capped at 4kB
+export const cron_runs = pgTable(
+  'cron_runs',
+  {
+    id: text('id').primaryKey(),
+    task: varchar('task', { length: 64 }).notNull(),
+    started_at: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finished_at: timestamp('finished_at', { withTimezone: true }),
+    ok: boolean('ok').notNull().default(false),
+    result_json: text('result_json').default(''),
+  },
+  (t) => ({
+    taskStartedIdx: index('cron_runs_task_started_idx').on(t.task, t.started_at),
   })
 );
 

@@ -8,12 +8,13 @@
 // orchestrator stay in lib/booking.ts.
 
 import { v4 as uuid } from 'uuid';
-import { and, asc, eq, lt } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt } from 'drizzle-orm';
 import { db } from './index';
 import {
   bookings as bookingsTable,
   slots as slotsTable,
   date_overrides as dateOverridesTable,
+  clients as clientsTable,
 } from './schema';
 
 // ─── Public types (preserved 1:1 with legacy lib/booking.ts) ───────────
@@ -547,4 +548,53 @@ export async function cancelBooking(bookingId: string, reason?: string): Promise
   }
   await db.update(bookingsTable).set(updates).where(eq(bookingsTable.booking_id, bookingId));
   return true;
+}
+
+// Cascade-cancel every pending_approval booking owned by this Clerk user.
+// Used when a Razorpay refund (or other subscription-revoke event) drops
+// the user's plan: confirmed bookings stay (the customer is supposed to
+// attend) but pending_approval ones can never get approved (feature gates
+// strip the trainer's [APPROVE:] tag downstream), so we free those slots
+// proactively. Returns the count of cancelled rows.
+export async function cancelPendingBookingsForOwner(
+  ownerUserId: string,
+  reason: string
+): Promise<number> {
+  if (!ownerUserId) return 0;
+
+  // Step 1: enumerate the owner's bots so we can scope the booking update.
+  // Using a separate read keeps the UPDATE simple (Drizzle doesn't model
+  // cross-table UPDATE ... FROM ... WHERE cleanly across all dialects).
+  const ownerClients = await db
+    .select({ client_id: clientsTable.client_id })
+    .from(clientsTable)
+    .where(eq(clientsTable.owner_user_id, ownerUserId));
+  if (ownerClients.length === 0) return 0;
+  const clientIds = ownerClients.map((c) => c.client_id);
+
+  // Step 2: pull the rows we're about to cancel so we can tag notes
+  // properly (preserving any existing notes via the same | join the
+  // single-booking cancel uses).
+  const pending = await db
+    .select()
+    .from(bookingsTable)
+    .where(
+      and(
+        inArray(bookingsTable.client_id, clientIds),
+        eq(bookingsTable.status, 'pending_approval')
+      )
+    );
+  if (pending.length === 0) return 0;
+
+  const tag = `[CANCELLED: ${reason.trim().slice(0, 120)}]`;
+  let cancelled = 0;
+  for (const row of pending) {
+    const newNotes = row.notes ? `${row.notes} | ${tag}` : tag;
+    await db
+      .update(bookingsTable)
+      .set({ status: 'cancelled', notes: newNotes })
+      .where(eq(bookingsTable.booking_id, row.booking_id));
+    cancelled += 1;
+  }
+  return cancelled;
 }

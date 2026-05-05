@@ -16,7 +16,7 @@
 import { v4 as uuid } from 'uuid';
 import { and, asc, desc, eq, gte } from 'drizzle-orm';
 import { db } from './index';
-import { conversations as conversationsTable } from './schema';
+import { conversations as conversationsTable, clients as clientsTable } from './schema';
 import type { ConversationRow } from '../types';
 
 type DbConvoRow = typeof conversationsTable.$inferSelect;
@@ -80,6 +80,28 @@ export async function addConversationMessage(msg: ConversationRow): Promise<void
 // difference is at most 5h30m). Used by the webhook to enforce monthly
 // AI-reply caps for paid plans (Starter 2k / Growth 10k / Scale 50k /
 // Enterprise 200k). Trial keeps using lifetime count via getClientConversations.
+// Per-OWNER lifetime outbound count, summed across every bot the owner
+// has. Used by the trial gate so a single Clerk user can't reset their
+// 50-message free trial by spinning up new bots — each new bot used to
+// start its own 0-count at the per-bot getClientConversations check.
+//
+// Implemented as a JOIN so we don't N+1 across getBotsByOwner() and run
+// one count query per bot.
+export async function getOutboundCountForOwner(ownerUserId: string): Promise<number> {
+  if (!ownerUserId) return 0;
+  const rows = await db
+    .select({ id: conversationsTable.id })
+    .from(conversationsTable)
+    .innerJoin(clientsTable, eq(conversationsTable.client_id, clientsTable.client_id))
+    .where(
+      and(
+        eq(clientsTable.owner_user_id, ownerUserId),
+        eq(conversationsTable.direction, 'outgoing')
+      )
+    );
+  return rows.length;
+}
+
 export async function getOutboundCountThisMonth(clientId: string): Promise<number> {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));

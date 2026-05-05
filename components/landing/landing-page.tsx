@@ -266,8 +266,8 @@ const PLAN_ORDER: Array<{ key: keyof typeof PLANS; tag: string }> = [
   { key: "trial", tag: "Try without paying" },
   { key: "starter", tag: "Solo shops, 1 number" },
   { key: "growth", tag: "Multi-location · most popular" },
-  { key: "pro", tag: "Teams that close on chat" },
-  { key: "enterprise", tag: "Chains · white-label" },
+  { key: "scale", tag: "Multi-bot · API access" },
+  { key: "enterprise", tag: "Chains · white-label · SLA" },
 ];
 
 // ─────────────────────────── COMPONENT ───────────────────────────
@@ -1165,7 +1165,7 @@ function Pricing() {
                   )}
                 </div>
                 <ul className="flex flex-col gap-2.5 flex-1 mb-5">
-                  {p.features.map((f, i) => (
+                  {p.featureList.map((f, i) => (
                     <li key={i} className={`flex gap-2 text-[14px] leading-[1.4] ${popular ? "text-white/80" : "text-[var(--ink-2)]"}`}>
                       <span className={`zt-mono flex-shrink-0 ${popular ? "text-[var(--accent)]" : "text-[var(--ink)]"}`}>→</span>
                       {f}

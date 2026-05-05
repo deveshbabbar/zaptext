@@ -5,6 +5,8 @@ import type { ClientConfig } from '@/lib/types';
 import { getClientByPhoneNumberId, getConversationHistory, getClientConversations, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage } from '@/lib/google-sheets';
 import { getWelcomeMenu } from '@/lib/welcome-menu';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
+import { resolvePlanKey } from '@/lib/plans';
+import { canUse } from '@/lib/feature-gates';
 import { generateBotResponse } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
@@ -137,6 +139,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   // calls once the lifetime limit is hit and strip premium tags from AI output.
   const ownerSubscription = await getActiveSubscription(client.owner_user_id).catch(() => null);
   const isTrialBot = !!ownerSubscription && isTrialPlan(ownerSubscription.plan);
+  // Resolved plan key — used by feature-gates below to decide which AI
+  // tags (BOOK / PAY / etc.) are silently stripped before they fire.
+  // Defaults to 'trial' (most restrictive) when no active sub.
+  const planKey = resolvePlanKey(ownerSubscription?.plan);
   let trialOutboundCount = 0;
   if (isTrialBot) {
     const allConvos = await getClientConversations(client.client_id).catch(() => []);
@@ -532,8 +538,19 @@ When a customer wants to book a specific ${roleLabel.singular.toLowerCase()}:
 
     // Trial bots: strip premium tags BEFORE tag processing so booking /
     // payment / order / cancel / stock side effects are never triggered.
-    if (isTrialBot) {
-      aiResponse = aiResponse.replace(/\[(BOOK|PAY|ORDER|CANCEL|STOCK):[^\]]+\]/g, '').trim();
+    // Generalised: per-feature stripping so the same logic enforces every
+    // plan tier — not just trial. AI sometimes ignores instructions and
+    // emits a [BOOK] tag even when told not to; this is the bulletproof
+    // bottom-of-the-stack gate.
+    {
+      const stripTags: string[] = [];
+      if (!canUse(planKey, 'bookings').allowed) stripTags.push('BOOK', 'CANCEL');
+      if (!canUse(planKey, 'payments').allowed) stripTags.push('PAY');
+      if (!canUse(planKey, 'inventory').allowed) stripTags.push('ORDER', 'STOCK');
+      if (stripTags.length > 0) {
+        const re = new RegExp(`\\[(${stripTags.join('|')}):[^\\]]+\\]`, 'g');
+        aiResponse = aiResponse.replace(re, '').trim();
+      }
     }
 
     // Process booking commands from AI response

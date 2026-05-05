@@ -45,7 +45,7 @@ export default function SubscriptionPage() {
   const [processingPlan, setProcessingPlan] = useState<PlanKey | null>(null);
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [selectedMonths, setSelectedMonths] = useState<Record<PlanKey, DurationKey>>({
-    trial: 1, starter: 1, growth: 1, pro: 1, enterprise: 1,
+    trial: 1, starter: 1, growth: 1, scale: 1, enterprise: 1,
   });
   const [trialUsage, setTrialUsage] = useState<{ messagesUsed: number; messagesLimit: number } | null>(null);
   const [startingTrial, setStartingTrial] = useState(false);
@@ -348,7 +348,7 @@ export default function SubscriptionPage() {
                     </div>
                   )}
                   <ul className="flex flex-col gap-1.5 my-3.5 text-[12.5px] list-none p-0 flex-1">
-                    {plan.features.map((f) => (
+                    {plan.featureList.map((f) => (
                       <li key={f} className={`${isCurrent ? 'text-white/80' : 'text-[var(--ink-2)]'}`}>
                         <span className={`zt-mono mr-1 ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--mute)]'}`}>
                           →

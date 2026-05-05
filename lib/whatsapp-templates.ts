@@ -13,9 +13,19 @@
 //   - sendWhatsAppTemplate  sends an APPROVED template to a customer
 //   - pickTemplateLanguage  picks 'en' or 'hi' based on customer's lang
 //
+// META TEMPLATE RULES (learned the hard way):
+//   1. Body MUST NOT start or end with a {{N}} variable. Trailing punctuation
+//      doesn't count — "Booking ID: {{5}}." still ends with a variable.
+//   2. Variable-to-words ratio: each {{N}} needs ~5+ surrounding words, else
+//      Meta returns "Parameters words ratio exceeds limit".
+//   3. AUTHENTICATION-category templates use a DIFFERENT payload shape: no
+//      free-form body text — Meta auto-builds the message and you provide
+//      add_security_recommendation, code_expiration_minutes, and an OTP
+//      copy-button. (Not currently registered; add when OTP login ships.)
+//
 // SETUP (one-time per WABA):
 //   1. Set WHATSAPP_BUSINESS_ACCOUNT_ID in .env
-//   2. Run `pnpm tsx scripts/submit-templates.ts` to submit all to Meta
+//   2. Run `npx tsx scripts/submit-templates.ts` to submit all to Meta
 //   3. Wait 1–24h for approval; check /admin/templates for status
 //   4. Once APPROVED, sendWhatsAppTemplate() will work
 //
@@ -58,18 +68,18 @@ export const TEMPLATE_NAMES = {
   ORDER_DELIVERED: 'order_delivered',
   ORDER_CANCELLED: 'order_cancelled',
 
-  // F. Authentication
-  OTP_LOGIN: 'otp_login',
-
-  // G. Feedback & loyalty
+  // F. Feedback & loyalty
   FEEDBACK_REQUEST: 'feedback_request',
 
-  // H. Membership / renewals
+  // G. Membership / renewals
   MEMBERSHIP_EXPIRING: 'membership_expiring',
   MEMBERSHIP_RENEWED: 'membership_renewed',
 
-  // I. Reports & documents
+  // H. Reports & documents
   DOCUMENT_READY: 'document_ready',
+
+  // (OTP_LOGIN removed for now — AUTHENTICATION category needs a different
+  // payload shape. Add back when OTP-based login actually ships.)
 } as const;
 
 export type TemplateName = typeof TEMPLATE_NAMES[keyof typeof TEMPLATE_NAMES];
@@ -105,12 +115,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Sent to owner when their bot goes live.',
     bodies: {
       en: {
-        body: 'Your WhatsApp bot for {{1}} is now active. Customers messaging this number will be replied to automatically. Manage at {{2}}.',
+        body: 'Hi! Your WhatsApp bot for {{1}} is now active. Customers messaging this number will be replied to automatically. Manage your bot anytime by visiting {{2}} where you can update settings, view chats, and more.',
         variables: ['business_name', 'dashboard_url'],
         example: ['Sharma Tiffin Service', 'https://zaptext.shop/client'],
       },
       hi: {
-        body: '{{1}} ke liye aapka WhatsApp bot ab active hai. Is number par message karne wale customers ko automatic reply milega. Manage karein: {{2}}.',
+        body: 'Aapka WhatsApp bot {{1}} ke liye ab active hai. Is number par message karne wale customers ko automatic reply milega. Bot manage karne ke liye {{2}} par jaayein, jahan settings, chats sab kuch dekh sakte hain.',
         variables: ['business_name', 'dashboard_url'],
         example: ['Sharma Tiffin Service', 'https://zaptext.shop/client'],
       },
@@ -197,12 +207,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Notifies customer of a rescheduled appointment.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your appointment for {{2}} has been rescheduled to {{3}} at {{4}}. Booking ID: {{5}}.',
+        body: 'Hi {{1}}, your appointment for {{2}} has been rescheduled to {{3}} at {{4}}. Your booking ID is {{5}} for reference. We look forward to seeing you then.',
         variables: ['customer_name', 'service', 'new_date', 'new_time', 'booking_id'],
         example: ['Anita', 'Hair Cut', '13 May 2026', '5:00 PM', 'BK-1042'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapka {{2}} ka appointment {{3}} ko {{4}} baje reschedule kar diya gaya hai. Booking ID: {{5}}.',
+        body: 'Namaste {{1}}, aapka {{2}} ka appointment {{3}} ko {{4}} baje reschedule kar diya gaya hai. Booking ID {{5}} reference ke liye save kar lein. Jald milte hain!',
         variables: ['customer_name', 'service', 'new_date', 'new_time', 'booking_id'],
         example: ['Anita', 'Hair Cut', '13 May 2026', '5:00 PM', 'BK-1042'],
       },
@@ -215,12 +225,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Confirms a cancelled booking.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your appointment for {{2}} on {{3}} at {{4}} has been cancelled. Booking ID: {{5}}.',
+        body: 'Hi {{1}}, your appointment for {{2}} on {{3}} at {{4}} has been cancelled. Your booking ID was {{5}} for reference. Reply BOOK if you would like to schedule a new slot.',
         variables: ['customer_name', 'service', 'date', 'time', 'booking_id'],
         example: ['Anita', 'Hair Cut', '12 May 2026', '4:30 PM', 'BK-1042'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapka {{2}} ka appointment {{3}} ko {{4}} baje cancel ho gaya hai. Booking ID: {{5}}.',
+        body: 'Namaste {{1}}, aapka {{2}} ka appointment {{3}} ko {{4}} baje cancel ho gaya hai. Booking ID {{5}} reference ke liye save kar lein. Naya slot book karne ke liye BOOK reply karein.',
         variables: ['customer_name', 'service', 'date', 'time', 'booking_id'],
         example: ['Anita', 'Hair Cut', '12 May 2026', '4:30 PM', 'BK-1042'],
       },
@@ -271,12 +281,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Confirms a shift assignment to staff.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, you are scheduled for the {{2}} shift on {{3}} from {{4}}. Location: {{5}}.',
+        body: 'Hi {{1}}, this is to confirm that you have been scheduled for the {{2}} shift on {{3}} from {{4}}. Please report to the following location: {{5}}. Reply CONFIRM to acknowledge or CHANGE if there is a problem.',
         variables: ['employee_name', 'shift_label', 'date', 'time_range', 'location'],
         example: ['Rohan', 'evening', '12 May 2026', '6:00 PM - 10:00 PM', 'FitZone, Sector 14'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapko {{3}} ko {{2}} shift ({{4}}) di gayi hai. Location: {{5}}.',
+        body: 'Namaste {{1}}, yeh confirm karne ke liye hai ki aapko {{3}} ko {{2}} shift di gayi hai, time {{4}}. Krupya iss location par pahunchein: {{5}}. CONFIRM reply karein acknowledge ke liye ya CHANGE agar koi problem hai.',
         variables: ['employee_name', 'shift_label', 'date', 'time_range', 'location'],
         example: ['Rohan', 'evening', '12 May 2026', '6:00 PM - 10:00 PM', 'FitZone, Sector 14'],
       },
@@ -307,12 +317,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Notifies staff of a cancelled shift.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your {{2}} shift on {{3}} has been cancelled. Reason: {{4}}.',
+        body: 'Hi {{1}}, we wanted to let you know that the {{2}} shift you were scheduled for on {{3}} has been cancelled. The reason given is: {{4}}. We will reach out if a replacement shift becomes available.',
         variables: ['employee_name', 'shift_label', 'date', 'reason'],
         example: ['Rohan', 'evening', '12 May 2026', 'Low bookings'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapki {{3}} ki {{2}} shift cancel kar di gayi hai. Karan: {{4}}.',
+        body: 'Namaste {{1}}, hum aapko inform karna chahte hain ki {{3}} ko aapki {{2}} shift cancel ho gayi hai. Iska karan hai: {{4}}. Agar koi replacement shift available hoti hai toh hum aapko bata denge.',
         variables: ['employee_name', 'shift_label', 'date', 'reason'],
         example: ['Rohan', 'evening', '12 May 2026', 'Low bookings'],
       },
@@ -327,12 +337,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Asks the customer to complete a payment.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your bill for {{2}} is Rs {{3}}. Pay here: {{4}}. Invoice ID: {{5}}.',
+        body: 'Hi {{1}}, the bill for your recent service ({{2}}) comes to Rs {{3}}. You can complete the payment securely at this link: {{4}}. Please save invoice number {{5}} for your records.',
         variables: ['customer_name', 'description', 'amount', 'payment_url', 'invoice_id'],
         example: ['Anita', 'Hair Cut', '450', 'https://rzp.io/i/abc123', 'INV-2046'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapka {{2}} ka bill Rs {{3}} hai. Yahan pay karein: {{4}}. Invoice ID: {{5}}.',
+        body: 'Namaste {{1}}, aapki recent service ({{2}}) ka bill Rs {{3}} hai. Aap iss link par secure payment kar sakte hain: {{4}}. Krupya invoice number {{5}} apne records ke liye save kar lein.',
         variables: ['customer_name', 'description', 'amount', 'payment_url', 'invoice_id'],
         example: ['Anita', 'Hair Cut', '450', 'https://rzp.io/i/abc123', 'INV-2046'],
       },
@@ -345,12 +355,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Confirms a successful payment.',
     bodies: {
       en: {
-        body: 'Thank you {{1}}! We received your payment of Rs {{2}} for {{3}}. Receipt ID: {{4}}.',
+        body: 'Thank you {{1}}! We received your payment of Rs {{2}} for {{3}}. Your receipt ID is {{4}} which you can keep for your records. We appreciate your business!',
         variables: ['customer_name', 'amount', 'description', 'receipt_id'],
         example: ['Anita', '450', 'Hair Cut', 'RCP-9012'],
       },
       hi: {
-        body: 'Dhanyavaad {{1}}! Hume aapka Rs {{2}} ka payment {{3}} ke liye mil gaya. Receipt ID: {{4}}.',
+        body: 'Dhanyavaad {{1}}! Hume aapka Rs {{2}} ka payment {{3}} ke liye mil gaya. Aapka receipt ID hai {{4}} jo aap apne records ke liye save kar sakte hain. Aapke business ke liye shukriya!',
         variables: ['customer_name', 'amount', 'description', 'receipt_id'],
         example: ['Anita', '450', 'Hair Cut', 'RCP-9012'],
       },
@@ -363,12 +373,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Friendly nudge for an overdue payment.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, a payment of Rs {{2}} for {{3}} is pending since {{4}}. Pay here: {{5}}.',
+        body: 'Hi {{1}}, a payment of Rs {{2}} for {{3}} has been pending since {{4}}. You can complete it securely at this link: {{5}}. Reply PAID once done so we can update our records.',
         variables: ['customer_name', 'amount', 'description', 'due_date', 'payment_url'],
         example: ['Anita', '450', 'Hair Cut', '5 May 2026', 'https://rzp.io/i/abc123'],
       },
       hi: {
-        body: 'Namaste {{1}}, Rs {{2}} ka payment {{3}} ke liye {{4}} se pending hai. Yahan pay karein: {{5}}.',
+        body: 'Namaste {{1}}, Rs {{2}} ka payment {{3}} ke liye {{4}} se pending hai. Aap iss link par secure payment kar sakte hain: {{5}}. Payment hone ke baad PAID reply karein taaki hum records update kar sakein.',
         variables: ['customer_name', 'amount', 'description', 'due_date', 'payment_url'],
         example: ['Anita', '450', 'Hair Cut', '5 May 2026', 'https://rzp.io/i/abc123'],
       },
@@ -381,12 +391,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Notifies customer that an invoice is ready.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your invoice {{2}} for Rs {{3}} is ready. View or download: {{4}}.',
+        body: 'Hi {{1}}, your invoice {{2}} for Rs {{3}} is now ready. You can view or download it from this secure link: {{4}}. Please save a copy for your future records.',
         variables: ['customer_name', 'invoice_id', 'amount', 'invoice_url'],
         example: ['Anita', 'INV-2046', '450', 'https://zaptext.shop/inv/2046'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapka invoice {{2}} (Rs {{3}}) tayar hai. Yahan dekhein: {{4}}.',
+        body: 'Namaste {{1}}, aapka invoice number {{2}} (kul Rs {{3}}) ab tayar hai. Yahan se dekhein ya download karein: {{4}}. Krupya apne records ke liye copy save kar lein.',
         variables: ['customer_name', 'invoice_id', 'amount', 'invoice_url'],
         example: ['Anita', 'INV-2046', '450', 'https://zaptext.shop/inv/2046'],
       },
@@ -401,12 +411,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Confirms a placed order.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your order #{{2}} is confirmed. Total: Rs {{3}}. Expected by {{4}}.',
+        body: 'Hi {{1}}, your order #{{2}} has been confirmed. The total amount is Rs {{3}}, and it should arrive by {{4}}. Reply STATUS anytime for the latest delivery updates.',
         variables: ['customer_name', 'order_id', 'total', 'eta'],
         example: ['Anita', '7821', '320', 'Today 8:00 PM'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapka order #{{2}} confirm ho gaya hai. Total: Rs {{3}}. Expected by {{4}}.',
+        body: 'Namaste {{1}}, aapka order #{{2}} confirm ho gaya hai. Total amount Rs {{3}} hai, aur yeh {{4}} tak pahunch jayega. Latest delivery updates ke liye kabhi bhi STATUS reply karein.',
         variables: ['customer_name', 'order_id', 'total', 'eta'],
         example: ['Anita', '7821', '320', 'Aaj 8:00 PM'],
       },
@@ -419,12 +429,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Order out for delivery.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, order #{{2}} is out for delivery and should arrive by {{3}}. Track here: {{4}}.',
+        body: 'Hi {{1}}, your order #{{2}} is now out for delivery and should arrive by {{3}}. You can track its progress live at this link: {{4}}. Reply HELP if you have any concerns.',
         variables: ['customer_name', 'order_id', 'eta', 'tracking_url'],
         example: ['Anita', '7821', '8:00 PM', 'https://zaptext.shop/track/7821'],
       },
       hi: {
-        body: 'Namaste {{1}}, order #{{2}} delivery ke liye nikal chuka hai aur {{3}} tak pahunch jayega. Track karein: {{4}}.',
+        body: 'Namaste {{1}}, aapka order #{{2}} delivery ke liye nikal chuka hai aur {{3}} tak pahunch jayega. Iska live status iss link par track karein: {{4}}. Koi problem ho toh HELP reply karein.',
         variables: ['customer_name', 'order_id', 'eta', 'tracking_url'],
         example: ['Anita', '7821', '8:00 PM', 'https://zaptext.shop/track/7821'],
       },
@@ -455,7 +465,7 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Order cancellation confirmation with refund window.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, order #{{2}} has been cancelled. Any payment will be refunded within {{3}}.',
+        body: 'Hi {{1}}, your order #{{2}} has been cancelled as requested. Any payment that was made will be refunded within {{3}} to the original payment method. Reply HELP if you need assistance.',
         variables: ['customer_name', 'order_id', 'refund_window'],
         example: ['Anita', '7821', '5-7 business days'],
       },
@@ -467,27 +477,7 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     },
   },
 
-  // ─── F. Authentication ──────────────────────────────────────────────
-
-  [TEMPLATE_NAMES.OTP_LOGIN]: {
-    name: TEMPLATE_NAMES.OTP_LOGIN,
-    category: 'AUTHENTICATION',
-    description: 'One-time password for login or verification.',
-    bodies: {
-      en: {
-        body: '{{1}} is your verification code. For your security, do not share this code.',
-        variables: ['otp_code'],
-        example: ['438201'],
-      },
-      hi: {
-        body: '{{1}} aapka verification code hai. Apni surakshaa ke liye yeh code kisi ke saath share na karein.',
-        variables: ['otp_code'],
-        example: ['438201'],
-      },
-    },
-  },
-
-  // ─── G. Feedback ────────────────────────────────────────────────────
+  // ─── F. Feedback ────────────────────────────────────────────────────
 
   [TEMPLATE_NAMES.FEEDBACK_REQUEST]: {
     name: TEMPLATE_NAMES.FEEDBACK_REQUEST,
@@ -507,7 +497,7 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     },
   },
 
-  // ─── H. Membership / renewals ───────────────────────────────────────
+  // ─── G. Membership / renewals ───────────────────────────────────────
 
   [TEMPLATE_NAMES.MEMBERSHIP_EXPIRING]: {
     name: TEMPLATE_NAMES.MEMBERSHIP_EXPIRING,
@@ -515,12 +505,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Reminds member their plan is about to expire.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your {{2}} membership expires on {{3}}. Renew here to avoid interruption: {{4}}.',
+        body: 'Hi {{1}}, your {{2}} membership is set to expire on {{3}}. Renew now to avoid any interruption in service by visiting: {{4}}. Reply HELP if you have any questions.',
         variables: ['customer_name', 'plan_name', 'expiry_date', 'renew_url'],
         example: ['Anita', 'Quarterly Gym', '15 May 2026', 'https://zaptext.shop/renew/abc'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapki {{2}} membership {{3}} ko expire ho rahi hai. Bina rukawat ke renew karne ke liye: {{4}}.',
+        body: 'Namaste {{1}}, aapki {{2}} membership {{3}} ko expire ho rahi hai. Bina rukawat ke service jaari rakhne ke liye yahan renew karein: {{4}}. Koi sawaal ho toh HELP reply karein.',
         variables: ['customer_name', 'plan_name', 'expiry_date', 'renew_url'],
         example: ['Anita', 'Quarterly Gym', '15 May 2026', 'https://zaptext.shop/renew/abc'],
       },
@@ -533,7 +523,7 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Confirms a successful membership renewal.',
     bodies: {
       en: {
-        body: 'Thank you {{1}}! Your {{2}} membership is renewed and valid until {{3}}.',
+        body: 'Thank you {{1}}! Your {{2}} membership has been renewed successfully and is now valid until {{3}}. We appreciate your continued support and look forward to serving you.',
         variables: ['customer_name', 'plan_name', 'new_expiry'],
         example: ['Anita', 'Quarterly Gym', '15 Aug 2026'],
       },
@@ -545,7 +535,7 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     },
   },
 
-  // ─── I. Reports / documents ─────────────────────────────────────────
+  // ─── H. Reports / documents ─────────────────────────────────────────
 
   [TEMPLATE_NAMES.DOCUMENT_READY]: {
     name: TEMPLATE_NAMES.DOCUMENT_READY,
@@ -553,12 +543,12 @@ export const TEMPLATE_DEFINITIONS: Record<TemplateName, TemplateDefinition> = {
     description: 'Notifies customer that a report or document is ready.',
     bodies: {
       en: {
-        body: 'Hi {{1}}, your {{2}} is ready. View or download here: {{3}}.',
+        body: 'Hi {{1}}, your {{2}} is now ready for review. You can view or download it from this secure link: {{3}}. Please save a copy for your future records.',
         variables: ['customer_name', 'document_label', 'document_url'],
         example: ['Anita', 'lab report', 'https://zaptext.shop/doc/abc123'],
       },
       hi: {
-        body: 'Namaste {{1}}, aapka {{2}} tayar hai. Yahan dekhein ya download karein: {{3}}.',
+        body: 'Namaste {{1}}, aapka {{2}} ab review ke liye tayar hai. Yahan se dekhein ya download karein: {{3}}. Krupya apne records ke liye ek copy save kar lein.',
         variables: ['customer_name', 'document_label', 'document_url'],
         example: ['Anita', 'lab report', 'https://zaptext.shop/doc/abc123'],
       },
@@ -665,17 +655,39 @@ export function isWithinCustomerServiceWindow(lastInboundAtMs: number | null): b
 // POST /{WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates endpoint.
 // Reference: https://developers.facebook.com/docs/whatsapp/business-management-api/message-templates
 //
-// Shape:
-//   { name, language, category, components: [{ type:'BODY', text, example:{ body_text:[[...]] } }] }
+// UTILITY/MARKETING shape:
+//   { name, language, category, components:[{ type:'BODY', text, example:{ body_text:[[...]] } }] }
 //
-// AUTHENTICATION-category templates technically support a different shape
-// (zero-touch OTP), but Meta also accepts plain BODY for AUTH so we keep
-// one uniform shape across all templates for simplicity.
+// AUTHENTICATION shape (different — no free-form body):
+//   { name, language, category:'AUTHENTICATION',
+//     components:[
+//       { type:'BODY', add_security_recommendation:true },
+//       { type:'FOOTER', code_expiration_minutes:10 },
+//       { type:'BUTTONS', buttons:[{ type:'OTP', otp_type:'COPY_CODE', text:'Copy code' }] }
+//     ] }
 export function getTemplatePayload(name: TemplateName, language: TemplateLanguage) {
   const def = TEMPLATE_DEFINITIONS[name];
   if (!def) throw new Error(`Unknown template: ${name}`);
   const localized = def.bodies[language];
   if (!localized) throw new Error(`Template ${name} has no ${language} body`);
+
+  // AUTHENTICATION uses a fixed structure — Meta auto-builds the message
+  // body, so the `body` text in our definition is only for documentation.
+  if (def.category === 'AUTHENTICATION') {
+    return {
+      name,
+      language,
+      category: def.category,
+      components: [
+        { type: 'BODY', add_security_recommendation: true },
+        { type: 'FOOTER', code_expiration_minutes: 10 },
+        {
+          type: 'BUTTONS',
+          buttons: [{ type: 'OTP', otp_type: 'COPY_CODE', text: 'Copy code' }],
+        },
+      ],
+    };
+  }
 
   const components: Array<Record<string, unknown>> = [
     {

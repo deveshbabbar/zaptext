@@ -8,10 +8,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Reveal only presence/absence — don't echo actual sender email/name in
+  // case the response leaks into a screenshot or shared log. The admin
+  // can read the literal values from Vercel env settings if needed.
   const envCheck = {
     ZEPTO_API_KEY: process.env.ZEPTO_API_KEY ? 'SET' : 'NOT SET',
-    ZEPTO_SENDER_EMAIL: process.env.ZEPTO_SENDER_EMAIL || 'NOT SET',
-    ZEPTO_SENDER_NAME: process.env.ZEPTO_SENDER_NAME || 'NOT SET',
+    ZEPTO_SENDER_EMAIL: process.env.ZEPTO_SENDER_EMAIL ? 'SET' : 'NOT SET',
+    ZEPTO_SENDER_NAME: process.env.ZEPTO_SENDER_NAME ? 'SET' : 'NOT SET',
   };
 
   if (!process.env.ZEPTO_API_KEY) {
@@ -40,15 +43,21 @@ export async function POST(req: NextRequest) {
       `,
     });
 
-    return NextResponse.json({
-      success: result.success,
-      error: result.error,
-      to,
-      envCheck,
-      hint: result.success
-        ? 'Email sent! Check inbox (including spam folder).'
-        : 'Check Vercel function logs for full ZeptoMail error. Common issues: sender email not verified in ZeptoMail, invalid API key format, daily limit hit, or domain DNS not propagated.',
-    });
+    return NextResponse.json(
+      {
+        success: result.success,
+        error: result.error,
+        to,
+        envCheck,
+        hint: result.success
+          ? 'Email sent! Check inbox (including spam folder).'
+          : 'Check Vercel function logs for full ZeptoMail error. Common issues: sender email not verified in ZeptoMail, invalid API key format, daily limit hit, or domain DNS not propagated.',
+      },
+      // 502 (Bad Gateway from upstream) when ZeptoMail rejects the send,
+      // so uptime monitors and alarm systems treat the test as failing
+      // even though the call to OUR endpoint completed cleanly.
+      { status: result.success ? 200 : 502 }
+    );
   } catch (err) {
     return NextResponse.json({
       success: false,

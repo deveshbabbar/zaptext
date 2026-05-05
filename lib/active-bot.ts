@@ -14,7 +14,10 @@ export async function setActiveBotId(botId: string): Promise<void> {
   store.set(COOKIE_NAME, botId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    // Strict prevents CSRF-style swap attacks where a third-party page
+    // top-level-navigates to a swap endpoint while the user is logged
+    // in. `lax` would still send the cookie on those navigations.
+    sameSite: 'strict',
     path: '/',
     maxAge: 60 * 60 * 24 * 365,
   });

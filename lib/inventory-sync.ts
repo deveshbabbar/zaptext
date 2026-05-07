@@ -155,6 +155,19 @@ export async function syncProductsFromConfig(
         });
       }
       break;
+
+    case 'tiffin':
+      for (const plan of config.plans || []) {
+        if (!plan.name?.trim()) continue;
+        toCreate.push({
+          name: plan.name,
+          price: parsePrice(plan.price),
+          notes: [plan.duration, plan.mealType, plan.foodType, plan.includes].filter(Boolean).join(' · '),
+          category: 'Plans',
+          tracks_stock: false,
+        });
+      }
+      break;
   }
 
   // Deduplicate by normalized name so one sync doesn't upsert the same item twice.

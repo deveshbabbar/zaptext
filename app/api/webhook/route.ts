@@ -12,7 +12,7 @@ import { canUse, checkMessageQuota } from '@/lib/feature-gates';
 import { isCustomerPaused } from '@/lib/db/paused-customers';
 import { markMessageProcessedIfNew } from '@/lib/db/processed-messages';
 import { incrementUsageAtomic, monthKey } from '@/lib/db/usage-counters';
-import { generateBotResponse } from '@/lib/gemini';
+import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; interactiveButtonId?: string; interactiveButtonTitle?: string; interactiveListId?: string; interactiveListTitle?: string }>) {
+async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; audioId?: string; audioMimeType?: string; interactiveButtonId?: string; interactiveButtonTitle?: string; interactiveListId?: string; interactiveListTitle?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
   if (!client) {
@@ -343,6 +343,66 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     if (msg.type === 'image' && msg.imageId) {
       await handlePaymentScreenshot(phoneNumberId, client, customerPhone, msg.imageId, msg.caption || '');
       continue;
+    }
+
+    // Handle voice notes / audio messages — transcribe via Gemini, then
+    // treat the transcript as if the customer typed it. Lets Indian SMB
+    // customers send voice in Hindi/Hinglish/regional languages and the
+    // bot still replies correctly. Falls back to a polite "please type"
+    // message if transcription fails (no GEMINI_API_KEY, network error,
+    // unintelligible audio, etc.).
+    if (msg.type === 'audio' && msg.audioId) {
+      let transcript = '';
+      try {
+        const media = await downloadWhatsAppMedia(msg.audioId);
+        if (media) {
+          transcript = await transcribeAudio(
+            media.base64,
+            msg.audioMimeType || media.mimeType
+          );
+        }
+      } catch (e) {
+        console.error('[webhook] voice-note transcription failed:', e);
+      }
+      if (transcript) {
+        // Substitute the transcript in-place so the existing AI path
+        // downstream sees this exactly like a typed message. The 🎙️
+        // prefix in the stored row lets the operator UI distinguish
+        // voice from typed without us needing a separate message_type.
+        msg.text = transcript;
+        msg.type = 'text';
+        await addConversationMessage({
+          timestamp,
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'incoming',
+          message: `🎙️ ${transcript}`,
+          message_type: 'audio',
+        });
+        // Fall through — the rest of the loop body now handles msg.text
+        // exactly as it would for a typed message.
+      } else {
+        const fallback =
+          'Maaf kijiye, aapka voice note clear nahi suna. Kya aap text mein bhej sakte hain? 🙏';
+        await addConversationMessage({
+          timestamp,
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'incoming',
+          message: '[voice note — transcription failed]',
+          message_type: 'audio',
+        });
+        await sendWhatsAppMessage(phoneNumberId, customerPhone, fallback);
+        await addConversationMessage({
+          timestamp: getISTTimestamp(),
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'outgoing',
+          message: fallback,
+          message_type: 'text',
+        });
+        continue;
+      }
     }
 
     // Handle other non-text messages — but let interactive list-reply
@@ -711,14 +771,41 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     // plan tier — not just trial. AI sometimes ignores instructions and
     // emits a [BOOK] tag even when told not to; this is the bulletproof
     // bottom-of-the-stack gate.
+    //
+    // ALSO: when a paid-feature tag IS stripped, that means the customer
+    // explicitly asked for a feature the owner doesn't have. Fire a
+    // contextual upsell DM to the owner ("your customer just asked to
+    // book — upgrade and the bot will handle it next time"). Strongest
+    // possible upsell — moment of maximum pain, real proof of lost
+    // revenue. Rate-limited per (owner, feature) for 24hr to avoid spam.
     {
       const stripTags: string[] = [];
       if (!canUse(planKey, 'bookings').allowed) stripTags.push('BOOK', 'CANCEL');
       if (!canUse(planKey, 'payments').allowed) stripTags.push('PAY');
       if (!canUse(planKey, 'inventory').allowed) stripTags.push('ORDER', 'STOCK');
       if (stripTags.length > 0) {
-        const re = new RegExp(`\\[(${stripTags.join('|')}):[^\\]]+\\]`, 'g');
-        aiResponse = aiResponse.replace(re, '').trim();
+        // Detect what was actually requested BEFORE stripping, so we can
+        // tell the owner what specifically their bot couldn't handle.
+        const detected = new Set<string>();
+        const detectRe = new RegExp(`\\[(${stripTags.join('|')}):[^\\]]+\\]`, 'g');
+        let match: RegExpExecArray | null;
+        while ((match = detectRe.exec(aiResponse)) !== null) {
+          detected.add(match[1].toUpperCase());
+        }
+        // Strip
+        aiResponse = aiResponse.replace(
+          new RegExp(`\\[(${stripTags.join('|')}):[^\\]]+\\]`, 'g'),
+          ''
+        ).trim();
+        // Fire contextual upsell DM (fire-and-forget, never blocks reply)
+        if (detected.size > 0) {
+          notifyOwnerOfMissedFeature(
+            client,
+            phoneNumberId,
+            Array.from(detected),
+            planKey
+          ).catch((e) => console.error('[upsell-dm] notify failed:', e));
+        }
       }
     }
 
@@ -1113,6 +1200,77 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     // Update analytics
     await updateAnalytics(client.client_id, customerPhone);
   }
+}
+
+// ─── Contextual upsell DM (fires when free-tier bot strips a paid tag) ───
+//
+// Triggered from inside processMessages whenever the AI emitted a
+// [BOOK]/[PAY]/[ORDER] tag that we had to strip because the owner is on
+// a plan that doesn't include the feature. The customer never sees the
+// tag — but the OWNER deserves to know their bot just lost them a real
+// request, and that one upgrade would have captured it.
+//
+// Rate-limited per (owner, category) to 24hr — first time the owner gets
+// the alert is loud and clear, after that it dampens to once per category
+// per day so we don't become noise.
+//
+// Fires only for trial bots; paid plans already have the feature unlocked
+// so the strip wouldn't fire there.
+
+const lastUpsellNotified = new Map<string, number>();
+const UPSELL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+interface ClientForUpsell {
+  client_id: string;
+  business_name: string;
+  contact_number?: string;
+  whatsapp_number: string;
+  type: string;
+  owner_user_id: string;
+}
+
+async function notifyOwnerOfMissedFeature(
+  client: ClientForUpsell,
+  phoneNumberId: string,
+  features: string[],
+  planKey: string
+): Promise<void> {
+  if (planKey !== 'trial') return;
+  const ownerRaw = (client.contact_number?.trim() || client.whatsapp_number).replace(/\D/g, '');
+  if (!ownerRaw || ownerRaw.length < 10) return;
+
+  // Group by feature category — one alert covers BOOK+CANCEL together.
+  let category: 'bookings' | 'payments' | 'inventory';
+  if (features.includes('PAY')) category = 'payments';
+  else if (features.includes('ORDER') || features.includes('STOCK')) category = 'inventory';
+  else category = 'bookings';
+
+  const cooldownKey = `${client.owner_user_id}:${category}`;
+  const last = lastUpsellNotified.get(cooldownKey) || 0;
+  if (Date.now() - last < UPSELL_COOLDOWN_MS) return;
+  lastUpsellNotified.set(cooldownKey, Date.now());
+
+  const verbByCategory: Record<string, string> = {
+    bookings: 'book an appointment',
+    payments: 'send a payment',
+    inventory: 'place an order',
+  };
+  const actionByCategory: Record<string, string> = {
+    bookings: 'book customers automatically',
+    payments: 'send payment links automatically',
+    inventory: 'take orders automatically',
+  };
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://zaptext.io';
+
+  const message =
+    `⚠ ZapText alert\n\n` +
+    `A customer of *${client.business_name}* just asked to ${verbByCategory[category]} — but your Free plan only handles FAQs, so the bot couldn't act on it.\n\n` +
+    `Upgrade to Starter (₹599/mo) and your bot will ${actionByCategory[category]} the next time. ` +
+    `Most owners recover the upgrade cost in their first week.\n\n` +
+    `Upgrade: ${baseUrl}/client/subscription#upgrade\n\n` +
+    `_(One alert per category per day — won't spam.)_`;
+
+  await sendWhatsAppMessage(phoneNumberId, ownerRaw, message);
 }
 
 // ─── Payment screenshot handler ───

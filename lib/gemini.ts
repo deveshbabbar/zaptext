@@ -111,3 +111,113 @@ async function generateWithGemini(
   const result = await chat.sendMessage(newMessage);
   return result.response.text();
 }
+
+// ─── Audio transcription (voice notes) ──────────────────────────────────
+//
+// Indian SMB customers prefer voice notes over typing — especially in
+// regional languages. We support TWO providers with the same priority
+// order as text generation:
+//
+//   1. GROQ_API_KEY      → Groq Whisper (whisper-large-v3) — fast and
+//                          handles Hindi/regional languages well via
+//                          Whisper's multilingual training.
+//   2. GEMINI_API_KEY    → Gemini 2.5 Flash multimodal (inlineData).
+//
+// Output is plain text in the speaker's original language (no
+// translation) so the existing AI reply path can treat it like typed
+// input. WhatsApp voice notes are OGG/Opus — both providers accept
+// this format directly.
+
+const GROQ_WHISPER_MODEL = process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3';
+
+export async function transcribeAudio(
+  base64: string,
+  mimeType: string
+): Promise<string> {
+  if (process.env.GROQ_API_KEY) {
+    return transcribeWithGroq(base64, mimeType);
+  }
+  if (process.env.GEMINI_API_KEY) {
+    return transcribeWithGemini(base64, mimeType);
+  }
+  throw new Error(
+    '[transcribeAudio] No provider key configured. Set GROQ_API_KEY (preferred) or GEMINI_API_KEY for voice-note support.'
+  );
+}
+
+async function transcribeWithGroq(base64: string, mimeType: string): Promise<string> {
+  // Groq's Whisper endpoint is OpenAI-compatible: multipart/form-data
+  // with a `file` field (binary audio) plus `model`. We don't pass
+  // `language` so Whisper auto-detects — it handles Hindi, Hinglish,
+  // Tamil, Telugu, Marathi, Gujarati, Bengali, Punjabi, etc. natively.
+  const buf = Buffer.from(base64, 'base64');
+  const cleanMime = mimeType.split(';')[0].trim() || 'audio/ogg';
+  // Pick a sensible filename extension from the MIME type — Groq uses
+  // it as a hint for the audio decoder. Default to .ogg (WhatsApp voice).
+  const extMap: Record<string, string> = {
+    'audio/ogg': 'ogg',
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/m4a': 'm4a',
+    'audio/wav': 'wav',
+    'audio/webm': 'webm',
+    'audio/aac': 'aac',
+  };
+  const ext = extMap[cleanMime] || 'ogg';
+
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(buf)], { type: cleanMime }), `voice.${ext}`);
+  form.append('model', GROQ_WHISPER_MODEL);
+  // verbose_json gets us a `text` field plus segment metadata; plain
+  // 'json' is fine — we only need text. We don't use 'text' format
+  // because Groq sometimes wraps in extra characters.
+  form.append('response_format', 'json');
+
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`[groq-whisper] ${res.status} ${res.statusText}: ${errText.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { text?: string };
+  const text = (data.text || '').trim();
+  if (!text) {
+    throw new Error('[groq-whisper] empty transcript');
+  }
+  return text;
+}
+
+async function transcribeWithGemini(base64: string, mimeType: string): Promise<string> {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+  // Normalize WhatsApp's "audio/ogg; codecs=opus" to the bare MIME Gemini
+  // accepts. Gemini's audio input wants the base type without parameters.
+  const cleanMime = mimeType.split(';')[0].trim() || 'audio/ogg';
+
+  const result = await model.generateContent([
+    {
+      inlineData: {
+        data: base64,
+        mimeType: cleanMime,
+      },
+    },
+    {
+      text:
+        'Transcribe this audio message verbatim. Return ONLY the transcribed text in the speaker\'s original language ' +
+        '(do NOT translate to English). If the speaker uses Hinglish (Hindi+English mixed), keep it Hinglish. ' +
+        'If pure Hindi, return Devanagari. If pure English, return English. ' +
+        'No prefacing, no commentary, no quotes — just the words.',
+    },
+  ]);
+  const text = result.response.text().trim();
+  if (!text) {
+    throw new Error('[gemini-transcribe] empty transcript');
+  }
+  return text;
+}

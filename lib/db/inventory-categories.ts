@@ -86,6 +86,12 @@ export const VERTICAL_DEFAULT_CATEGORIES: Record<BusinessType, DefaultCategory[]
     { name: 'Listings',     tracks_stock: false, order: 0 },
     { name: 'Project Ads',  tracks_stock: false, order: 1 },
   ],
+  tiffin: [
+    { name: 'Plans',    tracks_stock: false, order: 0 },
+    { name: 'Menu',     tracks_stock: false, order: 1 },
+    { name: 'Add-ons',  tracks_stock: false, order: 2 },
+    { name: 'Combos',   tracks_stock: false, order: 3 },
+  ],
 };
 
 // ─── reads ──────────────────────────────────────────────────────────────

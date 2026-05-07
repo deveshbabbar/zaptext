@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { PLANS } from "@/lib/plans";
+import { PLANS, DURATIONS, type DurationKey } from "@/lib/plans";
+import { ROICalculator } from "@/components/landing/roi-calculator";
+import { WhatsAppDemoWidget } from "@/components/landing/whatsapp-demo-widget";
+import { ReferralCapture } from "@/components/landing/referral-capture";
 
 // ─────────────────────────── DATA ───────────────────────────
 
@@ -275,6 +278,7 @@ const PLAN_ORDER: Array<{ key: keyof typeof PLANS; tag: string }> = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
+      <ReferralCapture />
       <Navbar />
       <Hero />
       <Marquee />
@@ -282,10 +286,12 @@ export default function LandingPage() {
       <HowItWorks />
       <Features />
       <Pricing />
+      <ROICalculator />
       <Testimonial />
       <FAQSection />
       <BigCTA />
       <Footer />
+      <WhatsAppDemoWidget />
     </div>
   );
 }
@@ -1063,7 +1069,11 @@ function FeatCard({
 
 // ─── Pricing ───
 function Pricing() {
-  const [annual, setAnnual] = useState(false);
+  // Three-way duration toggle (1M / 6M / 12M) matches the subscription
+  // page so prospects see exactly the same options before signup as
+  // they do once logged in. Earlier the landing only had Monthly/Annual
+  // which left a gap.
+  const [duration, setDuration] = useState<DurationKey>(1);
   return (
     <section id="pricing" className="py-[110px] bg-[var(--bg-2)] border-y border-[var(--line)]">
       <div className="max-w-[1280px] mx-auto px-7">
@@ -1081,23 +1091,26 @@ function Pricing() {
         />
         <div className="flex items-center justify-between gap-4 flex-wrap mb-7">
           <div className="inline-flex p-1 rounded-full bg-[var(--card)] border border-[var(--line)] text-[13px]">
-            <button
-              onClick={() => setAnnual(false)}
-              className={`rounded-full font-medium ${!annual ? "bg-[var(--ink)] text-[var(--background)]" : "text-[var(--ink-2)]"}`}
-              style={{ padding: "9px 18px" }}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setAnnual(true)}
-              className={`rounded-full font-medium inline-flex items-center gap-1.5 ${annual ? "bg-[var(--ink)] text-[var(--background)]" : "text-[var(--ink-2)]"}`}
-              style={{ padding: "9px 18px" }}
-            >
-              Annual
-              <span className="ml-1.5 px-2 py-[2px] rounded-full bg-[var(--accent)] text-[var(--accent-2)] zt-mono text-[10px] font-bold">
-                -15%
-              </span>
-            </button>
+            {(Object.keys(DURATIONS) as unknown as DurationKey[]).map((m) => {
+              const months = Number(m) as DurationKey;
+              const active = duration === months;
+              const label = months === 1 ? 'Monthly' : months === 6 ? '6 months' : 'Annual';
+              return (
+                <button
+                  key={m}
+                  onClick={() => setDuration(months)}
+                  className={`rounded-full font-medium inline-flex items-center gap-1.5 ${active ? "bg-[var(--ink)] text-[var(--background)]" : "text-[var(--ink-2)]"}`}
+                  style={{ padding: "9px 18px" }}
+                >
+                  {label}
+                  {DURATIONS[months].savingLabel && (
+                    <span className={`ml-1 px-2 py-[2px] rounded-full zt-mono text-[10px] font-bold ${active ? 'bg-[var(--accent)] text-[var(--accent-2)]' : 'bg-[var(--accent)]/20 text-[var(--ink)]'}`}>
+                      {DURATIONS[months].savingLabel}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <div className="zt-mono text-[12px] text-[var(--mute)]">
             All prices in ₹INR · GST extra · billed on razorpay
@@ -1109,7 +1122,11 @@ function Pricing() {
             const p = PLANS[key];
             const popular = key === "growth";
             const isFree = key === "trial";
-            const price = annual ? Math.round(p.price * 0.85) : p.price;
+            // Per-month effective rate at the selected duration. The
+            // multiplier in DURATIONS encodes the discount (e.g. 6mo=5.5x
+            // = ~8% off, 12mo=10x = ~17% off). Card always shows /mo so
+            // prospects can compare straight across durations.
+            const price = Math.round((p.price * DURATIONS[duration].multiplier) / duration);
             return (
               <div
                 key={key}
@@ -1146,7 +1163,7 @@ function Pricing() {
                         {price.toLocaleString("en-IN")}
                       </span>
                       <span className="text-[13px]" style={{ color: popular ? "#ffffff88" : "var(--mute)" }}>
-                        / mo{annual ? " · billed yearly" : ""}
+                        / mo{duration === 12 ? " · billed yearly" : duration === 6 ? " · billed 6-monthly" : ""}
                       </span>
                     </>
                   )}

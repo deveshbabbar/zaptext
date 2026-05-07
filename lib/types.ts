@@ -179,7 +179,39 @@ export interface GymFields extends CommonFields {
   timings: string;
 }
 
-export type BusinessType = 'restaurant' | 'coaching' | 'realestate' | 'salon' | 'd2c' | 'gym';
+// ─── Tiffin Service ───
+// Subscription-style home/cloud-kitchen meal delivery (lunch/dinner dabbas).
+// Distinct from `restaurant`: unit of sale is a recurring plan, not a la
+// carte; menu rotates weekly/monthly rather than being a fixed catalog.
+export interface TiffinPlan {
+  name: string;       // e.g. "Daily Lunch", "Weekly Bachelor Pack", "Monthly Family"
+  duration: string;   // e.g. "1 day", "5 days/week", "30 tiffins"
+  price: string;      // e.g. "₹120/day", "₹2,500/month"
+  includes: string;   // e.g. "4 chapati + 1 sabzi + 1 dal + rice + salad"
+  mealType: string;   // 'lunch' | 'dinner' | 'both'
+  foodType: string;   // 'veg' | 'non-veg' | 'jain' | 'egg-included'
+}
+
+export interface TiffinFields extends CommonFields {
+  type: 'tiffin';
+  serviceName: string;             // brand name e.g. "Sharma Tiffin Centre"
+  cuisineStyle: string;            // "Punjabi home-style", "South Indian", "Gujarati"
+  mealsServed: string[];           // ['lunch', 'dinner']
+  plans: TiffinPlan[];             // subscription plans
+  weeklyMenu: string;              // "Mon: Rajma-Chawal, Tue: Aloo-Paratha..."
+  trialAvailable: boolean;
+  trialDetails: string;            // "First tiffin free / 50% off first day"
+  deliveryAvailable: boolean;
+  deliveryAreas: string[];         // ['Andheri E', 'Goregaon W']
+  deliveryCharges: string;
+  deliveryTimings: string;         // "Lunch: 12-2 PM, Dinner: 8-10 PM"
+  customRequestsAllowed: boolean;  // no-onion/no-garlic/less-spice support
+  paymentCycle: string;            // "weekly", "monthly", "advance"
+  paymentMethods: string[];
+  holidaysClosed: string;          // "Sunday off", "Diwali week"
+}
+
+export type BusinessType = 'restaurant' | 'coaching' | 'realestate' | 'salon' | 'd2c' | 'gym' | 'tiffin';
 
 export type ClientConfig =
   | RestaurantFields
@@ -187,7 +219,8 @@ export type ClientConfig =
   | RealEstateFields
   | SalonFields
   | D2CFields
-  | GymFields;
+  | GymFields
+  | TiffinFields;
 
 // ─── Staff / Team Member Types (generic across all business types) ───
 
@@ -227,6 +260,7 @@ export const STAFF_ROLE_LABELS: Record<string, { singular: string; plural: strin
   restaurant: { singular: 'Staff member', plural: 'Staff',         icon: '👨‍🍳' },
   realestate: { singular: 'Agent',        plural: 'Agents',        icon: '🏠' },
   d2c:        { singular: 'Support rep',  plural: 'Support team',  icon: '🛒' },
+  tiffin:     { singular: 'Cook',         plural: 'Cooks',         icon: '🍱' },
 };
 export const DEFAULT_STAFF_LABEL = { singular: 'Staff member', plural: 'Staff', icon: '👥' };
 

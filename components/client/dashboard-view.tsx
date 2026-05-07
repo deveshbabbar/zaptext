@@ -156,6 +156,23 @@ const TYPE_COPY: Record<BusinessType, DashboardCopy> = {
     scheduleSub: (n) => (n === 0 ? 'No orders yet' : `${n} order${n === 1 ? '' : 's'}`),
     quickLink: { href: '/client/inventory', emoji: '🛍️', label: 'Products' },
   },
+  tiffin: {
+    heroTitle: (
+      <>
+        Subscriptions filling up <span className="zt-serif">all day</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — taking dabba orders and answering menu queries.
+      </>
+    ),
+    todayLabel: "Today's tiffins",
+    scheduleTitle: "Today's deliveries",
+    scheduleEmpty: 'No deliveries scheduled yet.',
+    scheduleSub: (n) => (n === 0 ? 'No deliveries yet' : `${n} tiffin${n === 1 ? '' : 's'} out`),
+    quickLink: { href: '/client/inventory', emoji: '🍱', label: 'Plans' },
+  },
 };
 
 interface Stats {

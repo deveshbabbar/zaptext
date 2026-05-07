@@ -4,7 +4,8 @@ import { BotSwitcher } from '@/components/client/bot-switcher';
 import { SidebarNav } from '@/components/client/sidebar-nav';
 import { BotContextCard } from '@/components/client/bot-context-card';
 import { getActiveSubscription } from '@/lib/subscription';
-import { PLANS } from '@/lib/plans';
+import { PLANS, TRIAL_MESSAGE_LIMIT, isTrialPlan } from '@/lib/plans';
+import { getOutboundCountForOwner } from '@/lib/db/conversations';
 import Link from 'next/link';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
 
@@ -17,6 +18,9 @@ export default async function ClientLayout({ children }: { children: React.React
   let daysRemaining = 0;
   let expiryWarning = false;
   let hasActive = false;
+  let isTrial = false;
+  let trialUsed = 0;
+  let trialCapHit = false;
 
   try {
     const sub = await getActiveSubscription(user.userId);
@@ -25,14 +29,27 @@ export default async function ClientLayout({ children }: { children: React.React
       const plan = PLANS[sub.plan];
       planName = plan?.name || sub.plan;
       planPrice = plan?.price || null;
-      const start = new Date(sub.startDate).getTime();
-      const end = new Date(sub.endDate).getTime();
-      const now = Date.now();
-      const total = end - start;
-      const elapsed = now - start;
-      usagePercent = Math.min(Math.max(Math.round((elapsed / total) * 100), 0), 100);
-      daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
-      expiryWarning = daysRemaining <= 5;
+      isTrial = isTrialPlan(sub.plan);
+      if (isTrial) {
+        // For the free tier we don't show time-based progress (it's
+        // effectively forever) — show usage of the 50-message lifetime
+        // cap instead, since that's the real cap that matters.
+        trialUsed = await getOutboundCountForOwner(user.userId).catch(() => 0);
+        usagePercent = Math.min(
+          Math.round((trialUsed / TRIAL_MESSAGE_LIMIT) * 100),
+          100
+        );
+        trialCapHit = trialUsed >= TRIAL_MESSAGE_LIMIT;
+      } else {
+        const start = new Date(sub.startDate).getTime();
+        const end = new Date(sub.endDate).getTime();
+        const now = Date.now();
+        const total = end - start;
+        const elapsed = now - start;
+        usagePercent = Math.min(Math.max(Math.round((elapsed / total) * 100), 0), 100);
+        daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+        expiryWarning = daysRemaining <= 5;
+      }
     }
   } catch {
     // ignore
@@ -81,36 +98,56 @@ export default async function ClientLayout({ children }: { children: React.React
           }}
         >
           <div className="flex justify-between text-[12px]">
-            <b className={`${hasActive ? 'text-[var(--accent)]' : 'text-[#ffb54a]'} tracking-[-0.01em]`}>
-              {hasActive ? `${planName}${planPrice ? ` · ₹${planPrice.toLocaleString('en-IN')}/mo` : ''}` : 'No active plan'}
+            <b className={`${hasActive ? (isTrial ? 'text-[#ffb54a]' : 'text-[var(--accent)]') : 'text-[#ffb54a]'} tracking-[-0.01em]`}>
+              {hasActive
+                ? isTrial
+                  ? 'Free'
+                  : `${planName}${planPrice ? ` · ₹${planPrice.toLocaleString('en-IN')}/mo` : ''}`
+                : 'No active plan'}
             </b>
             <Link
               href="/client/subscription"
-              className={`${hasActive ? 'text-[var(--accent)] border-[var(--accent)]' : 'text-[#ffb54a] border-[#ffb54a]'} font-semibold text-[11px] border-b`}
+              className={`${hasActive && !isTrial ? 'text-[var(--accent)] border-[var(--accent)]' : 'text-[#ffb54a] border-[#ffb54a]'} font-semibold text-[11px] border-b`}
             >
-              {hasActive ? 'Manage' : 'Subscribe'}
+              {hasActive ? (isTrial ? 'Upgrade now' : 'Manage') : 'Subscribe'}
             </Link>
           </div>
           {hasActive ? (
-            <>
-              <div className={`h-[3px] rounded-[3px] mt-2 mb-1.5 overflow-hidden ${expiryWarning ? 'bg-red-500/20' : 'bg-white/10'}`}>
-                <i
-                  className={`block h-full ${expiryWarning ? 'bg-red-500' : 'bg-[var(--accent)]'}`}
-                  style={{ width: `${usagePercent}%` }}
-                />
-              </div>
-              <div className={`text-[10.5px] zt-mono ${expiryWarning ? 'text-red-400 font-semibold' : 'text-white/55'}`}>
-                {expiryWarning
-                  ? `⚠ ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left`
-                  : `${daysRemaining} days left · Active`}
-              </div>
-            </>
+            isTrial ? (
+              <>
+                <div className={`h-[3px] rounded-[3px] mt-2 mb-1.5 overflow-hidden ${trialCapHit ? 'bg-red-500/20' : 'bg-white/10'}`}>
+                  <i
+                    className={`block h-full ${trialCapHit ? 'bg-red-500' : 'bg-[#ffb54a]'}`}
+                    style={{ width: `${usagePercent}%` }}
+                  />
+                </div>
+                <div className={`text-[10.5px] zt-mono ${trialCapHit ? 'text-red-400 font-semibold' : 'text-white/55'}`}>
+                  {trialCapHit
+                    ? `⚠ Free cap used — upgrade to keep replying`
+                    : `${trialUsed} / ${TRIAL_MESSAGE_LIMIT} free replies used`}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`h-[3px] rounded-[3px] mt-2 mb-1.5 overflow-hidden ${expiryWarning ? 'bg-red-500/20' : 'bg-white/10'}`}>
+                  <i
+                    className={`block h-full ${expiryWarning ? 'bg-red-500' : 'bg-[var(--accent)]'}`}
+                    style={{ width: `${usagePercent}%` }}
+                  />
+                </div>
+                <div className={`text-[10.5px] zt-mono ${expiryWarning ? 'text-red-400 font-semibold' : 'text-white/55'}`}>
+                  {expiryWarning
+                    ? `⚠ ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left`
+                    : `${daysRemaining} days left · Active`}
+                </div>
+              </>
+            )
           ) : (
             <div className="text-[10.5px] text-[#ffb54a] mt-1">Subscribe to create bots</div>
           )}
         </div>
 
-        <SidebarNav />
+        <SidebarNav isTrial={isTrial} />
 
         <div className="mt-auto pt-3 border-t border-white/10 flex items-center gap-2.5">
           <div className="w-[34px] h-[34px] rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[13px]">

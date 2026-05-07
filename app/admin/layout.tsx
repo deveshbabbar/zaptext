@@ -53,6 +53,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <SideSec>Observability</SideSec>
         <nav className="flex flex-col gap-px">
           <SideLink href="/admin/health" icon="🩺" label="Platform health" />
+          <SideLink href="/admin/compliance" icon="🛡️" label="Compliance" />
           <SideLink href="/admin/email-log" icon="📧" label="Email log" />
           <SideLink href="/admin/audit-log" icon="📜" label="Audit log" />
         </nav>

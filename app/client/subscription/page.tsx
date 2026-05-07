@@ -44,9 +44,11 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
   const [processingPlan, setProcessingPlan] = useState<PlanKey | null>(null);
   const [razorpayReady, setRazorpayReady] = useState(false);
-  const [selectedMonths, setSelectedMonths] = useState<Record<PlanKey, DurationKey>>({
-    trial: 1, starter: 1, growth: 1, scale: 1, enterprise: 1,
-  });
+  // Single duration selector applies to every paid plan card. Previously
+  // each plan tracked its own duration which made it possible to compare
+  // Starter at 1M against Growth at 12M — confusing. User explicitly
+  // asked for one selector at the top driving all cards together.
+  const [selectedDuration, setSelectedDuration] = useState<DurationKey>(1);
   const [trialUsage, setTrialUsage] = useState<{ messagesUsed: number; messagesLimit: number } | null>(null);
   const [startingTrial, setStartingTrial] = useState(false);
 
@@ -265,7 +267,42 @@ export default function SubscriptionPage() {
         )}
 
         <div>
-          <MonoLabel className="mb-4">{currentSub ? '// Upgrade your plan' : '// Choose a plan'}</MonoLabel>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <MonoLabel className="m-0">{currentSub ? '// Upgrade your plan' : '// Choose a plan'}</MonoLabel>
+            {/* Global duration selector — drives all paid plan cards together. */}
+            <div
+              className="inline-flex rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-1"
+              role="tablist"
+              aria-label="Billing duration"
+            >
+              {(Object.keys(DURATIONS) as unknown as DurationKey[]).map((m) => {
+                const months = Number(m) as DurationKey;
+                const active = selectedDuration === months;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setSelectedDuration(months)}
+                    className={`flex flex-col items-center justify-center rounded-[7px] text-[12px] font-semibold transition ${
+                      active
+                        ? 'bg-[var(--ink)] text-[var(--background)]'
+                        : 'text-[var(--ink)] hover:bg-[var(--line)]/40'
+                    }`}
+                    style={{ padding: '7px 14px', minWidth: 70 }}
+                  >
+                    <span>{DURATIONS[months].label}</span>
+                    {DURATIONS[months].savingLabel && (
+                      <span className="text-[10px] opacity-80 mt-0.5">
+                        {DURATIONS[months].savingLabel}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
             {(Object.entries(PLANS) as [PlanKey, (typeof PLANS)[PlanKey]][])
               .map(([key, plan]) => {
@@ -311,42 +348,14 @@ export default function SubscriptionPage() {
                       <>
                         <span className="text-[36px] font-bold tracking-[-0.03em] leading-none">
                           <span className="zt-serif text-[0.7em]">₹</span>
-                          {computePlanPrice(key, selectedMonths[key]).toLocaleString('en-IN')}
+                          {computePlanPrice(key, selectedDuration).toLocaleString('en-IN')}
                         </span>
                         <span className={`text-[12px] ${isCurrent ? 'text-white/55' : 'text-[var(--mute)]'}`}>
-                          / {DURATIONS[selectedMonths[key]].label}
+                          / {DURATIONS[selectedDuration].label}
                         </span>
                       </>
                     )}
                   </div>
-                  {!isCurrent && !isFree && (
-                    <div className="flex gap-1 mt-2">
-                      {(Object.keys(DURATIONS) as unknown as DurationKey[]).map((m) => {
-                        const months = Number(m) as DurationKey;
-                        const active = selectedMonths[key] === months;
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setSelectedMonths((prev) => ({ ...prev, [key]: months }))}
-                            className={`flex-1 rounded-[8px] border text-[11px] font-semibold transition ${
-                              active
-                                ? 'bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]'
-                                : 'bg-[var(--card)] border-[var(--line)] hover:border-[var(--ink)]'
-                            }`}
-                            style={{ padding: '6px 4px' }}
-                          >
-                            {months}M
-                            {DURATIONS[months].savingLabel && (
-                              <div className="text-[9px] opacity-75 mt-0.5">
-                                {DURATIONS[months].savingLabel}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
                   <ul className="flex flex-col gap-1.5 my-3.5 text-[12.5px] list-none p-0 flex-1">
                     {plan.featureList.map((f) => (
                       <li key={f} className={`${isCurrent ? 'text-white/80' : 'text-[var(--ink-2)]'}`}>
@@ -380,12 +389,12 @@ export default function SubscriptionPage() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleSubscribe(key, selectedMonths[key])}
+                      onClick={() => handleSubscribe(key, selectedDuration)}
                       disabled={processingPlan === key}
                       className="text-center rounded-[10px] border border-[var(--ink)] font-semibold text-[12.5px] hover:bg-[var(--ink)] hover:text-[var(--background)] disabled:opacity-60"
                       style={{ padding: 10 }}
                     >
-                      {processingPlan === key ? 'Processing…' : `Subscribe · ${DURATIONS[selectedMonths[key]].label}`}
+                      {processingPlan === key ? 'Processing…' : `Subscribe · ${DURATIONS[selectedDuration].label}`}
                     </button>
                   )}
                 </div>

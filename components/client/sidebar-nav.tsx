@@ -11,6 +11,13 @@ import { usePathname } from 'next/navigation';
 // /client/staff/123 both light up the "My Team" item without per-route
 // config. The active style uses the accent color + a left bar so the
 // current section reads at a glance even when the sidebar is busy.
+//
+// Plan-gating (Option B): when `isTrial` is true and an item's href is in
+// `LOCKED_FOR_TRIAL`, the item renders with a 🔒 badge, dims the colour,
+// and rewrites the link target to /client/subscription so a click drives
+// the upsell instead of landing on a useless configuration page. The
+// matching API write routes still hard-block these features at the
+// server (defence in depth) — this is just the UX/upsell layer.
 
 interface NavItem {
   href: string;
@@ -49,12 +56,28 @@ const SECTIONS: NavSection[] = [
   },
 ];
 
+// Pages whose underlying feature isn't included in the Free plan (per
+// PLANS.trial.features in lib/plans.ts: bookings/payments/inventory/
+// staff_management = false). Availability + Calendar are listed because
+// they only make sense alongside Bookings.
+const LOCKED_FOR_TRIAL: ReadonlySet<string> = new Set([
+  '/client/bookings',
+  '/client/inventory',
+  '/client/staff',
+  '/client/availability',
+  '/client/calendar',
+]);
+
 function isActive(currentPath: string, href: string): boolean {
   if (currentPath === href) return true;
   return currentPath.startsWith(`${href}/`);
 }
 
-export function SidebarNav() {
+interface SidebarNavProps {
+  isTrial?: boolean;
+}
+
+export function SidebarNav({ isTrial = false }: SidebarNavProps) {
   const pathname = usePathname() || '';
   return (
     <>
@@ -69,32 +92,46 @@ export function SidebarNav() {
           <nav className="flex flex-col gap-px">
             {section.items.map((item) => {
               const active = isActive(pathname, item.href);
+              const locked = isTrial && LOCKED_FOR_TRIAL.has(item.href);
+              const targetHref = locked ? '/client/subscription#upgrade' : item.href;
+              const colourCls = locked
+                ? 'text-white/35 hover:text-white/55 hover:bg-white/5'
+                : active
+                ? 'text-white font-semibold'
+                : 'text-white/65 hover:text-white hover:bg-white/5';
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
-                  className={`relative flex items-center gap-2.5 rounded-[9px] transition-all font-medium text-[13.5px] ${
-                    active
-                      ? 'text-white font-semibold'
-                      : 'text-white/65 hover:text-white hover:bg-white/5'
-                  }`}
+                  href={targetHref}
+                  title={locked ? 'Available on Starter (₹599/mo). Click to upgrade.' : undefined}
+                  className={`relative flex items-center gap-2.5 rounded-[9px] transition-all font-medium text-[13.5px] ${colourCls}`}
                   style={{
                     padding: '9px 10px',
-                    background: active
-                      ? 'color-mix(in oklab, var(--accent) 16%, transparent)'
-                      : undefined,
+                    background:
+                      !locked && active
+                        ? 'color-mix(in oklab, var(--accent) 16%, transparent)'
+                        : undefined,
                   }}
                   aria-current={active ? 'page' : undefined}
+                  aria-disabled={locked || undefined}
                 >
-                  {/* Left bar accent for the active item */}
-                  {active && (
+                  {/* Left bar accent for the active item (paid only) */}
+                  {!locked && active && (
                     <span
                       className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] rounded-r-full bg-[var(--accent)]"
                       aria-hidden="true"
                     />
                   )}
                   <span className="w-4 text-center text-[13px]">{item.icon}</span>
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {locked && (
+                    <span
+                      className="text-[11px] text-[#ffb54a]"
+                      aria-label="Upgrade required"
+                    >
+                      🔒
+                    </span>
+                  )}
                 </Link>
               );
             })}

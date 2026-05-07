@@ -22,6 +22,7 @@ export function TypeFieldsForm({ type, data, onChange }: TypeFieldsProps) {
     case 'salon': return <SalonForm data={data} onChange={onChange} />;
     case 'd2c': return <D2CForm data={data} onChange={onChange} />;
     case 'gym': return <GymForm data={data} onChange={onChange} />;
+    case 'tiffin': return <TiffinForm data={data} onChange={onChange} />;
   }
 }
 
@@ -587,6 +588,110 @@ function GymForm({ data, onChange }: { data: Record<string, unknown>; onChange: 
             <div><Label>Duration</Label><Input placeholder="1 month" value={item.duration} onChange={(e) => update('duration', e.target.value)} /></div>
             <div><Label>Price</Label><Input placeholder="Rs.2,000" value={item.price} onChange={(e) => update('price', e.target.value)} /></div>
             <div><Label>Includes</Label><Input placeholder="Gym access + 1 class/day" value={item.includes} onChange={(e) => update('includes', e.target.value)} /></div>
+          </div>
+        )}
+      />
+    </div>
+  );
+}
+
+// ─── Tiffin Form ───
+function TiffinForm({ data, onChange }: { data: Record<string, unknown>; onChange: (f: string, v: unknown) => void }) {
+  const plans = (data.plans as Array<Record<string, string>>) || [{ name: '', duration: '', price: '', includes: '', mealType: 'lunch', foodType: 'veg' }];
+  const mealsServed = (data.mealsServed as string[]) || ['lunch'];
+  const deliveryAreas = (data.deliveryAreas as string[]) || [];
+  const paymentMethods = (data.paymentMethods as string[]) || ['UPI', 'Cash'];
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold border-b border-border pb-2">Tiffin Service Details</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Service Name *</Label>
+          <Input placeholder="Sharma Tiffin Centre" value={(data.serviceName as string) || ''} onChange={(e) => onChange('serviceName', e.target.value)} />
+        </div>
+        <div>
+          <Label>Cuisine Style *</Label>
+          <Input placeholder="Punjabi home-style / South Indian / Gujarati" value={(data.cuisineStyle as string) || ''} onChange={(e) => onChange('cuisineStyle', e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <Label>Meals Served (comma-separated)</Label>
+        <Input placeholder="lunch, dinner" value={mealsServed.join(', ')} onChange={(e) => onChange('mealsServed', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
+        <p className="text-[10px] text-muted-foreground mt-1">Common values: lunch, dinner, breakfast</p>
+      </div>
+      <div>
+        <Label>Weekly Menu (rotation)</Label>
+        <Textarea placeholder="Mon: Rajma-Chawal&#10;Tue: Aloo-Paratha&#10;Wed: Chole-Bhature..." value={(data.weeklyMenu as string) || ''} onChange={(e) => onChange('weeklyMenu', e.target.value)} rows={5} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex items-center gap-3">
+          <Switch checked={(data.trialAvailable as boolean) ?? true} onCheckedChange={(v) => onChange('trialAvailable', v)} />
+          <Label>Trial Available</Label>
+        </div>
+        <div>
+          <Label>Trial Details</Label>
+          <Input placeholder="First tiffin free / 50% off first day" value={(data.trialDetails as string) || ''} onChange={(e) => onChange('trialDetails', e.target.value)} />
+        </div>
+      </div>
+
+      <h3 className="text-lg font-semibold border-b border-border pb-2">Delivery</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex items-center gap-3">
+          <Switch checked={(data.deliveryAvailable as boolean) ?? true} onCheckedChange={(v) => onChange('deliveryAvailable', v)} />
+          <Label>Delivery Available</Label>
+        </div>
+        <div>
+          <Label>Delivery Charges</Label>
+          <Input placeholder="Rs.20 per tiffin / Free above Rs.500" value={(data.deliveryCharges as string) || ''} onChange={(e) => onChange('deliveryCharges', e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <Label>Delivery Areas (comma-separated)</Label>
+        <Input placeholder="Andheri E, Goregaon W, Powai" value={deliveryAreas.join(', ')} onChange={(e) => onChange('deliveryAreas', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
+      </div>
+      <div>
+        <Label>Delivery Timings</Label>
+        <Input placeholder="Lunch: 12-2 PM, Dinner: 8-10 PM" value={(data.deliveryTimings as string) || ''} onChange={(e) => onChange('deliveryTimings', e.target.value)} />
+      </div>
+
+      <h3 className="text-lg font-semibold border-b border-border pb-2">Customization & Payment</h3>
+      <div className="flex items-center gap-3">
+        <Switch checked={(data.customRequestsAllowed as boolean) ?? true} onCheckedChange={(v) => onChange('customRequestsAllowed', v)} />
+        <Label>Custom Requests Allowed (no-onion / no-garlic / Jain / less-spicy)</Label>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Payment Cycle</Label>
+          <Input placeholder="weekly / monthly / advance" value={(data.paymentCycle as string) || ''} onChange={(e) => onChange('paymentCycle', e.target.value)} />
+        </div>
+        <div>
+          <Label>Payment Methods (comma-separated)</Label>
+          <Input placeholder="UPI, Cash, Card" value={paymentMethods.join(', ')} onChange={(e) => onChange('paymentMethods', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
+        </div>
+      </div>
+      <div>
+        <Label>Holidays / Off-Days</Label>
+        <Input placeholder="Sunday off / Diwali week closed" value={(data.holidaysClosed as string) || ''} onChange={(e) => onChange('holidaysClosed', e.target.value)} />
+      </div>
+
+      <h3 className="text-lg font-semibold border-b border-border pb-2">Subscription Plans</h3>
+      <DynamicList
+        items={plans}
+        onChange={(items) => onChange('plans', items)}
+        newItem={() => ({ name: '', duration: '', price: '', includes: '', mealType: 'lunch', foodType: 'veg' })}
+        addLabel="Add Plan"
+        renderItem={(item, _, update) => (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Plan Name</Label><Input placeholder="Monthly Lunch" value={item.name} onChange={(e) => update('name', e.target.value)} /></div>
+              <div><Label>Duration</Label><Input placeholder="30 tiffins / 1 month" value={item.duration} onChange={(e) => update('duration', e.target.value)} /></div>
+              <div><Label>Price</Label><Input placeholder="Rs.2,500" value={item.price} onChange={(e) => update('price', e.target.value)} /></div>
+              <div><Label>Meal Type</Label><Input placeholder="lunch / dinner / both" value={item.mealType} onChange={(e) => update('mealType', e.target.value)} /></div>
+              <div><Label>Food Type</Label><Input placeholder="veg / non-veg / jain / egg-included" value={item.foodType} onChange={(e) => update('foodType', e.target.value)} /></div>
+            </div>
+            <div><Label>Includes</Label><Input placeholder="4 chapati + 1 sabzi + 1 dal + rice + salad" value={item.includes} onChange={(e) => update('includes', e.target.value)} /></div>
           </div>
         )}
       />

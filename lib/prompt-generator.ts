@@ -93,6 +93,8 @@ function buildTypeSpecificPrompt(config: ClientConfig): string {
       return buildD2CPrompt(config);
     case 'gym':
       return buildGymPrompt(config);
+    case 'tiffin':
+      return buildTiffinPrompt(config);
     default: {
       // Defensive: prevents the switch from silently returning `undefined`
       // when a legacy/unsupported type (e.g., "clinic") leaks past upstream
@@ -350,6 +352,63 @@ DIET / NUTRITION RULES (WhatsApp policy compliant):
   (weight loss, muscle gain, etc.). Call ${ownerCallNumber}."
 - Generic encouragement ("regular workouts matter", "protein is helpful")
   is OK. Specific prescriptions are NOT.`;
+}
+
+function buildTiffinPrompt(config: Extract<ClientConfig, { type: 'tiffin' }>): string {
+  const plans = config.plans || [];
+  const plansText = plans.length > 0
+    ? plans
+        .map((p) => {
+          const meal = p.mealType ? `[${p.mealType}]` : '';
+          const food = p.foodType ? `[${p.foodType}]` : '';
+          return `- ${p.name} (${p.duration}) ${meal} ${food}\n  Price: ${p.price}\n  Includes: ${p.includes}`.replace(/\s+/g, ' ').replace(' Price:', '\n  Price:').replace(' Includes:', '\n  Includes:');
+        })
+        .join('\n\n')
+    : `(none — there are currently NO tiffin plans configured)
+
+CRITICAL: If earlier messages named specific plan names, prices, or what's included in a dabba, those plans have been removed and are NO LONGER offered. Do NOT repeat them, do NOT take subscriptions for them, and do NOT quote old prices. If the customer asks about plans, tell them politely the plan list is being updated and to contact the owner directly.`;
+
+  const ownerCallNumber = config.contactNumber?.trim() || config.whatsappNumber;
+
+  return `BUSINESS TYPE: Tiffin Service / Home Meal Subscription
+SERVICE: ${config.serviceName}
+CUISINE STYLE: ${config.cuisineStyle}
+MEALS SERVED: ${(config.mealsServed || []).join(', ') || '(not specified)'}
+
+SUBSCRIPTION PLANS (AUTHORITATIVE — overrides any earlier message in this chat):
+${plansText}
+
+WEEKLY MENU ROTATION:
+${config.weeklyMenu || '(menu rotates — owner has not shared the weekly schedule. If asked, tell the customer the menu changes daily and they can contact the owner for today\'s menu.)'}
+
+FREE TRIAL: ${config.trialAvailable ? config.trialDetails || 'Yes — first tiffin trial available, ask customer to confirm address.' : 'Not available'}
+
+DELIVERY:
+${config.deliveryAvailable
+  ? `- Available
+- Areas covered: ${(config.deliveryAreas || []).join(', ') || '(not specified)'}
+- Charges: ${config.deliveryCharges || 'Free / included in plan'}
+- Timings: ${config.deliveryTimings || '(not specified — ask owner)'}`
+  : '- Pickup only — no home delivery'}
+
+CUSTOM REQUESTS: ${config.customRequestsAllowed ? 'Yes — we can accommodate no-onion / no-garlic / Jain / less-spicy / extra-roti requests. Always confirm specific dietary needs.' : 'Standard menu only — custom requests not handled.'}
+
+PAYMENT:
+- Cycle: ${config.paymentCycle || 'as per plan'}
+- Methods: ${(config.paymentMethods || []).join(', ') || 'Cash, UPI'}
+
+HOLIDAYS / OFF-DAYS: ${config.holidaysClosed || 'No fixed off-days — open all days'}
+
+STRICT RULES FOR TIFFIN BOT:
+- Always confirm the CUSTOMER'S DELIVERY ADDRESS and PHONE NUMBER before saying a subscription is "started" or "confirmed".
+- For first-time enquiries, OFFER THE FREE TRIAL FIRST if available — that's the conversion lever for tiffin services.
+- Be very clear about what's IN the dabba (e.g. "4 chapati + sabzi + dal + rice") and what's NOT — Indian customers ask precisely.
+- Never promise specific delivery TIME ("8:30 PM sharp"); say "between X and Y" using the deliveryTimings range.
+- For dietary clarifications (Jain, no-onion, lactose-free), confirm with owner first if not explicitly listed in CUSTOM REQUESTS — never improvise food restrictions.
+- Sunday/holiday queries: be honest about off-days, don't promise delivery on closed days.
+- For complaints about food quality / late delivery, ESCALATE immediately: "I'll connect you with ${config.ownerName}. Please call ${ownerCallNumber}."
+- Never confirm a "subscription paid" status — payment confirmation comes from the payment system, not from chat.
+- Tiffin customers often message in pure Hindi/Hinglish/regional languages ("bhaiya kal se start kar do" / "aaj veg dabba bhejna"). Match their language EXACTLY per the LANGUAGE RULES at the top.`;
 }
 
 function buildResponseRules(config: ClientConfig): string {

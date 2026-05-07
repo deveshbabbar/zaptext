@@ -295,6 +295,13 @@ export interface WhatsAppMessage {
   timestamp: string;
   imageId?: string;
   caption?: string;
+  // Set when the inbound message is type:'audio' (covers both regular audio
+  // uploads and voice notes — WhatsApp routes both through the same media
+  // pipeline). Voice notes are typically OGG/Opus; regular audio can be MP3,
+  // M4A, AAC. Webhook handler downloads via downloadWhatsAppMedia(audioId)
+  // and sends to Gemini for transcription before treating as text.
+  audioId?: string;
+  audioMimeType?: string;
   // Set when the inbound message is an interactive button_reply — value is
   // the button.id we sent (e.g. "appr|BK_xxx"). Webhook handler treats this
   // like a typed command so trainers can tap instead of typing the booking ID.
@@ -394,6 +401,10 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
       phoneNumberId,
       messages: messages.map((m) => {
         const image = m.image as Record<string, string> | undefined;
+        // Audio block — present for both type:'audio' (uploaded clips) and
+        // type:'voice' (voice notes). Meta still puts the media metadata
+        // under m.audio for both paths.
+        const audio = m.audio as Record<string, string | boolean> | undefined;
         // Interactive button replies come through as type:'interactive' with
         // interactive.button_reply.{id,title}. Surface the id verbatim and
         // also synthesize a `text` field so existing string-matching paths
@@ -419,6 +430,8 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
           timestamp: (m.timestamp as string) || '',
           imageId: image?.id,
           caption: image?.caption,
+          audioId: typeof audio?.id === 'string' ? audio.id : undefined,
+          audioMimeType: typeof audio?.mime_type === 'string' ? audio.mime_type : undefined,
           interactiveButtonId,
           interactiveButtonTitle,
           interactiveListId,

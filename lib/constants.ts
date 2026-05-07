@@ -55,6 +55,15 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     bgColor: 'bg-red-500/10',
     borderColor: 'border-red-500/30',
   },
+  {
+    type: 'tiffin',
+    label: 'Tiffin Service / Home Meals',
+    description: 'Home-cooked meal subscriptions, dabba services, lunch/dinner delivery',
+    icon: '🍱',
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+  },
 ];
 
 export function getBusinessTypeMeta(type: BusinessType): BusinessTypeMeta {
@@ -105,5 +114,12 @@ export const FAQ_TEMPLATES: Record<BusinessType, FAQ[]> = {
     { question: 'Personal trainer milega?', answer: '' },
     { question: 'Timings kya hain?', answer: '' },
     { question: 'Kaunsi classes hain?', answer: '' },
+  ],
+  tiffin: [
+    { question: 'Aaj ka menu kya hai?', answer: '' },
+    { question: 'Monthly tiffin ka rate kya hai?', answer: '' },
+    { question: 'Trial dabba milega?', answer: '' },
+    { question: 'Delivery kis area mein karte ho?', answer: '' },
+    { question: 'Jain / no-onion option hai?', answer: '' },
   ],
 };

@@ -16,6 +16,7 @@ const TYPE_ICONS: Record<BusinessType, string> = {
   salon: '💇',
   d2c: '🛍️',
   gym: '💪',
+  tiffin: '🍱',
 };
 
 const TYPE_BG: Record<BusinessType, string> = {
@@ -25,6 +26,7 @@ const TYPE_BG: Record<BusinessType, string> = {
   salon: 'bg-pink-100',
   d2c: 'bg-teal-100',
   gym: 'bg-red-100',
+  tiffin: 'bg-orange-100',
 };
 
 const TYPE_LABEL: Record<BusinessType, string> = {
@@ -34,6 +36,7 @@ const TYPE_LABEL: Record<BusinessType, string> = {
   salon: 'Salon',
   d2c: 'D2C',
   gym: 'Gym',
+  tiffin: 'Tiffin',
 };
 
 interface Props {

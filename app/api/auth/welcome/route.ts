@@ -8,37 +8,93 @@ import {
   getSubscriptionHistory,
 } from '@/lib/subscription';
 import { getISTTimestamp } from '@/lib/utils';
+import { clerkClient } from '@clerk/nextjs/server';
+import {
+  REFERRAL_COOKIE,
+  generateReferralCode,
+  isValidReferralCodeShape,
+} from '@/lib/referral';
 
-// Auto-grants the free trial on first sign-in. Idempotent: skips when the
-// user already has any active subscription, AND skips when the user has
-// EVER had a trial before (one-trial-per-user rule, mirrors start-trial).
-// We do NOT rely on the welcomed cookie for this — we want trial to be
-// granted even if the welcome email already went out (cookie set, but the
-// user hadn't pressed "Start trial" before this auto-grant existed).
+// Auto-grants the free tier on every sign-in where the user has no
+// active subscription. "Free forever, no card required" is the public
+// positioning — the previous "one trial per user EVER" rule was a
+// regression that locked existing users out once their 90-day trial
+// expired. The TRIAL_MESSAGE_LIMIT (50 lifetime AI replies, enforced
+// per-owner across all their bots in the webhook) is the real revenue
+// funnel — time-based expiry isn't needed.
+//
+// We still skip when the user has any current active subscription
+// (trial OR paid), so this never overwrites a real plan. We DO grant
+// a fresh trial row when the previous one expired, which restores
+// dashboard access for users (including the founder) who tested early
+// on and got stuck on "Plan required" after their 90 days ran out.
+//
+// IMPORTANT: razorpayPaymentId MUST be empty for trial rows because
+// the `subscriptions_payment_id_idx` unique index includes any
+// non-empty value. Earlier code passed the literal string
+// 'trial-auto-grant' which only worked for the first user — every
+// subsequent user got silently no-op'd by the dedup check inside
+// createSubscription. Sentinel for audit visibility lives in
+// razorpay_order_id (which has no unique constraint).
 async function autoGrantTrialIfNeeded(userId: string): Promise<void> {
   try {
     const active = await getActiveSubscription(userId);
     if (active) return;
-    const history = await getSubscriptionHistory(userId);
-    if (history.some((s) => s.plan === 'trial')) return;
     const now = new Date();
     const end = new Date(now);
-    end.setDate(end.getDate() + 90);
+    // Effectively forever — Postgres timestamp comfortably handles year
+    // 2126 and the 50-message lifetime cap remains the gating factor.
+    end.setFullYear(end.getFullYear() + 100);
     await createSubscription({
       userId,
       plan: 'trial',
       status: 'active',
-      razorpayPaymentId: 'trial-auto-grant',
+      razorpayPaymentId: '',
       razorpayOrderId: 'trial-auto-grant',
       amount: 0,
       startDate: now.toISOString(),
       endDate: end.toISOString(),
       createdAt: getISTTimestamp(),
     });
-    console.log(`[Welcome] Auto-granted free trial to ${userId}`);
+    console.log(`[Welcome] Auto-granted free tier to ${userId}`);
   } catch (err) {
     // Don't let trial auto-grant block the welcome email flow — log and continue.
     console.error('[Welcome] Auto-grant trial failed:', err);
+  }
+}
+
+// Persists the referrer attribution onto the new user's Clerk
+// publicMetadata exactly once (first-touch). Skips when:
+//   - cookie is absent or malformed
+//   - the user has already been attributed (idempotent re-runs)
+//   - the visitor's own code matches the cookie (anti-self-referral)
+async function captureReferralIfPresent(userId: string): Promise<void> {
+  try {
+    const store = await cookies();
+    const raw = (store.get(REFERRAL_COOKIE)?.value || '').trim();
+    if (!raw || !isValidReferralCodeShape(raw)) return;
+
+    const ownCode = generateReferralCode(userId);
+    if (raw.toUpperCase() === ownCode.toUpperCase()) return; // own link
+
+    const cc = await clerkClient();
+    const me = await cc.users.getUser(userId);
+    const meta = (me.publicMetadata || {}) as Record<string, unknown>;
+    if (typeof meta.referredBy === 'string' && meta.referredBy.trim()) {
+      return; // already attributed — preserve first-touch winner
+    }
+
+    await cc.users.updateUserMetadata(userId, {
+      publicMetadata: { ...meta, referredBy: raw.toUpperCase() },
+    });
+    console.log(`[Welcome] Captured referral: ${userId} ← ${raw.toUpperCase()}`);
+
+    // Clear the cookie so a subsequent visit by this user doesn't keep
+    // re-running the lookup (the metadata check above already short-
+    // circuits, but cleaning up is tidy).
+    store.set(REFERRAL_COOKIE, '', { maxAge: 0, path: '/' });
+  } catch (err) {
+    console.error('[Welcome] Capture referral failed:', err);
   }
 }
 
@@ -50,6 +106,11 @@ export async function POST() {
   // users who land on the dashboard for the first time after this ships
   // also get a trial automatically.
   await autoGrantTrialIfNeeded(user.userId);
+
+  // Capture referral attribution if a zt_ref cookie was set during the
+  // visitor phase. First-touch wins — once stored on the user, never
+  // overwritten on subsequent welcome calls.
+  await captureReferralIfPresent(user.userId);
 
   const store = await cookies();
   if (store.get('welcomed')?.value === '1') {

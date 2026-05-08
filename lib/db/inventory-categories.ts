@@ -92,6 +92,13 @@ export const VERTICAL_DEFAULT_CATEGORIES: Record<BusinessType, DefaultCategory[]
     { name: 'Add-ons',  tracks_stock: false, order: 2 },
     { name: 'Combos',   tracks_stock: false, order: 3 },
   ],
+  grocery: [
+    { name: 'Vegetables', tracks_stock: true, order: 0 },
+    { name: 'Fruits',     tracks_stock: true, order: 1 },
+    { name: 'Dairy',      tracks_stock: true, order: 2 },
+    { name: 'Staples',    tracks_stock: true, order: 3 },
+    { name: 'Spices',     tracks_stock: true, order: 4 },
+  ],
 };
 
 // ─── reads ──────────────────────────────────────────────────────────────

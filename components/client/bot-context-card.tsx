@@ -13,6 +13,7 @@ const TYPE_ICONS: Record<BusinessType, string> = {
   d2c: '🛍️',
   gym: '💪',
   tiffin: '🍱',
+  grocery: '🥬',
 };
 
 const TYPE_BG: Record<BusinessType, string> = {
@@ -23,6 +24,7 @@ const TYPE_BG: Record<BusinessType, string> = {
   d2c: 'bg-teal-100',
   gym: 'bg-red-100',
   tiffin: 'bg-orange-100',
+  grocery: 'bg-lime-100',
 };
 
 const TYPE_LABEL: Record<BusinessType, string> = {
@@ -33,6 +35,7 @@ const TYPE_LABEL: Record<BusinessType, string> = {
   d2c: 'D2C',
   gym: 'Gym',
   tiffin: 'Tiffin',
+  grocery: 'Grocery',
 };
 
 export interface SubInfo {

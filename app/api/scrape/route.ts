@@ -265,6 +265,7 @@ function buildPrompt(type: BusinessType, context: string, url: string): string {
     realestate: `businessName, agentName, reraNumber, operatingAreas (array), propertyTypes (array), services (array), currentListings (array of {title, type, price, area, highlights}), homeLoanAssistance (boolean), address, city, whatsappNumber`,
     d2c: `businessName, brandName, productCategory, products (array of {name, price, description, bestseller: boolean}), shippingPolicy, returnPolicy, codAvailable (boolean), paymentMethods (array), instagramHandle, currentOffers, address, city, whatsappNumber`,
     tiffin: `businessName, serviceName, cuisineStyle, mealsServed (array of "lunch"/"dinner"/"breakfast"), plans (array of {name, duration, price, includes, mealType, foodType}), weeklyMenu (string with day-wise rotation), trialAvailable (boolean), trialDetails, deliveryAvailable (boolean), deliveryAreas (array), deliveryCharges, deliveryTimings, customRequestsAllowed (boolean), paymentCycle, paymentMethods (array), holidaysClosed, workingHours, address, city, whatsappNumber`,
+    grocery: `businessName, storeName, productCategories (array of {category: string, items: [{name, price, unit, inStock: boolean}]}), deliveryAvailable (boolean), deliveryRadius, deliveryCharges, minimumOrder, deliveryTimings, paymentMethods (array), currentOffers, workingHours, address, city, whatsappNumber`,
   };
 
   return `You are a business data extraction AI. Extract structured information from the content below and return a valid JSON object.

@@ -85,3 +85,18 @@ export async function markRecurringRan(id: string, runDate: string): Promise<voi
     .set({ last_run_date: runDate })
     .where(eq(grocery_recurring_orders.id, id));
 }
+
+export async function pauseRecurringForCustomer(
+  client_id: string,
+  customer_phone: string
+): Promise<void> {
+  await db
+    .update(grocery_recurring_orders)
+    .set({ is_active: false })
+    .where(
+      and(
+        eq(grocery_recurring_orders.client_id, client_id),
+        eq(grocery_recurring_orders.customer_phone, customer_phone)
+      )
+    );
+}

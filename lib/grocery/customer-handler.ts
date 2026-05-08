@@ -32,7 +32,7 @@ import {
 import { chatJSON } from './groq';
 import { INTENT_CLASSIFIER_PROMPT, type GroceryIntent } from './prompt';
 import { getCatalogForDate } from '../db/grocery-daily-catalog';
-import { todayIsoIST } from './date-utils';
+import { todayIsoIST, dayOfWeekIST } from './date-utils';
 import { listZones, getZone } from '../db/grocery-zones';
 import { matchZone } from './zones';
 import { availableSlotsForClient } from './slots';
@@ -55,6 +55,11 @@ import {
   formatOwnerNotification,
 } from './wa-messages';
 import { getSlot } from '../db/grocery-slots';
+import { getOrder } from '../db/grocery-orders';
+import {
+  createRecurring,
+  pauseRecurringForCustomer,
+} from '../db/grocery-recurring-orders';
 import { computeOrderTotals, meetsMinOrder } from './pricing';
 
 interface ClientLite {
@@ -101,6 +106,14 @@ export async function handleGroceryCustomerMessage(
     if (id === 'confirm:no') return handleAbandon(phoneNumberId, client, customerPhone);
     if (id === 'sub:yes' || id === 'sub:no')
       return handleSubChoice(phoneNumberId, client, customerPhone, id);
+    if (id.startsWith('recur:yes:')) {
+      const orderId = id.split(':')[2];
+      return handleRecurringSetup(phoneNumberId, client, customerPhone, orderId);
+    }
+    if (id === 'recur:no') {
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, 'OK no problem. Phir kabhi.');
+      return;
+    }
   }
 
   if (message.type !== 'text' || !message.text?.body) {
@@ -110,6 +123,17 @@ export async function handleGroceryCustomerMessage(
 
   const text = message.text.body.trim();
   if (!text) return;
+
+  // ── Stop-recurring shortcut (before intent classification) ───
+  if (/^stop\s+recur/i.test(text) || /\brecurring\s+(stop|cancel|band)\b/i.test(text)) {
+    await pauseRecurringForCustomer(client.client_id, customerPhone);
+    await sendWhatsAppMessage(
+      phoneNumberId,
+      customerPhone,
+      'OK recurring orders band kar diye.'
+    );
+    return;
+  }
 
   // ── Intent classification ───
   let intent: GroceryIntent = 'unknown';
@@ -418,6 +442,17 @@ async function handleConfirm(
       client.whatsapp_number,
       formatOwnerNotification(order, customerPhone, slotLabel)
     );
+    // Offer recurring weekly setup.
+    const dow = dayOfWeekIST();
+    await sendInteractiveButtons(
+      phoneNumberId,
+      customerPhone,
+      `Yeh order har ${dayName(dow)} ko repeat karoon?`,
+      [
+        { id: `recur:yes:${order.id}`, title: 'Haan repeat' },
+        { id: 'recur:no', title: 'Nahi' },
+      ]
+    );
   } catch (err) {
     if (err instanceof PlaceOrderError) {
       await sendWhatsAppMessage(
@@ -451,4 +486,36 @@ async function handleAbandon(
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function dayName(dow: number): string {
+  return (
+    ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow] ?? ''
+  );
+}
+
+async function handleRecurringSetup(
+  phoneNumberId: string,
+  client: ClientLite,
+  customerPhone: string,
+  orderId: string
+): Promise<void> {
+  const order = await getOrder(orderId);
+  if (!order || order.customer_phone !== customerPhone) {
+    await sendWhatsAppMessage(phoneNumberId, customerPhone, 'Order nahi mila.');
+    return;
+  }
+  const dow = dayOfWeekIST();
+  await createRecurring({
+    client_id: client.client_id,
+    customer_phone: customerPhone,
+    day_of_week: dow,
+    slot_id: order.slot_id,
+    template_items: order.items,
+  });
+  await sendWhatsAppMessage(
+    phoneNumberId,
+    customerPhone,
+    `Set! Har ${dayName(dow)} ko subah ek reminder bhejunga "Aaj ka regular order: ..." — aap confirm/edit/skip kar sakte ho. Cancel karna ho toh "stop recurring" likho.`
+  );
 }

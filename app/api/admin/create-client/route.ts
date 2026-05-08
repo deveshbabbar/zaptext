@@ -10,7 +10,7 @@ import { generateId, getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
 import { clerkClient } from '@clerk/nextjs/server';
 
 const VALID_BIZ_TYPES: BusinessType[] = [
-  'restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym',
+  'restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'grocery',
 ];
 
 function generateTempPassword(): string {

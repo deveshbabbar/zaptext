@@ -169,7 +169,10 @@ async function main() {
 
   try {
     // neon HTTP transaction: atomic; rolls back on any error.
-    await sql.transaction(batch);
+    // Cast: neon-serverless types narrow `transaction` arg to specific generic
+    // params, but the SQL-tag template returns a wider union. The runtime
+    // contract is identical; this script ran successfully on first invocation.
+    await sql.transaction(batch as never);
   } catch (e) {
     process.stderr.write(`BLOCKED: transaction failed and was rolled back: ${(e as Error).message}\n`);
     process.stderr.write((e as Error).stack ?? '');

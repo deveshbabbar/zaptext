@@ -46,6 +46,7 @@ import {
 import { STAFF_ROLE_LABELS, DEFAULT_STAFF_LABEL } from '@/lib/types';
 import { clerkClient } from '@clerk/nextjs/server';
 import { handleGroceryOwnerMessage } from '@/lib/grocery/owner-handler';
+import { handleGroceryCustomerMessage } from '@/lib/grocery/customer-handler';
 
 // WhatsApp webhook verification
 export async function GET(request: NextRequest) {
@@ -260,27 +261,66 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     const senderDigits = (msg.from || '').replace(/\D/g, '');
     const isOwner = senderDigits && ownerDigits && senderDigits === ownerDigits;
 
-    // ─── Grocery vertical: owner catalog updates ──────────────────────
-    // Purely additive branch. Only fires for clients with type === 'grocery'
-    // (no other vertical is affected). When the owner sends a price-list
-    // text or voice note, we route to the grocery catalog updater. Generic
-    // owner-control words (menu/help/list/status/orders) fall through so
-    // existing handleOwnerCommand still wins for those. Customer-side
-    // grocery handling is wired separately in a later task.
-    if (client.type === 'grocery' && isOwner) {
+    // ─── Grocery vertical: owner + customer routing ───────────────────
+    // Only fires for clients with type === 'grocery' (no other vertical is
+    // affected). Owner side: route to the catalog updater; if not handled,
+    // fall through so generic owner-control words (menu/help/list/status/
+    // orders) still hit handleOwnerCommand. Customer side: grocery owns the
+    // entire flow — catalog browsing, ordering, slot pick, payment — and
+    // does NOT fall through to the generic per-vertical AI pipeline.
+    if (client.type === 'grocery') {
       const clientLite = {
         client_id: client.client_id,
         whatsapp_number: client.whatsapp_number,
         business_name: client.business_name ?? '',
       };
-      const handled = await handleGroceryOwnerMessage(phoneNumberId, clientLite, {
-        from: msg.from,
-        type: msg.type,
-        text: msg.text,
-        audioId: msg.audioId,
-        audioMimeType: msg.audioMimeType,
-      });
-      if (handled) {
+      if (isOwner) {
+        const handled = await handleGroceryOwnerMessage(phoneNumberId, clientLite, {
+          from: msg.from,
+          type: msg.type,
+          text: msg.text,
+          audioId: msg.audioId,
+          audioMimeType: msg.audioMimeType,
+        });
+        if (handled) {
+          await addConversationMessage({
+            timestamp,
+            client_id: client.client_id,
+            customer_phone: customerPhone,
+            direction: 'incoming',
+            message: msg.text || `[${msg.type}]`,
+            message_type: msg.type,
+          });
+          continue;
+        }
+        // not handled → fall through to handleOwnerCommand below
+      } else {
+        // Customer-side: grocery handler fully owns this branch. Map the
+        // flat webhook msg shape into customer-handler's InboundMessageLite
+        // (text/interactive/audio nested objects mirror Meta's raw payload).
+        const interactiveId =
+          msg.interactiveButtonId ?? msg.interactiveListId ?? undefined;
+        const interactiveTitle =
+          msg.interactiveButtonTitle ?? msg.interactiveListTitle ?? '';
+        const interactivePayload =
+          msg.type === 'interactive' && interactiveId
+            ? {
+                type: msg.interactiveListId ? ('list_reply' as const) : ('button_reply' as const),
+                ...(msg.interactiveListId
+                  ? { list_reply: { id: interactiveId, title: interactiveTitle } }
+                  : { button_reply: { id: interactiveId, title: interactiveTitle } }),
+              }
+            : undefined;
+        await handleGroceryCustomerMessage(phoneNumberId, clientLite, {
+          from: msg.from,
+          type: msg.type,
+          text: msg.text ? { body: msg.text } : undefined,
+          interactive: interactivePayload,
+          audio:
+            msg.audioId
+              ? { id: msg.audioId, mime_type: msg.audioMimeType ?? '' }
+              : undefined,
+        });
         await addConversationMessage({
           timestamp,
           client_id: client.client_id,

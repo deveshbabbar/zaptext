@@ -226,6 +226,35 @@ export const VERTICAL_CONTENT: Record<BusinessType, VerticalCopy> = {
     ],
     ctaText: 'Start your D2C bot — free',
   },
+  grocery: {
+    pageTitle: 'WhatsApp bot for grocery, sabziwalas & kirana — daily order on autopilot — ZapText',
+    metaDescription:
+      'Sabziwala, fruit-wala, kirana, dairy, bakery — daily WhatsApp catalog, customer order via tap or text, slot-based delivery, COD. ₹599/mo. Built for Indian local fresh ecom.',
+    hero: 'WhatsApp pe order le, list bheje, paisa cash le.',
+    subHero:
+      'Sabziwala, fruit-wala, kirana — daily catalog WhatsApp pe, customer tap karke order kare, delivery slot khud chune. ₹599/mo se shuru.',
+    painPoints: [
+      'Roz subah customers ko phone karke order leke thak gaye',
+      'WhatsApp pe order aate hain par list rakhna mushkil hai',
+      'Stock out hone par customer ko alternative offer karna manual hai',
+      'Recurring weekly orders bhool jaate hain',
+    ],
+    exampleConversation: [
+      { from: 'customer', text: 'bhaiya aaj ki list dikhao, kal subah delivery chahiye' },
+      {
+        from: 'bot',
+        text:
+          'Aaj fresh: Tamatar ₹40/kg, Pyaaz ₹35/kg, Aloo ₹25/kg, Bhindi ₹60/kg, Dhaniya ₹10/bunch, Doodh (Amul) ₹66/L. Delivery slot kal subah 7-9 AM ya 9-11 AM — kaunsa chahiye? Min order ₹150, COD available.',
+      },
+      { from: 'customer', text: 'tamatar 1kg pyaaz 500g aloo 2kg dhaniya 1, 7-9 AM slot' },
+      {
+        from: 'bot',
+        text:
+          '✅ Order: Tamatar 1kg ₹40 + Pyaaz 500g ₹18 + Aloo 2kg ₹50 + Dhaniya ₹10 = ₹118. Min order ₹150 hai ji — ek aur item add kar dein? (Bhindi/Doodh/Atta?) Slot kal 7-9 AM hold kar liya, address confirm kar dijiye.',
+      },
+    ],
+    ctaText: 'Start your grocery bot — free',
+  },
 };
 
 export function getVerticalContent(type: BusinessType): VerticalCopy {

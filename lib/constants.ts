@@ -64,6 +64,15 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     bgColor: 'bg-amber-500/10',
     borderColor: 'border-amber-500/30',
   },
+  {
+    type: 'grocery',
+    label: 'Grocery / Vegetables / Fruits / Dairy',
+    description: 'Sabziwala, fruit seller, kirana, dairy, bakery — daily fresh delivery',
+    icon: '🥬',
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30',
+  },
 ];
 
 export function getBusinessTypeMeta(type: BusinessType): BusinessTypeMeta {
@@ -121,5 +130,12 @@ export const FAQ_TEMPLATES: Record<BusinessType, FAQ[]> = {
     { question: 'Trial dabba milega?', answer: '' },
     { question: 'Delivery kis area mein karte ho?', answer: '' },
     { question: 'Jain / no-onion option hai?', answer: '' },
+  ],
+  grocery: [
+    { question: 'Aaj ki list dikhao', answer: '' },
+    { question: 'Delivery kab tak milegi?', answer: '' },
+    { question: 'Min order kitna hai?', answer: '' },
+    { question: 'COD available hai?', answer: '' },
+    { question: 'Kal subah ka order kab tak book kar sakte hain?', answer: '' },
   ],
 };

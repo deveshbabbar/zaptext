@@ -211,7 +211,23 @@ export interface TiffinFields extends CommonFields {
   holidaysClosed: string;          // "Sunday off", "Diwali week"
 }
 
-export type BusinessType = 'restaurant' | 'coaching' | 'realestate' | 'salon' | 'd2c' | 'gym' | 'tiffin';
+// ─── Grocery / Daily Fresh Ecom ───
+// Local fresh-grocery seller — sabziwala, fruit-wala, kirana, dairy, bakery.
+// Distinct from `d2c`: catalog rotates daily based on what's fresh today,
+// orders are recurring/list-style, delivery is same-day or next-morning slots,
+// and COD is the dominant payment method. Buyer behaviour (price-sensitive,
+// neighbourhood trust, pin-code-bound) is materially different from a branded
+// D2C buyer.
+export interface GroceryFields extends CommonFields {
+  type: 'grocery';
+  defaultProducts: string[];
+  deliverySlots: string;
+  serviceableAreas: string;
+  paymentMethods: string[];
+  minimumOrder: string;
+}
+
+export type BusinessType = 'restaurant' | 'coaching' | 'realestate' | 'salon' | 'd2c' | 'gym' | 'tiffin' | 'grocery';
 
 export type ClientConfig =
   | RestaurantFields
@@ -220,7 +236,8 @@ export type ClientConfig =
   | SalonFields
   | D2CFields
   | GymFields
-  | TiffinFields;
+  | TiffinFields
+  | GroceryFields;
 
 // ─── Staff / Team Member Types (generic across all business types) ───
 

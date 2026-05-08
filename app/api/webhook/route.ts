@@ -45,6 +45,7 @@ import {
 } from '@/lib/staff';
 import { STAFF_ROLE_LABELS, DEFAULT_STAFF_LABEL } from '@/lib/types';
 import { clerkClient } from '@clerk/nextjs/server';
+import { handleGroceryOwnerMessage } from '@/lib/grocery/owner-handler';
 
 // WhatsApp webhook verification
 export async function GET(request: NextRequest) {
@@ -258,6 +259,40 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // Owner-side control commands (text from owner's own number -> their own bot)
     const senderDigits = (msg.from || '').replace(/\D/g, '');
     const isOwner = senderDigits && ownerDigits && senderDigits === ownerDigits;
+
+    // ─── Grocery vertical: owner catalog updates ──────────────────────
+    // Purely additive branch. Only fires for clients with type === 'grocery'
+    // (no other vertical is affected). When the owner sends a price-list
+    // text or voice note, we route to the grocery catalog updater. Generic
+    // owner-control words (menu/help/list/status/orders) fall through so
+    // existing handleOwnerCommand still wins for those. Customer-side
+    // grocery handling is wired separately in a later task.
+    if (client.type === 'grocery' && isOwner) {
+      const clientLite = {
+        client_id: client.client_id,
+        whatsapp_number: client.whatsapp_number,
+        business_name: client.business_name ?? '',
+      };
+      const handled = await handleGroceryOwnerMessage(phoneNumberId, clientLite, {
+        from: msg.from,
+        type: msg.type,
+        text: msg.text,
+        audioId: msg.audioId,
+        audioMimeType: msg.audioMimeType,
+      });
+      if (handled) {
+        await addConversationMessage({
+          timestamp,
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'incoming',
+          message: msg.text || `[${msg.type}]`,
+          message_type: msg.type,
+        });
+        continue;
+      }
+    }
+
     if (isOwner && msg.type === 'text' && msg.text) {
       const handled = await handleOwnerCommand(phoneNumberId, client.client_id, senderDigits, msg.text.trim());
       if (handled) {

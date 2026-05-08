@@ -599,3 +599,146 @@ export type WelcomeMenuRow = typeof welcome_menus.$inferSelect;
 export type NewWelcomeMenuRow = typeof welcome_menus.$inferInsert;
 export type PausedCustomerRow = typeof paused_customers.$inferSelect;
 export type NewPausedCustomerRow = typeof paused_customers.$inferInsert;
+
+// ─── grocery vertical ────────────────────────────────────────────────────
+
+export const grocery_products = pgTable(
+  'grocery_products',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    name_aliases: text('name_aliases').notNull().default('[]'), // JSON array
+    unit: varchar('unit', { length: 16 }).notNull(),
+    image_url: text('image_url'),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    clientIdx: index('grocery_products_client_idx').on(t.client_id),
+  })
+);
+
+export const grocery_daily_catalog = pgTable(
+  'grocery_daily_catalog',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    product_id: text('product_id').notNull(),
+    date: varchar('date', { length: 10 }).notNull(), // YYYY-MM-DD
+    price_per_unit: numeric('price_per_unit', { precision: 12, scale: 2 }).notNull(),
+    in_stock: boolean('in_stock').notNull().default(true),
+    stock_qty: numeric('stock_qty', { precision: 12, scale: 2 }),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqDay: uniqueIndex('grocery_daily_catalog_uniq')
+      .on(t.client_id, t.product_id, t.date),
+    dateIdx: index('grocery_daily_catalog_date_idx').on(t.client_id, t.date),
+  })
+);
+
+export const grocery_substitution_groups = pgTable(
+  'grocery_substitution_groups',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    product_ids: text('product_ids').notNull().default('[]'), // JSON array
+  },
+  (t) => ({
+    clientIdx: index('grocery_subgroups_client_idx').on(t.client_id),
+  })
+);
+
+export const grocery_zones = pgTable(
+  'grocery_zones',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    label: varchar('label', { length: 100 }).notNull(),
+    pincode: varchar('pincode', { length: 10 }),
+    area_keywords: text('area_keywords').notNull().default('[]'),
+    delivery_fee: numeric('delivery_fee', { precision: 12, scale: 2 }).notNull().default('0'),
+    min_order_for_free_delivery: numeric('min_order_for_free_delivery', { precision: 12, scale: 2 }),
+    min_order: numeric('min_order', { precision: 12, scale: 2 }),
+  },
+  (t) => ({
+    clientIdx: index('grocery_zones_client_idx').on(t.client_id),
+  })
+);
+
+export const grocery_slots = pgTable(
+  'grocery_slots',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    label: varchar('label', { length: 100 }).notNull(),
+    start_time: varchar('start_time', { length: 5 }).notNull(),
+    end_time: varchar('end_time', { length: 5 }).notNull(),
+    cutoff_time: varchar('cutoff_time', { length: 5 }).notNull(),
+    days_of_week: text('days_of_week').notNull().default('[0,1,2,3,4,5,6]'),
+    is_active: boolean('is_active').notNull().default(true),
+  },
+  (t) => ({
+    clientIdx: index('grocery_slots_client_idx').on(t.client_id),
+  })
+);
+
+export const grocery_orders = pgTable(
+  'grocery_orders',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    customer_phone: varchar('customer_phone', { length: 32 }).notNull(),
+    customer_name: varchar('customer_name', { length: 200 }),
+    delivery_address: text('delivery_address').notNull(),
+    zone_id: text('zone_id').notNull(),
+    slot_id: text('slot_id').notNull(),
+    slot_date: varchar('slot_date', { length: 10 }).notNull(),
+    items: text('items').notNull(), // JSON: CartItem[]
+    subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+    delivery_fee: numeric('delivery_fee', { precision: 12, scale: 2 }).notNull(),
+    total: numeric('total', { precision: 12, scale: 2 }).notNull(),
+    status: varchar('status', { length: 16 }).notNull().default('pending'),
+    payment_mode: varchar('payment_mode', { length: 16 }).notNull().default('cod'),
+    notes: text('notes'),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    clientIdx: index('grocery_orders_client_idx').on(t.client_id),
+    slotDateIdx: index('grocery_orders_slot_date_idx').on(t.client_id, t.slot_date),
+    customerIdx: index('grocery_orders_customer_idx').on(t.client_id, t.customer_phone),
+  })
+);
+
+export const grocery_recurring_orders = pgTable(
+  'grocery_recurring_orders',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    customer_phone: varchar('customer_phone', { length: 32 }).notNull(),
+    day_of_week: integer('day_of_week').notNull(),
+    slot_id: text('slot_id').notNull(),
+    template_items: text('template_items').notNull(), // JSON CartItem[]
+    is_active: boolean('is_active').notNull().default(true),
+    last_run_date: varchar('last_run_date', { length: 10 }),
+  },
+  (t) => ({
+    clientIdx: index('grocery_recur_client_idx').on(t.client_id),
+    dayIdx: index('grocery_recur_day_idx').on(t.day_of_week, t.is_active),
+  })
+);
+
+export const grocery_cart_drafts = pgTable(
+  'grocery_cart_drafts',
+  {
+    id: text('id').primaryKey(), // ${client_id}:${customer_phone}
+    client_id: text('client_id').notNull(),
+    customer_phone: varchar('customer_phone', { length: 32 }).notNull(),
+    payload: text('payload').notNull(), // JSON CartDraft
+    expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    expIdx: index('grocery_cart_drafts_exp_idx').on(t.expires_at),
+  })
+);

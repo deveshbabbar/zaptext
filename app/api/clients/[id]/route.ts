@@ -6,7 +6,7 @@ import { getUserRole } from '@/lib/auth';
 // in lib/types.ts. `clinic` is intentionally absent — that vertical was
 // removed for WhatsApp Business Policy compliance and any attempt to set
 // type=clinic must be rejected to prevent silent restaurant fallback.
-const VALID_BUSINESS_TYPES = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'tiffin'] as const;
+const VALID_BUSINESS_TYPES = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'tiffin', 'grocery'] as const;
 
 export async function GET(
   request: NextRequest,

@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { getBusinessTypeMeta, BUSINESS_TYPES } from '@/lib/constants';
 import { ClientRow, ConversationRow, AnalyticsRow, BusinessType } from '@/lib/types';
 
-const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym'];
+const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'grocery'];
 import { toast } from 'sonner';
 
 interface ClientData {

@@ -180,6 +180,126 @@ export async function sendWhatsAppList(
   }
 }
 
+// ─── Grocery-vertical interactive helpers ─────────────────────────────
+//
+// Two thinner wrappers around Meta's interactive list/button payloads,
+// designed to match the formatter output in `lib/grocery/wa-messages.ts`.
+// Distinct from `sendWhatsAppList` / `sendWhatsAppButtons` above:
+//   - take pre-built `sections`/`buttons` arrays (the grocery formatters
+//     already shape these via catalogToListSections / qtyButtonsForProduct
+//     / slotButtons), so callers don't reshape them again here.
+//   - omit header/footer/fallbackText since grocery flows always have
+//     enough context in the body text and we want a thin Promise<void>
+//     surface for handler ergonomics.
+// Both follow the same `phoneNumberId` first-arg signature as the rest
+// of this file (NOT the global env var the original plan used).
+
+export interface ListSection {
+  title: string;
+  rows: Array<{ id: string; title: string; description?: string }>;
+}
+
+// Sends an interactive list message. `sections` should already respect
+// Meta's caps (max 10 sections, max 10 rows total) — the grocery
+// formatter chunks for us. Defensive clipping is still applied per row
+// in case a caller hand-builds sections.
+export async function sendInteractiveList(
+  phoneNumberId: string,
+  to: string,
+  bodyText: string,
+  buttonText: string,
+  sections: ListSection[]
+): Promise<void> {
+  const safeSections = sections.slice(0, 10).map((s) => ({
+    title: (s.title || 'Options').slice(0, 24),
+    rows: s.rows.slice(0, 10).map((r) => ({
+      id: r.id.slice(0, 200),
+      title: r.title.slice(0, 24),
+      ...(r.description ? { description: r.description.slice(0, 72) } : {}),
+    })),
+  }));
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: bodyText.slice(0, 1024) },
+      action: {
+        button: (buttonText || 'Choose').slice(0, 20),
+        sections: safeSections,
+      },
+    },
+  };
+
+  try {
+    const res = await fetch(
+      `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error('sendInteractiveList failed', text);
+    }
+  } catch (error) {
+    console.error('sendInteractiveList exception', error);
+  }
+}
+
+// Sends an interactive button message (max 3 reply buttons). Thin
+// counterpart to `sendInteractiveList`; see the doc-comment above for
+// why this exists alongside `sendWhatsAppButtons`.
+export async function sendInteractiveButtons(
+  phoneNumberId: string,
+  to: string,
+  bodyText: string,
+  buttons: Array<{ id: string; title: string }>
+): Promise<void> {
+  const safeButtons = buttons.slice(0, 3).map((b) => ({
+    type: 'reply' as const,
+    reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) },
+  }));
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: bodyText.slice(0, 1024) },
+      action: { buttons: safeButtons },
+    },
+  };
+
+  try {
+    const res = await fetch(
+      `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error('sendInteractiveButtons failed', text);
+    }
+  } catch (error) {
+    console.error('sendInteractiveButtons exception', error);
+  }
+}
+
 export async function sendWhatsAppImage(
   phoneNumberId: string,
   to: string,

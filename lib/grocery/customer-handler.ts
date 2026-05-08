@@ -42,10 +42,12 @@ import {
   appendItems,
   setAddress,
   setSlot,
+  setItems,
   clearDraft,
 } from './cart-draft';
 import { parseCartText, resolveCartItems } from './cart-parser';
 import { placeOrder, PlaceOrderError } from './orders';
+import type { CartItem } from './types';
 import {
   catalogToListSections,
   qtyButtonsForProduct,
@@ -58,6 +60,7 @@ import { getSlot } from '../db/grocery-slots';
 import { getOrder } from '../db/grocery-orders';
 import {
   createRecurring,
+  listRecurring,
   pauseRecurringForCustomer,
 } from '../db/grocery-recurring-orders';
 import { computeOrderTotals, meetsMinOrder } from './pricing';
@@ -112,6 +115,21 @@ export async function handleGroceryCustomerMessage(
     }
     if (id === 'recur:no') {
       await sendWhatsAppMessage(phoneNumberId, customerPhone, 'OK no problem. Phir kabhi.');
+      return;
+    }
+    if (id.startsWith('recur-confirm:')) {
+      return handleRecurringConfirm(phoneNumberId, client, customerPhone, id.split(':')[1]);
+    }
+    if (id.startsWith('recur-edit:')) {
+      await sendWhatsAppMessage(
+        phoneNumberId,
+        customerPhone,
+        'OK, naye items type karein (e.g. "tamatar 1kg pyaaz 500g") aur confirm karein.'
+      );
+      return;
+    }
+    if (id.startsWith('recur-skip:')) {
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, 'OK aaj skip kar diya.');
       return;
     }
   }
@@ -518,4 +536,51 @@ async function handleRecurringSetup(
     customerPhone,
     `Set! Har ${dayName(dow)} ko subah ek reminder bhejunga "Aaj ka regular order: ..." — aap confirm/edit/skip kar sakte ho. Cancel karna ho toh "stop recurring" likho.`
   );
+}
+
+async function handleRecurringConfirm(
+  phoneNumberId: string,
+  client: ClientLite,
+  customerPhone: string,
+  recurringId: string
+): Promise<void> {
+  const all = await listRecurring(client.client_id);
+  const r = all.find((x) => x.id === recurringId);
+  if (!r || r.customer_phone !== customerPhone) {
+    await sendWhatsAppMessage(phoneNumberId, customerPhone, 'Recurring order nahi mila.');
+    return;
+  }
+  const today = todayIsoIST();
+  const catalog = await getCatalogForDate(client.client_id, today);
+  const items: CartItem[] = [];
+  for (const t of r.template_items) {
+    const c = catalog.find((x) => x.product.id === t.product_id);
+    if (!c || !c.in_stock) continue;
+    items.push({
+      ...t,
+      price_per_unit: c.price_per_unit,
+      line_total: round2(t.qty * c.price_per_unit),
+    });
+  }
+  if (items.length === 0) {
+    await sendWhatsAppMessage(phoneNumberId, customerPhone, 'Aaj koi item available nahi. Skip karte hain.');
+    return;
+  }
+  const draft = await loadDraft(client.client_id, customerPhone);
+  await setItems(draft, items);
+  if (r.slot_id) {
+    const tomorrow = addDaysISO(today, 1);
+    await setSlot(draft, r.slot_id, tomorrow);
+  }
+  await sendWhatsAppMessage(
+    phoneNumberId,
+    customerPhone,
+    `Cart ready hai. Address bhejein confirm ke liye.`
+  );
+}
+
+function addDaysISO(yyyymmdd: string, days: number): string {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
 }

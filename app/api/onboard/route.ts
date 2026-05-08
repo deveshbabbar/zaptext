@@ -14,6 +14,7 @@ import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS } from '@/lib/plans';
 import { checkBotLimit } from '@/lib/feature-gates';
 import { rateLimit, getClientKey } from '@/lib/rate-limit';
+import { seedGroceryClient } from '@/lib/grocery/seed';
 import type { BusinessType } from '@/lib/types';
 
 // Closed allowlist of supported verticals. `clinic` is intentionally absent —
@@ -139,6 +140,17 @@ export async function POST(request: NextRequest) {
 
     await addClient(client);
     await setActiveBotId(clientId);
+
+    // Seed sane defaults for grocery clients so the admin UI isn't empty
+    // on first login (slots, default zone, starter products). Non-blocking
+    // for v1: a partial seed still leaves the client usable.
+    if (client.type === 'grocery') {
+      try {
+        await seedGroceryClient(client.client_id);
+      } catch (e) {
+        console.error('[onboard] seedGroceryClient failed:', e);
+      }
+    }
 
     // Admin-created bots activate immediately → auto-sync products into inventory.
     // For client-created (pending) bots, the sync happens in /api/admin/approve-bot.

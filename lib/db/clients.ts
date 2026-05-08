@@ -65,6 +65,16 @@ export async function getClientById(clientId: string): Promise<ClientRow | null>
   return rows[0] ? dbRowToClient(rows[0]) : null;
 }
 
+export async function getClientByOwnerUserId(userId: string): Promise<ClientRow | null> {
+  if (!userId) return null;
+  const rows = await db
+    .select()
+    .from(clientsTable)
+    .where(eq(clientsTable.owner_user_id, userId))
+    .limit(1);
+  return rows[0] ? dbRowToClient(rows[0]) : null;
+}
+
 export async function getClientByPhoneNumberId(phoneNumberId: string): Promise<ClientRow | null> {
   if (!phoneNumberId) return null;
   const rows = await db

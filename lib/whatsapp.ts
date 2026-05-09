@@ -199,10 +199,10 @@ export interface ListSection {
   rows: Array<{ id: string; title: string; description?: string }>;
 }
 
-// Sends an interactive list message. `sections` should already respect
-// Meta's caps (max 10 sections, max 10 rows total) — the grocery
-// formatter chunks for us. Defensive clipping is still applied per row
-// in case a caller hand-builds sections.
+// Sends an interactive list message. Meta caps the TOTAL rows at 10
+// across ALL sections (NOT 10/section). We enforce that defensively here:
+// trim sections so cumulative rows <= 10, dropping later sections/rows
+// silently rather than letting Meta 400 the whole payload.
 export async function sendInteractiveList(
   phoneNumberId: string,
   to: string,
@@ -210,14 +210,31 @@ export async function sendInteractiveList(
   buttonText: string,
   sections: ListSection[]
 ): Promise<void> {
-  const safeSections = sections.slice(0, 10).map((s) => ({
-    title: (s.title || 'Options').slice(0, 24),
-    rows: s.rows.slice(0, 10).map((r) => ({
+  const TOTAL_ROW_CAP = 10;
+  let remaining = TOTAL_ROW_CAP;
+  const safeSections: Array<{
+    title: string;
+    rows: Array<{ id: string; title: string; description?: string }>;
+  }> = [];
+  for (const s of sections.slice(0, 10)) {
+    if (remaining <= 0) break;
+    const take = s.rows.slice(0, remaining).map((r) => ({
       id: r.id.slice(0, 200),
       title: r.title.slice(0, 24),
       ...(r.description ? { description: r.description.slice(0, 72) } : {}),
-    })),
-  }));
+    }));
+    if (take.length === 0) continue;
+    safeSections.push({
+      title: (s.title || 'Options').slice(0, 24),
+      rows: take,
+    });
+    remaining -= take.length;
+  }
+
+  if (safeSections.length === 0) {
+    console.error('sendInteractiveList: nothing to send (zero rows after clipping)');
+    return;
+  }
 
   const payload = {
     messaging_product: 'whatsapp',
@@ -234,20 +251,19 @@ export async function sendInteractiveList(
   };
 
   try {
-    const res = await fetch(
-      `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      }
-    );
+    const res = await fetch(`${WHATSAPP_API_URL}/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.error('sendInteractiveList failed', text);
+      console.error(
+        `sendInteractiveList failed: ${res.status} ${res.statusText} body=${text}`
+      );
     }
   } catch (error) {
     console.error('sendInteractiveList exception', error);

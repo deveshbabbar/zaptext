@@ -50,6 +50,8 @@ import { placeOrder, PlaceOrderError } from './orders';
 import type { CartItem } from './types';
 import {
   catalogToListSections,
+  catalogOverflowCount,
+  catalogTruncatedHint,
   qtyButtonsForProduct,
   slotButtons,
   formatCartSummary,
@@ -207,13 +209,11 @@ async function showCatalog(
     return;
   }
   const sections = catalogToListSections(catalog);
-  await sendInteractiveList(
-    phoneNumberId,
-    to,
-    `Aaj ki list (${today}):\nTap to add, ya seedha type karein "tamatar 1kg pyaaz 500g"`,
-    'Items dekho',
-    sections
-  );
+  const overflow = catalogOverflowCount(catalog);
+  const body =
+    `Aaj ki list (${today}):\nTap to add, ya seedha type karein "tamatar 1kg pyaaz 500g"` +
+    catalogTruncatedHint(overflow);
+  await sendInteractiveList(phoneNumberId, to, body, 'Items dekho', sections);
 }
 
 async function handleAddItem(

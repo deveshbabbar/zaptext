@@ -10,38 +10,39 @@ import type { CatalogEntry, CartItem, GroceryOrder } from './types';
 import type { AvailableSlot } from './slots';
 import type { ListSection } from '../whatsapp';
 
-// Meta's WhatsApp interactive list caps: 10 sections, 10 rows per section.
-// We only ever populate one section in the typical "today's catalog" flow
-// (catalogs <=10 items), but support multi-section fallback for clients
-// with bigger lists.
-const ROW_LIMIT_PER_SECTION = 10;
-const SECTION_LIMIT = 10;
+// Meta's WhatsApp interactive list caps the TOTAL row count at 10 across
+// ALL sections — NOT 10 per section. Catalogs larger than 10 in-stock
+// items are truncated; callers append catalogTruncatedHint() to the body
+// so customers can free-text-order the rest.
+const TOTAL_ROW_LIMIT = 10;
+
+export function catalogTruncatedHint(extra: number): string {
+  if (extra <= 0) return '';
+  return `\n+${extra} aur items hain — type karein "tamatar 1kg pyaaz 500g" style mein order karne ke liye.`;
+}
+
+// How many in-stock items exceed Meta's 10-row interactive-list cap.
+export function catalogOverflowCount(catalog: CatalogEntry[]): number {
+  const inStock = catalog.filter((c) => c.in_stock).length;
+  return Math.max(0, inStock - TOTAL_ROW_LIMIT);
+}
 
 // Turns today's in-stock catalog into list sections suitable for
-// sendInteractiveList. Out-of-stock entries are filtered so customers
-// don't tap something we can't fulfil. Row id encodes the product_id
-// so the inbound webhook handler can route the tap with O(1) lookup
-// (no name-matching needed for taps).
+// sendInteractiveList. Always one section of at most TOTAL_ROW_LIMIT rows.
 export function catalogToListSections(catalog: CatalogEntry[]): ListSection[] {
   const inStock = catalog.filter((c) => c.in_stock);
   if (inStock.length === 0) return [];
-  const sections: ListSection[] = [];
-  for (
-    let i = 0;
-    i < inStock.length && sections.length < SECTION_LIMIT;
-    i += ROW_LIMIT_PER_SECTION
-  ) {
-    const chunk = inStock.slice(i, i + ROW_LIMIT_PER_SECTION);
-    sections.push({
-      title: sections.length === 0 ? 'Aaj ki list' : `Page ${sections.length + 1}`,
-      rows: chunk.map((c) => ({
+  const visible = inStock.slice(0, TOTAL_ROW_LIMIT);
+  return [
+    {
+      title: 'Aaj ki list',
+      rows: visible.map((c) => ({
         id: `add:${c.product.id}`,
         title: c.product.name.slice(0, 24),
         description: `₹${c.price_per_unit}/${c.product.unit}`,
       })),
-    });
-  }
-  return sections;
+    },
+  ];
 }
 
 // Three-button quantity picker shown after the customer taps a product.

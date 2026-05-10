@@ -1,17 +1,23 @@
 // ─── Plan Definitions (client-safe, no server-only imports) ───
 //
-// Pricing strategy (May 2026):
-//   Free → Starter ₹599 → Growth ₹1,499 → Scale ₹3,999 → Enterprise ₹9,999
-//   Starter undercuts the cheapest peer (Gallabox ₹999) by 40%; Enterprise
-//   targets agencies and >100-staff verticals (logistics, hospital chains).
+// Pricing strategy (May 2026 — post-Meta-Business-AI launch):
+//   Try-it-Free (100-msg trial) → Starter ₹599 → Growth ₹1,499 → Scale ₹3,999 → Enterprise ₹9,999
+//
+// The trial is a FULL-FEATURE preview (bookings, payments, Hindi, multi-bot
+// flag) capped at 100 replies — designed so the prospect can see a real
+// booking land before paying. This is materially different from Meta's
+// free in-app Business AI (FAQ-only, single number, no integrations, no
+// compliance gates). Our pricing tiers price the gap: what does it cost to
+// run a real revenue-generating bot, not just an auto-responder.
 //
 // Each plan exposes a `features` flag map — feature-gates.ts is the single
-// source of truth that webhook/booking/payment paths consult to decide
-// whether a code path is permitted. Adding a new feature = add a flag here
-// + check it in the relevant code path. Never branch on plan name directly.
+// source of truth that webhook/booking/payment paths consult. Adding a new
+// feature = add a flag here + check it in the relevant code path. Never
+// branch on plan name directly.
 
-// Free tier — 50 lifetime AI replies. No card required, instant on signup.
-export const TRIAL_MESSAGE_LIMIT = 50;
+// Try-it-Free trial — 100 AI replies (lifetime cap), full Pro features
+// unlocked so the owner can see a real booking land before paying.
+export const TRIAL_MESSAGE_LIMIT = 100;
 
 // Feature flag keys consumed by feature-gates.ts. Add a new entry and a
 // matching column in the PLANS table below to extend the matrix.
@@ -71,15 +77,15 @@ export const PLANS = {
     broadcastCampaignsPerMonth: 0,
     extraBotPrice: null,
     features: {
-      bookings: false,
-      payments: false,
-      multi_language: false,
+      bookings: true,           // unlocked on trial — show prospects what they're paying for
+      payments: true,
+      multi_language: true,
       welcome_menu: true,
       broadcasts: false,
       custom_system_prompt: false,
-      live_takeover: false,
-      staff_management: false,
-      inventory: false,
+      live_takeover: true,
+      staff_management: true,
+      inventory: true,
       api_access: false,
       whatsapp_flows: false,
       white_label: false,
@@ -88,12 +94,11 @@ export const PLANS = {
       sla_uptime: false,
     },
     featureList: [
-      `${TRIAL_MESSAGE_LIMIT} bot replies (lifetime)`,
-      '1 WhatsApp bot, 1 number',
-      'Basic FAQ auto-reply (English only)',
-      'Welcome menu for first-time customers',
+      `Full-feature trial — first ${TRIAL_MESSAGE_LIMIT} replies free`,
+      'Bookings, UPI links, Hindi/Hinglish — all unlocked from minute 1',
+      'See your first real booking land before you pay',
       'No credit card required',
-      'Upgrade anytime for bookings, payments, Hindi',
+      'After 100 replies → upgrade to Starter at ₹599/mo',
     ],
   },
 
@@ -129,15 +134,17 @@ export const PLANS = {
       sla_uptime: false,
     },
     featureList: [
-      '2,000 AI replies / month',
-      '1 WhatsApp bot, 1 number',
-      'Bookings + appointment calendar',
-      'UPI / Razorpay payment requests',
-      'Hindi + English replies',
-      'Live chat takeover from dashboard',
-      'Welcome menu + opt-in flows',
+      '2,000 conversations / month — never miss a customer ping',
+      'Bookings flow into your calendar (not your inbox)',
+      'UPI / Razorpay payment links sent in chat — close the sale',
+      'Hindi · English · Hinglish — speaks like your customers',
+      'Auto-detects language; matches Marathi, Gujarati, Punjabi, Bengali, Tamil, Telugu',
+      'Voice-note transcription — sabziwala paste-list / customer voice queries handled',
+      'Vertical-trained bot (FSSAI / RERA / GSTIN aware — won\'t make compliance mistakes)',
+      'Welcome menu + opt-in flows + abandoned-cart recovery',
+      'Live takeover from a web dashboard (no separate app needed)',
       '1 broadcast / month, up to 500 contacts',
-      'Email support',
+      'Email support · WhatsApp support during business hours',
       'Overage: ₹0.15 per extra reply',
     ],
   },
@@ -174,12 +181,14 @@ export const PLANS = {
       sla_uptime: false,
     },
     featureList: [
-      '10,000 AI replies / month',
-      'Up to 3 bots, 3 numbers',
-      'Everything in Starter',
-      'Custom system prompt (own bot personality)',
-      'Unlimited broadcasts, up to 5,000 contacts/mo',
-      'Daily summary reports',
+      '10,000 conversations / month — scale into festive surge without hiring',
+      'Up to 3 separate bots — different brand fronts, branches, or numbers',
+      'Everything in Starter, plus:',
+      'Custom AI personality (your brand voice, not a generic Meta tone)',
+      'Unlimited broadcasts to 5,000 opted-in customers / month',
+      'Cart abandonment + booking-reminder automations',
+      'Daily summary reports — bookings, missed leads, top questions',
+      'Multi-staff inbox (assign chats to different employees)',
       'WhatsApp + Email support',
       'Extra bot: ₹999/mo',
       'Overage: ₹0.13 per extra reply',
@@ -217,14 +226,15 @@ export const PLANS = {
       sla_uptime: false,
     },
     featureList: [
-      '50,000 AI replies / month',
-      'Up to 10 bots, 10 numbers',
-      'Everything in Growth',
-      'Public API access',
-      'WhatsApp Flows (forms inside chat)',
-      'White-label option (hide ZapText branding)',
-      'Priority support (4hr response)',
-      'Monthly strategy call',
+      '50,000 conversations / month — chain-store volume',
+      'Up to 10 bots / numbers — one per branch, brand-front, or city',
+      'Everything in Growth, plus:',
+      'Public API access — wire ZapText into your CRM, ERP, accounting',
+      'WhatsApp Flows (forms-inside-chat for lead capture / surveys)',
+      'White-label — hide ZapText branding, run as your own brand',
+      'Per-branch analytics (compare which outlet converts best)',
+      'Priority support (4hr response, dedicated channel)',
+      'Monthly strategy call — we audit your bot, suggest improvements',
       'Extra bot: ₹599/mo',
       'Overage: ₹0.12 per extra reply',
     ],
@@ -264,15 +274,16 @@ export const PLANS = {
       sla_uptime: true,
     },
     featureList: [
-      '200,000 AI replies / month',
-      'Unlimited bots & numbers',
-      'Everything in Scale',
-      'Dedicated customer success manager',
-      'Custom integrations (CRM, ERP, your stack)',
-      '99.9% uptime SLA contract',
-      'White-glove onboarding & training',
-      'Weekly optimization calls',
-      'Priority support (1hr response)',
+      '200,000 conversations / month — agency / multi-city operator scale',
+      'Unlimited bots & numbers — every franchise, every brand, your call',
+      'Everything in Scale, plus:',
+      'Dedicated customer success manager (single point of contact)',
+      'Custom integrations — your CRM, ERP, POS, accounting, HRMS',
+      'Per-vertical compliance audit (FSSAI / RERA / DPDPA / Coaching Bill)',
+      '99.9% uptime SLA contract with credits if breached',
+      'White-glove onboarding & in-person training (Tier-1 cities)',
+      'Weekly optimisation calls — our team tunes your bot performance',
+      'Priority support (1hr response, weekend cover)',
       'Overage: ₹0.10 per extra reply',
     ],
   },

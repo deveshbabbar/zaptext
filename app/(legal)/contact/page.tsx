@@ -27,8 +27,10 @@ export default function ContactPage() {
 
         <div className="bg-card border border-border rounded-xl p-6 space-y-2">
           <h2 className="text-lg font-bold text-foreground">WhatsApp</h2>
-          <p className="text-muted-foreground text-sm">Quick chat during business hours.</p>
-          <p className="text-foreground font-mono">+91 xxxxx xxxxx</p>
+          <p className="text-muted-foreground text-sm">
+            Try our own bot live &mdash; the chat widget at the bottom-right of every page is powered by ZapText itself.
+            For human follow-up, drop a line to the email and we&apos;ll WhatsApp you back the same day.
+          </p>
         </div>
 
         <div className="bg-card border border-border rounded-xl p-6 space-y-2">
@@ -48,15 +50,16 @@ export default function ContactPage() {
         <h2 className="text-lg font-bold text-foreground">Registered Business Address</h2>
         <address className="not-italic text-muted-foreground leading-relaxed">
           ZapText<br />
-          [Your registered address]<br />
-          [City], [State] [PIN]<br />
-          India
+          Delhi NCR, India
         </address>
-        <div className="pt-2 border-t border-border">
-          <p className="text-sm text-muted-foreground">
-            <span className="text-foreground font-semibold">GSTIN:</span> XXXXXXXXX
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Full registered address and GSTIN are printed on every paid invoice.
+          Need them in advance? Email{' '}
+          <a href="mailto:zaptextofficial@gmail.com" className="text-primary hover:underline">
+            zaptextofficial@gmail.com
+          </a>{' '}
+          with the subject &quot;Business details&quot; and we&apos;ll respond the same business day.
+        </p>
       </section>
 
       <section className="space-y-3 text-muted-foreground leading-relaxed">

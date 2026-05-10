@@ -133,10 +133,13 @@ export default function TermsPage() {
 
         <h2 className="text-2xl font-bold text-foreground pt-4">8. Use of AI and Accuracy</h2>
         <p>
-          The bot uses large language models (currently Google Gemini) to generate replies. AI
-          responses can be wrong, outdated, or misleading. You are solely responsible for reviewing
-          and correcting what your bot sends. Do not use the bot for any use case where an incorrect
-          automated reply could cause real-world harm (medical, legal, financial advice, etc.).
+          The bot uses third-party large-language-model providers to generate replies. The
+          underlying provider stack may change over time as we optimise for quality, latency, and
+          cost; current vendors are listed in our sub-processor schedule and disclosed to
+          Enterprise customers on request. AI responses can be wrong, outdated, or misleading.
+          You are solely responsible for reviewing and correcting what your bot sends. Do not use
+          the bot for any use case where an incorrect automated reply could cause real-world harm
+          (medical, legal, financial advice, etc.).
         </p>
 
         <h2 className="text-2xl font-bold text-foreground pt-4">9. Acceptable Use</h2>

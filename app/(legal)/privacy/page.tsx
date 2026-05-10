@@ -71,7 +71,8 @@ export default function PrivacyPage() {
         <p>We share data only with the sub-processors required to operate the Service:</p>
         <ul className="list-disc pl-6 space-y-2">
           <li><b>Clerk</b> (authentication)</li>
-          <li><b>Google (Workspace + Sheets + Gemini API)</b> — stores customer/bot data and generates AI replies</li>
+          <li><b>Cloud infrastructure providers</b> &mdash; store customer / bot data and host the application</li>
+          <li><b>Third-party large-language-model providers</b> &mdash; generate AI replies. Vendor mix may change over time; current vendors are listed in our latest sub-processor schedule, available on request to the Grievance Officer.</li>
           <li><b>Meta / WhatsApp Business Platform</b> — delivers messages to end customers</li>
           <li><b>Razorpay</b> — processes subscription payments</li>
           <li><b>ZeptoMail (Zoho)</b> — sends transactional email</li>

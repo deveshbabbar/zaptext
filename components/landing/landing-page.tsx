@@ -232,6 +232,18 @@ const MARQUEE_ITEMS = [
 
 const FAQS = [
   {
+    q: "WhatsApp just launched a free in-app AI for businesses — why pay you?",
+    a: "Genuinely good question. The free in-app option is built for FAQs — answer questions from your profile + catalog. ZapText is built for revenue: bookings into a calendar, payment links inside chat, recurring orders, multi-branch / multi-bot for chains, and vertical-grade compliance (FSSAI, RERA, EMS pacemaker safety, Rajasthan Coaching Bill, DPDPA). If you're a 1-person shop just answering 'kya rate hai?', the free option is enough. If you want to actually grow, that's where we come in. See /compare for a full side-by-side.",
+  },
+  {
+    q: "Will my WhatsApp number get flagged for using ZapText?",
+    a: "No. ZapText runs on the official WhatsApp Cloud API as a Business Solution Provider — same legal lane as Meta's own AI. Your number stays verified, green-tick eligible, never at risk of a ban. We layer on extra content filtering so prompt-injection attacks can't make your bot recommend alcohol, supplements, or anything that would trigger a Commerce Policy strike.",
+  },
+  {
+    q: "Can I use both — the free in-app bot for FAQs and ZapText for bookings?",
+    a: "A single WhatsApp number can have only one webhook destination at a time. Pick the bot that owns the customer experience. For most growing businesses, that's the one that books and collects revenue, not the one that just answers.",
+  },
+  {
     q: "Is ZapText official WhatsApp Business API or just automation?",
     a: "100% official WhatsApp Business Platform (Cloud API via Meta). Your number is verified, green-tick eligible, and messages are never at risk of a ban. No browser hacks, no unofficial libraries.",
   },
@@ -282,6 +294,7 @@ export default function LandingPage() {
       <Navbar />
       <Hero />
       <Marquee />
+      <WhyNotFreeBot />
       <BizSection />
       <HowItWorks />
       <Features />
@@ -366,39 +379,39 @@ function Hero() {
               Live on WhatsApp Business API · India
             </div>
             <h1 className="font-sans font-extrabold mt-6 text-[clamp(44px,6vw,84px)] leading-[1.02] tracking-[-0.035em] text-balance pb-2">
-              Your business,
+              Bots that don&apos;t
               <br />
-              replying on <span className="zt-zap">WhatsApp</span>
+              just answer. <span className="zt-serif">They close.</span>
               <br />
-              <span className="zt-serif">while you sleep.</span>
+              <span className="zt-zap">On WhatsApp.</span>
             </h1>
-            <p className="text-[clamp(16px,1.3vw,19px)] text-[var(--ink-2)] max-w-[520px] mt-10 leading-[1.55]">
-              ZapText builds AI bots that understand{" "}
-              <span className="zt-serif text-[1.12em] text-[var(--ink)]">
-                &ldquo;order kaha hai, bhaiya?&rdquo;
-              </span>{" "}
-              and reply like your best employee — in Hindi, English, or Hinglish. Restaurants, coaching, salons, real estate, D2C and gyms. Quick setup. No code.
+            <p className="text-[clamp(16px,1.3vw,19px)] text-[var(--ink-2)] max-w-[540px] mt-10 leading-[1.55]">
+              ZapText turns every{" "}
+              <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;order kaha hai bhaiya?&rdquo;</span>{" "}
+              into a paid order, every{" "}
+              <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;appointment book karni hai&rdquo;</span>{" "}
+              into a confirmed slot in your calendar. In Hindi, English, Hinglish, regional languages &mdash; built for restaurants, salons, gyms, coaching, real estate, e-commerce, tiffin and grocery.
             </p>
             <div className="flex flex-wrap gap-3 mt-8">
               <Link
                 href="/sign-up"
                 className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[16px] hover:-translate-y-px transition"
               >
-                Set up my bot <span>→</span>
+                Try free &mdash; see your first booking <span>→</span>
               </Link>
               <a
-                href="#how"
+                href="#why-zaptext"
                 className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] border border-[var(--ink)] bg-transparent font-semibold text-[16px] hover:-translate-y-px transition"
               >
-                Watch 60-sec demo
+                Why not the free in-app bot?
               </a>
             </div>
             <div className="flex flex-wrap gap-5 mt-7 text-[13px] text-[var(--mute)]">
               <span className="inline-flex items-center gap-1.5">
-                <Check /> ₹0 setup fee (₹4,999 waived)
+                <Check /> Books, collects, escalates &mdash; not just FAQ
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check /> Live after WhatsApp verify (~48h)
+                <Check /> Multiple numbers, branches, brands
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Check /> Cancel anytime
@@ -417,6 +430,166 @@ function Check() {
     <span className="w-[14px] h-[14px] rounded-full bg-[var(--ink)] text-[var(--accent)] inline-grid place-items-center text-[9px]">
       ✓
     </span>
+  );
+}
+
+// ─── Why not the free in-app bot ───
+//
+// Honest, calm comparison block aimed at owners considering the free
+// in-app AI option. We don't bash competitors — we show the gaps that
+// matter to a real Indian SMB trying to grow on WhatsApp:
+//   - "Books a slot" vs "answers questions"
+//   - Multiple numbers / branches
+//   - Vertical compliance (FSSAI, RERA, EMS, Coaching Bill)
+//   - Razorpay payment links sent in chat
+//   - Multi-staff inbox + handover
+function WhyNotFreeBot() {
+  const rows: Array<{ scenario: string; freeBot: string; zapText: string }> = [
+    {
+      scenario: 'Customer asks for a salon appointment Saturday 5 PM',
+      freeBot: 'Replies with menu and rates. Customer needs to call to book.',
+      zapText: 'Books the slot with the right stylist. Sends payment link. Owner gets a calendar entry.',
+    },
+    {
+      scenario: 'Tiffin customer asks "kitne roti milte hain monthly plan mein?"',
+      freeBot: 'Generic reply from the catalog blob.',
+      zapText: 'Knows your plan has 4 wheat-chapati + rice + 1 sabzi (regular portion). Quotes precisely.',
+    },
+    {
+      scenario: 'Gym customer asks if pacemaker patients can do EMS sessions',
+      freeBot: 'Might say yes. Liability risk on you.',
+      zapText: 'Hard-blocks the booking. Tells customer to consult a cardiologist. You stay safe.',
+    },
+    {
+      scenario: 'Coaching enquiry: "selection rate kya hai?"',
+      freeBot: 'May invent reassuring numbers.',
+      zapText: 'Quotes only the past results you actually uploaded — never invents ranks. Rajasthan Coaching Bill compliant.',
+    },
+    {
+      scenario: 'Owner runs 3 outlets — Andheri, Bandra, Powai',
+      freeBot: '1 number per phone. You\'re juggling.',
+      zapText: 'One dashboard, multiple numbers, multiple bots. Each outlet keeps its own menu, hours, staff.',
+    },
+    {
+      scenario: 'Customer sends a voice note asking for today\'s sabzi list',
+      freeBot: '&ldquo;Sorry, I can only handle text.&rdquo;',
+      zapText: 'Transcribes the voice note, parses the list, replies with prices &mdash; even in Marathi or Bengali.',
+    },
+    {
+      scenario: 'Festive surge: 200 messages in an hour',
+      freeBot: 'Throttled or quietly drops messages.',
+      zapText: 'Scales clean. Broadcast templates pre-approved. Every customer answered.',
+    },
+    {
+      scenario: 'You want to broadcast Diwali offers to past customers',
+      freeBot: 'Not supported in the basic in-app flow.',
+      zapText: 'Pre-approved Diwali templates, opt-in management, scheduled sends, conversion tracking.',
+    },
+  ];
+
+  return (
+    <section id="why-zaptext" className="border-y border-[var(--line)]" style={{ padding: '88px 0', background: 'var(--bg-2)' }}>
+      <div className="max-w-[1180px] mx-auto px-7">
+        <div className="zt-mono text-[12px] uppercase tracking-[.1em] text-[var(--mute)] mb-3">
+          // Why not the free in-app bot?
+        </div>
+        <h2 className="text-[clamp(30px,3vw,46px)] font-bold tracking-[-0.025em] leading-[1.08] mb-3 max-w-[820px]">
+          The free WhatsApp AI replies. <span className="zt-serif">ZapText earns.</span>
+        </h2>
+        <p className="text-[15px] md:text-[17px] text-[var(--ink-2)] max-w-[760px] mb-9 leading-[1.55]">
+          A free in-app AI is great for FAQs. But Indian businesses don&apos;t grow from FAQs &mdash; they grow from <i>booked slots, paid orders, and a customer that doesn&apos;t slip away while you&apos;re asleep</i>. Here&apos;s what changes when your bot has actually been built for the way you do business.
+        </p>
+
+        <div className="rounded-[18px] border border-[var(--line)] bg-[var(--card)] overflow-hidden">
+          {/* header */}
+          <div className="hidden md:grid grid-cols-[1.4fr_1fr_1.2fr] gap-0 text-[12.5px] uppercase tracking-[.06em] zt-mono text-[var(--mute)] border-b border-[var(--line)]">
+            <div style={{ padding: '14px 22px' }}>What the customer asks</div>
+            <div style={{ padding: '14px 22px', borderLeft: '1px solid var(--line)' }}>Free in-app AI</div>
+            <div style={{ padding: '14px 22px', borderLeft: '1px solid var(--line)', background: 'color-mix(in oklab, var(--accent) 15%, transparent)' }}>
+              ZapText
+            </div>
+          </div>
+          {rows.map((r, i) => (
+            <div
+              key={i}
+              className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1.2fr] gap-0 border-b border-[var(--line)] last:border-b-0 text-[14px]"
+            >
+              <div style={{ padding: '18px 22px' }} className="text-[var(--ink)] font-medium">
+                {r.scenario}
+              </div>
+              <div
+                style={{ padding: '18px 22px', borderLeft: '1px solid var(--line)' }}
+                className="text-[var(--ink-2)] leading-[1.5]"
+                dangerouslySetInnerHTML={{ __html: r.freeBot }}
+              />
+              <div
+                style={{
+                  padding: '18px 22px',
+                  borderLeft: '1px solid var(--line)',
+                  background: 'color-mix(in oklab, var(--accent) 8%, transparent)',
+                }}
+                className="text-[var(--ink)] leading-[1.5]"
+                dangerouslySetInnerHTML={{ __html: r.zapText }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-7 grid md:grid-cols-3 gap-4">
+          <div
+            className="rounded-[14px] border border-[var(--line)] bg-[var(--card)]"
+            style={{ padding: '18px 20px' }}
+          >
+            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
+              Compliance built-in
+            </div>
+            <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
+              FSSAI, RERA, AYUSH, Rajasthan Coaching Bill, DPDPA &mdash; baked into the bot prompt. No therapeutic claims, no guaranteed-rank ads, no live-animal listings, no supplement promotions. <b>Your WhatsApp Business Account stays safe.</b>
+            </div>
+          </div>
+          <div
+            className="rounded-[14px] border border-[var(--line)] bg-[var(--card)]"
+            style={{ padding: '18px 20px' }}
+          >
+            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
+              You scale, not the platform
+            </div>
+            <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
+              Add a second number when you open the second outlet. Add a brand-front for the cloud kitchen. Add a separate Hindi tone for the Bareilly branch. <b>One dashboard. As many bots as your business needs.</b>
+            </div>
+          </div>
+          <div
+            className="rounded-[14px] border border-[var(--line)] bg-[var(--card)]"
+            style={{ padding: '18px 20px' }}
+          >
+            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
+              Built for India&apos;s reality
+            </div>
+            <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
+              Voice notes from sabziwalas. Mehendi per-pair pricing. Roti count in tiffin plans. EMS pacemaker safety. Bridal multi-day weddings. Daily-mandi paste-and-go. <b>The details a generic bot will never see.</b>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-9 flex flex-wrap items-center gap-3">
+          <Link
+            href="/sign-up"
+            className="inline-flex items-center gap-2 px-6 py-[14px] rounded-[12px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[14px] hover:-translate-y-px transition"
+          >
+            Try free for 100 replies <span>→</span>
+          </Link>
+          <Link
+            href="/compare"
+            className="inline-flex items-center gap-2 px-6 py-[14px] rounded-[12px] border border-[var(--ink)] bg-transparent font-semibold text-[14px] hover:-translate-y-px transition"
+          >
+            See full comparison
+          </Link>
+          <span className="text-[12px] text-[var(--mute)] zt-mono">
+            // your first paid booking is the proof
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1304,10 +1477,10 @@ function FAQSection() {
           lead={
             <>
               Short answers. If you want to go deeper,{" "}
-              <a href="#" className="border-b border-[var(--ink)]">
-                drop us a message on WhatsApp
-              </a>{" "}
-              — our own bot will help (meta, we know).
+              <Link href="/contact" className="border-b border-[var(--ink)]">
+                send us a quick message
+              </Link>{" "}
+              and we&apos;ll get back the same day.
             </>
           }
         />
@@ -1379,12 +1552,12 @@ function BigCTA() {
             >
               Get started — ₹0 setup fee <span>→</span>
             </Link>
-            <a
-              href="#how"
+            <Link
+              href="/contact"
               className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] border border-white/20 text-[var(--background)] font-semibold text-[16px] hover:-translate-y-px transition"
             >
-              Book a 15-min walkthrough
-            </a>
+              Talk to us first
+            </Link>
           </div>
         </div>
       </div>

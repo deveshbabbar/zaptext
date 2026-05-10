@@ -26,6 +26,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
           <Link href="/cancellation" className="hover:text-foreground">Cancellation</Link>
           <Link href="/contact" className="hover:text-foreground">Contact</Link>
           <Link href="/about" className="hover:text-foreground">About</Link>
+          <Link href="/compare" className="hover:text-foreground">Compare</Link>
         </div>
         <div className="mt-4">© 2026 ZapText. All rights reserved.</div>
       </footer>

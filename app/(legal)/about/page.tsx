@@ -21,8 +21,8 @@ export default function AboutPage() {
         <p>
           Every small business in India deserves a 24/7 assistant that speaks their customers&apos;
           language. Most chatbot platforms are built for Silicon Valley enterprises with enterprise
-          budgets. We built ZapText for the kirana owner, the salon manager, the clinic receptionist,
-          and the tuition centre in a Tier-2 city — starting at a price that works.
+          budgets. We built ZapText for the kirana owner, the salon manager, the tiffin auntyji,
+          and the tuition centre in a Tier-2 city &mdash; starting at a price that works.
         </p>
       </section>
 
@@ -57,16 +57,21 @@ export default function AboutPage() {
 
       <section className="space-y-4 text-muted-foreground leading-relaxed">
         <h2 className="text-2xl font-bold text-foreground">Who We Serve</h2>
-        <p>ZapText supports seven business categories with pre-built AI templates:</p>
+        <p>ZapText supports eight business categories with pre-built AI templates:</p>
         <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2">
-          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Restaurants</li>
+          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Restaurants &amp; Cafes</li>
+          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Tiffin &amp; Home Meals</li>
+          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Grocery, Sabzi &amp; Kirana</li>
           <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Salons &amp; Spas</li>
-          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Clinics &amp; Doctors</li>
-          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Retail Stores</li>
+          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Gyms &amp; Fitness</li>
+          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Coaching &amp; Tuitions</li>
           <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Real Estate</li>
-          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Education &amp; Tuitions</li>
-          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">Service Providers</li>
+          <li className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground">E-commerce &amp; D2C</li>
         </ul>
+        <p className="text-sm pt-2">
+          We do not currently support healthcare or pharmacy workflows due to WhatsApp Business
+          Policy restrictions on regulated medical communication.
+        </p>
       </section>
 
       <section className="space-y-4 text-muted-foreground leading-relaxed">

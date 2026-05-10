@@ -13,6 +13,11 @@ export default function SignUpPage() {
   return (
     <AuthShell mode="signup">
       <SignUp
+        signInUrl="/sign-in"
+        // After sign-up, drop the user straight into the bot creation
+        // flow. Without this they land on `/` and see public marketing,
+        // losing momentum during the highest-intent moment.
+        fallbackRedirectUrl="/client/create-bot"
         appearance={{
           elements: {
             rootBox: 'w-full',

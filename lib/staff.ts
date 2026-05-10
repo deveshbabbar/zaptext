@@ -1,10 +1,6 @@
-// ─── Staff: pure utilities + Neon-backed DB layer ───
-//
-// Phase 2B step 3 of the Neon migration. The DB-touching functions live
-// in lib/db/staff.ts and are re-exported from here so the existing
-// callers (webhook, client/staff, client/trainers, lib/trainers) don't
-// change their imports. The pure helpers — DAYS, emptyAvailability,
-// formatAvailabilityForBot, parseAvailabilityCommand — stay here.
+// Staff: pure utilities + Neon-backed DB layer.
+// DB-touching functions live in lib/db/staff.ts and are re-exported here.
+// Pure helpers (DAYS, emptyAvailability, formatAvailabilityForBot, parseAvailabilityCommand) stay here.
 
 import type {
   StaffMember,

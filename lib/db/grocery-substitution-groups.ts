@@ -43,7 +43,7 @@ export async function updateGroup(
   id: string,
   patch: { name?: string; product_ids?: string[] }
 ): Promise<void> {
-  const set: any = {};
+  const set: Partial<typeof grocery_substitution_groups.$inferInsert> = {};
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.product_ids !== undefined) set.product_ids = JSON.stringify(patch.product_ids);
   if (Object.keys(set).length === 0) return;

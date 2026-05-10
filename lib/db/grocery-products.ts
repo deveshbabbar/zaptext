@@ -76,7 +76,7 @@ export async function updateProduct(
   id: string,
   patch: Partial<Pick<GroceryProduct, 'name' | 'name_aliases' | 'unit' | 'image_url'>>
 ): Promise<void> {
-  const setClause: any = {};
+  const setClause: Partial<typeof grocery_products.$inferInsert> = {};
   if (patch.name !== undefined) setClause.name = patch.name.trim().toLowerCase();
   if (patch.name_aliases !== undefined)
     setClause.name_aliases = JSON.stringify(patch.name_aliases);

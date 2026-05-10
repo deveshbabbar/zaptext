@@ -10,8 +10,10 @@ import { computeOrderTotals, meetsMinOrder } from './pricing';
 import { clearDraft } from './cart-draft';
 import type { CartDraft, GroceryOrder } from './types';
 
+export type PlaceOrderErrorDetail = { shortfall?: number; min_order?: number | null };
+
 export class PlaceOrderError extends Error {
-  constructor(public code: string, message: string, public detail?: any) {
+  constructor(public code: string, message: string, public detail?: PlaceOrderErrorDetail) {
     super(message);
   }
 }

@@ -69,7 +69,7 @@ export async function updateSlot(
   id: string,
   patch: Partial<Omit<CreateSlotInput, 'client_id'>>
 ): Promise<void> {
-  const set: any = {};
+  const set: Partial<typeof grocery_slots.$inferInsert> = {};
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.start_time !== undefined) set.start_time = patch.start_time;
   if (patch.end_time !== undefined) set.end_time = patch.end_time;

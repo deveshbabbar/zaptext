@@ -49,7 +49,10 @@ export async function GET(request: NextRequest) {
 
   for (const b of stale) {
     try {
-      const client = await getClientById(b.client_id).catch(() => null);
+      const client = await getClientById(b.client_id).catch((err) => {
+        console.error('[auto-cancel] getClientById failed', { clientId: b.client_id, err });
+        return null;
+      });
       const cutoffMinutes = clampStaleMinutes(client?.stale_booking_minutes);
       const ageMinutes = b.created_at
         ? (now - new Date(b.created_at).getTime()) / 60000
@@ -87,7 +90,10 @@ export async function GET(request: NextRequest) {
       // Trainer notification (if this was a per-trainer booking).
       if (b.staff_id) {
         try {
-          const staff = await getStaffById(b.staff_id).catch(() => null);
+          const staff = await getStaffById(b.staff_id).catch((err) => {
+            console.error('[auto-cancel] getStaffById failed', { staffId: b.staff_id, err });
+            return null;
+          });
           if (staff?.whatsapp_phone) {
             const msg =
               `⏰ Booking auto-cancelled\n\n` +

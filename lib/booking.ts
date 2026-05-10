@@ -1,12 +1,5 @@
-// ─── Booking: pure date helpers + Neon-backed DB layer ───
-//
-// Phase 2B step 4 (final) of the Neon migration. The DB-touching functions
-// live in lib/db/bookings.ts and are re-exported from here so the 9
-// existing callers (webhook, cron/reminders, cron/morning-summary,
-// cron/evening-summary, booking/cancel, client/stats, client/date-overrides,
-// client/schedule, client/bookings) don't change their imports.
-// Pure date helpers and generateDefaultSchedule stay here because they
-// don't need DB access.
+// Booking: pure date helpers + Neon-backed DB layer.
+// DB-touching functions live in lib/db/bookings.ts and are re-exported here.
 
 import { setWeeklySchedule } from './db/bookings';
 import type { WeeklySlot } from './db/bookings';

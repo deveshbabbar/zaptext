@@ -1,12 +1,5 @@
-// ─── Inventory: pure utilities + Neon-backed DB layer ───
-//
-// Phase 2B step 2 of the Neon migration. The DB-touching functions live
-// in lib/db/inventory.ts and are re-exported from here so the existing
-// callers (webhook, inventory-sync, client routes) don't change their
-// imports. The pure utility functions and reserveOrder() stay here
-// because they're either standalone (no I/O) or compose multiple DB
-// functions in a way that's natural to keep next to the utilities they
-// rely on (findBestMatch, parseQuantityFromToken).
+// Inventory: pure utilities + Neon-backed DB layer.
+// DB-touching functions live in lib/db/inventory.ts and are re-exported here.
 
 import type { InventoryItem } from './types';
 import {

@@ -76,7 +76,7 @@ export async function updateZone(
   id: string,
   patch: Partial<CreateZoneInput>
 ): Promise<void> {
-  const set: any = {};
+  const set: Partial<typeof grocery_zones.$inferInsert> = {};
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.pincode !== undefined) set.pincode = patch.pincode;
   if (patch.area_keywords !== undefined)

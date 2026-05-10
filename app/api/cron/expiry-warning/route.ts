@@ -65,7 +65,10 @@ export async function GET(request: NextRequest) {
         if (msLeft <= 0) continue; // already expired; offline reply handles it
         const daysLeft = Math.max(1, Math.ceil(msLeft / ONE_DAY_MS));
 
-        const owner = await cc.users.getUser(sub.userId).catch(() => null);
+        const owner = await cc.users.getUser(sub.userId).catch((err) => {
+          console.error('[expiry-warning] clerk getUser failed', { userId: sub.userId, err });
+          return null;
+        });
         const ownerEmail = owner?.emailAddresses[0]?.emailAddress;
         if (!ownerEmail) continue;
         const ownerName = `${owner?.firstName || ''} ${owner?.lastName || ''}`.trim() || 'there';

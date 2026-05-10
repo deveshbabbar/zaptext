@@ -51,32 +51,6 @@ export default function AdminSidebar({ name, email, initials }: AdminSidebarProp
         <SideLink pathname={pathname} href="/admin/messages" icon="📨" label="Messages" />
       </nav>
 
-      <SideSec>Vertical · Grocery</SideSec>
-      <nav className="flex flex-col gap-px">
-        <SideLink
-          pathname={pathname}
-          href="/admin/grocery"
-          icon="🥬"
-          label="Dashboard"
-          exact
-        />
-        <SideLink pathname={pathname} href="/admin/grocery/today" icon="📋" label="Aaj ki list" />
-        <SideLink pathname={pathname} href="/admin/grocery/products" icon="🛒" label="Products" />
-        <SideLink pathname={pathname} href="/admin/grocery/orders" icon="📦" label="Orders" />
-        <SideLink
-          pathname={pathname}
-          href="/admin/grocery/zones-slots"
-          icon="📍"
-          label="Zones & Slots"
-        />
-        <SideLink
-          pathname={pathname}
-          href="/admin/grocery/recurring"
-          icon="🔁"
-          label="Recurring"
-        />
-      </nav>
-
       <SideSec>Observability</SideSec>
       <nav className="flex flex-col gap-px">
         <SideLink pathname={pathname} href="/admin/health" icon="🩺" label="Platform health" />

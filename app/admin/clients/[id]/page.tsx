@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -595,6 +595,44 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </CardContent>
         </Card>
       </div>
+
+      {/* Vertical-specific admin tools — only render for clients whose
+          `type` matches a vertical that has dedicated admin surfaces.
+          This is how per-vertical admin tooling is surfaced (per-client
+          drill-in), instead of polluting the global sidebar with
+          vertical-specific sections. */}
+      {client.type === 'grocery' && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>🥬 Grocery admin tools</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Manage today&apos;s catalog, products, orders, and recurring subscriptions for this grocery client.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <a href="/admin/grocery" className={buttonVariants({ variant: 'default' })}>
+                📊 Dashboard
+              </a>
+              <a href="/admin/grocery/today" className={buttonVariants({ variant: 'outline' })}>
+                📋 Aaj ki list
+              </a>
+              <a href="/admin/grocery/products" className={buttonVariants({ variant: 'outline' })}>
+                🛒 Products
+              </a>
+              <a href="/admin/grocery/orders" className={buttonVariants({ variant: 'outline' })}>
+                📦 Orders
+              </a>
+              <a href="/admin/grocery/zones-slots" className={buttonVariants({ variant: 'outline' })}>
+                📍 Zones & Slots
+              </a>
+              <a href="/admin/grocery/recurring" className={buttonVariants({ variant: 'outline' })}>
+                🔁 Recurring
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="test" className="space-y-4">

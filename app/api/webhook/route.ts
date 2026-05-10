@@ -205,7 +205,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
 
   // Trial gate: count existing outbound replies so we can block further Gemini
   // calls once the lifetime limit is hit and strip premium tags from AI output.
-  const ownerSubscription = await getActiveSubscription(client.owner_user_id).catch(() => null);
+  const ownerSubscription = await getActiveSubscription(client.owner_user_id).catch((err) => {
+    console.error('[webhook] getActiveSubscription failed', { ownerId: client.owner_user_id, err });
+    return null;
+  });
   const isTrialBot = !!ownerSubscription && isTrialPlan(ownerSubscription.plan);
   // Resolved plan key — used by feature-gates below to decide which AI
   // tags (BOOK / PAY / etc.) are silently stripped before they fire.
@@ -1878,7 +1881,7 @@ async function handleStaffCommand(
 
   // schedule — show current availability
   if (normalized === 'schedule' || normalized === 'availability' || normalized === 'avail') {
-    const { formatAvailabilityForBot } = await import('@/lib/trainers');
+    const { formatAvailabilityForBot } = await import('@/lib/staff');
     const avail = formatAvailabilityForBot(trainer);
     await sendWhatsAppMessage(phoneNumberId, trainerPhone,
       `📅 *${trainer.name}'s schedule*\n${avail}\n\nText *avail mon-fri 9am-6pm* to update.`);
@@ -1942,7 +1945,10 @@ async function sweepStalePendings() {
 
   for (const b of stale) {
     try {
-      const realClient = await getClientById(b.client_id).catch(() => null);
+      const realClient = await getClientById(b.client_id).catch((err) => {
+        console.error('[stale-sweep] getClientById failed', { clientId: b.client_id, err });
+        return null;
+      });
       const cutoffMinutes = clampStaleMinutes(realClient?.stale_booking_minutes);
       const ageMinutes = b.created_at ? (now - new Date(b.created_at).getTime()) / 60000 : Infinity;
       if (ageMinutes < cutoffMinutes) continue; // not yet eligible for THIS client
@@ -1970,7 +1976,10 @@ async function sweepStalePendings() {
       if (b.staff_id) {
         try {
           const { getStaffById } = await import('@/lib/staff');
-          const staff = await getStaffById(b.staff_id).catch(() => null);
+          const staff = await getStaffById(b.staff_id).catch((err) => {
+            console.error('[stale-sweep] getStaffById failed', { staffId: b.staff_id, err });
+            return null;
+          });
           if (staff?.whatsapp_phone) {
             const msg =
               `⏰ Booking auto-cancelled\n\n` +

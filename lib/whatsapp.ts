@@ -1,12 +1,23 @@
 import crypto from 'crypto';
+import { safeOutboundText } from './whatsapp-content-filter';
 
 const WHATSAPP_API_URL = 'https://graph.facebook.com/v21.0';
 
 export async function sendWhatsAppMessage(
   phoneNumberId: string,
   to: string,
-  text: string
+  text: string,
+  // Optional context — when provided, filter logs include clientId/customerPhone
+  // so admins can later audit which bot drafted a blocked message.
+  context?: { clientId?: string; customerPhone?: string }
 ): Promise<{ success: boolean; error?: string }> {
+  // WhatsApp Commerce Policy filter — runs on every outbound text. Replaces
+  // the body with a safe fallback if the LLM (or owner-supplied additionalInfo)
+  // produced a draft that mentions alcohol / tobacco / supplements / gambling
+  // / etc. A single restricted-content message can flag the WABA, so the cost
+  // of a false-positive (rare) is much lower than the cost of a leak.
+  const safeText = safeOutboundText(text, context);
+
   try {
     const response = await fetch(
       `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
@@ -20,7 +31,7 @@ export async function sendWhatsAppMessage(
           messaging_product: 'whatsapp',
           to,
           type: 'text',
-          text: { body: text },
+          text: { body: safeText },
         }),
       }
     );

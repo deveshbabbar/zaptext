@@ -21,7 +21,7 @@ import type { BusinessType } from '@/lib/types';
 // removed for WhatsApp Business Policy compliance. Any creation request with
 // an unknown / removed type must be rejected here so a bad row never reaches
 // the Sheet (where prompt-generator silently downgrades it to "restaurant").
-const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'tiffin', 'grocery'];
+const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'tiffin', 'grocery', 'ecommerce'];
 
 export async function POST(request: NextRequest) {
   const rl = rateLimit(getClientKey(request, '/api/onboard'), 5, 60_000);

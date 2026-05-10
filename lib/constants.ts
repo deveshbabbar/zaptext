@@ -38,6 +38,9 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     borderColor: 'border-pink-500/30',
   },
   {
+    // Deprecated 2026-05-10: merged into the broader `ecommerce` vertical.
+    // Hidden from new-bot pickers via `hidden: true`, but kept here so
+    // existing d2c bots keep their label/icon in dashboards and lookups.
     type: 'd2c',
     label: 'D2C E-commerce Brand',
     description: 'Online brands — skincare, fashion, food, accessories',
@@ -45,6 +48,16 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-teal-400',
     bgColor: 'bg-teal-500/10',
     borderColor: 'border-teal-500/30',
+    hidden: true,
+  },
+  {
+    type: 'ecommerce',
+    label: 'E-commerce Store',
+    description: 'Online shop — fashion, electronics, gifts, home, multi-category sellers',
+    icon: '🛒',
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/30',
   },
   {
     type: 'gym',
@@ -137,5 +150,13 @@ export const FAQ_TEMPLATES: Record<BusinessType, FAQ[]> = {
     { question: 'Min order kitna hai?', answer: '' },
     { question: 'COD available hai?', answer: '' },
     { question: 'Kal subah ka order kab tak book kar sakte hain?', answer: '' },
+  ],
+  ecommerce: [
+    { question: 'Order track karna hai', answer: '' },
+    { question: 'COD available hai?', answer: '' },
+    { question: 'Return / exchange kaise karein?', answer: '' },
+    { question: 'Delivery kitne din mein hogi?', answer: '' },
+    { question: 'Shipping charges kya hain?', answer: '' },
+    { question: 'Koi offer chal raha hai?', answer: '' },
   ],
 };

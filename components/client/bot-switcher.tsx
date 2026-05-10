@@ -18,6 +18,7 @@ const TYPE_ICONS: Record<BusinessType, string> = {
   gym: '💪',
   tiffin: '🍱',
   grocery: '🥬',
+  ecommerce: '🛒',
 };
 
 const TYPE_BG: Record<BusinessType, string> = {
@@ -29,6 +30,7 @@ const TYPE_BG: Record<BusinessType, string> = {
   gym: 'bg-red-100',
   tiffin: 'bg-orange-100',
   grocery: 'bg-lime-100',
+  ecommerce: 'bg-cyan-100',
 };
 
 const TYPE_LABEL: Record<BusinessType, string> = {
@@ -40,6 +42,7 @@ const TYPE_LABEL: Record<BusinessType, string> = {
   gym: 'Gym',
   tiffin: 'Tiffin',
   grocery: 'Grocery',
+  ecommerce: 'E-commerce',
 };
 
 interface Props {

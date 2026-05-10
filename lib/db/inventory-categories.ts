@@ -1,9 +1,7 @@
-// ─── Per-client inventory categories ───
-//
-// Phase 3 of the inventory work. Each client's inventory page is grouped
-// by category; categories themselves are per-client so an owner can add
-// custom labels (e.g., a gym owner adds "Diet Plans") without touching
-// the global vertical defaults.
+// Per-client inventory categories.
+// Each client's inventory page is grouped by category; categories are per-client
+// so owners can add custom labels (e.g., a gym owner adds "Diet Plans") without
+// touching the global vertical defaults.
 //
 // On first sync (bot approval / settings save), seedDefaultsForVertical()
 // inserts a sensible starter set per business type. The seed is
@@ -81,6 +79,15 @@ export const VERTICAL_DEFAULT_CATEGORIES: Record<BusinessType, DefaultCategory[]
   d2c: [
     { name: 'Products',      tracks_stock: true,  order: 0 },
     { name: 'Subscriptions', tracks_stock: false, order: 1 },
+  ],
+  ecommerce: [
+    { name: 'Bestsellers',  tracks_stock: true, order: 0 },
+    { name: 'New Arrivals', tracks_stock: true, order: 1 },
+    { name: 'Clothing',     tracks_stock: true, order: 2 },
+    { name: 'Accessories',  tracks_stock: true, order: 3 },
+    { name: 'Electronics',  tracks_stock: true, order: 4 },
+    { name: 'Home',         tracks_stock: true, order: 5 },
+    { name: 'Other',        tracks_stock: true, order: 6 },
   ],
   realestate: [
     { name: 'Listings',     tracks_stock: false, order: 0 },

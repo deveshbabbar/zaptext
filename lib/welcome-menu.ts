@@ -72,6 +72,14 @@ const VERTICAL_DEFAULTS: Record<string, MenuItem[]> = {
     { id: 'returns', label: 'Returns & refunds', description: 'Start a return' },
     { id: 'human', label: 'Customer support', description: 'Talk to a real person' },
   ],
+  ecommerce: [
+    { id: 'shop', label: 'Browse catalog', description: 'See all categories' },
+    { id: 'order_status', label: 'Track an order', description: 'Where is my order?' },
+    { id: 'cod_check', label: 'COD / pincode check', description: 'Is COD available?' },
+    { id: 'returns', label: 'Returns & exchange', description: 'Start a return' },
+    { id: 'offers', label: 'Current offers', description: 'See deals & coupons' },
+    { id: 'human', label: 'Customer support', description: 'Talk to a real person' },
+  ],
   coaching: [
     { id: 'book_demo', label: 'Book a free demo', description: 'Try a class' },
     { id: 'courses', label: 'Course catalog', description: 'See what we teach' },
@@ -282,6 +290,7 @@ function servicesLabel(vertical: string): string {
     case 'coaching': return 'Course catalog';
     case 'restaurant': return 'See the menu';
     case 'd2c': return 'Browse products';
+    case 'ecommerce': return 'Browse catalog';
     default: return 'Services';
   }
 }

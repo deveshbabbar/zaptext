@@ -162,7 +162,7 @@ export default function CreateBotPage() {
               sub="We'll tailor the bot's personality and FAQ presets to match."
             />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-              {BUSINESS_TYPES.map((bt) => {
+              {BUSINESS_TYPES.filter((bt) => !bt.hidden).map((bt) => {
                 const active = selectedType === bt.type;
                 return (
                   <button

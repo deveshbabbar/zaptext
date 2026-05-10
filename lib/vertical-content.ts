@@ -226,6 +226,38 @@ export const VERTICAL_CONTENT: Record<BusinessType, VerticalCopy> = {
     ],
     ctaText: 'Start your D2C bot — free',
   },
+  ecommerce: {
+    pageTitle: 'WhatsApp bot for e-commerce & D2C brands — orders, tracking & cart recovery — ZapText',
+    metaDescription:
+      'WhatsApp AI bot for online shops & D2C brands — fashion, beauty, electronics, gifts, home, multi-category. Handles product queries, Instagram DM-to-purchase, order tracking, COD pincode checks, returns, abandoned cart recovery. ₹599/mo. Wati / Interakt alternative built for Indian e-commerce sellers.',
+    hero: 'Your online shop, on WhatsApp — answered in seconds.',
+    subHero:
+      'For D2C brands and multi-category stores — your AI bot answers product queries, shares the catalog, turns Instagram DMs into orders, tracks parcels, handles COD/return questions, and recovers abandoned carts — in Hindi, English, or Hinglish — 24/7. Wati / Interakt alternative built for Indian e-commerce.',
+    painPoints: [
+      '"Yeh kapde S size mein hai?" — answered with catalog + price + stock',
+      'Instagram/Facebook DMs converted into orders, not lost in unread inbox',
+      'Order tracking by ID, no more "kaha hai mera parcel" calls',
+      'COD pincode check answered instantly, no manual lookup',
+      'Return / exchange policy shared cleanly when asked',
+      'Abandoned cart recovery via WhatsApp (with opt-in)',
+      'Festive offers + new drops broadcast to opted-in customers, not random ads',
+    ],
+    exampleConversation: [
+      { from: 'customer', text: 'kurta set dikhao under 1500, M size mein' },
+      {
+        from: 'bot',
+        text:
+          'Ji haan! M size, ₹1,500 ke andar 4 options hain:\n• Floral Cotton Kurta Set — ₹1,199 ⭐\n• Anarkali Suit (Pink) — ₹1,449\n• Straight-Cut Kurta Set — ₹999\n• A-Line Kurta + Dupatta — ₹1,299\n\nKisi ka detail bhejun ya cart mein add karun?',
+      },
+      { from: 'customer', text: 'pehla wala 1199 wala. COD karte ho 110064 pincode pe?' },
+      {
+        from: 'bot',
+        text:
+          'COD available hai 110064 pe ✅. Floral Cotton Kurta Set (M, ₹1,199) cart mein add kar diya. Free shipping above ₹999, delivery in 3-5 days. Order place karne ka link: shop.example.com/checkout/9234. Order ID milte hi tracking yahin aa jayega.',
+      },
+    ],
+    ctaText: 'Start your e-commerce bot — free',
+  },
   grocery: {
     pageTitle: 'WhatsApp bot for grocery, sabziwalas & kirana — daily order on autopilot — ZapText',
     metaDescription:

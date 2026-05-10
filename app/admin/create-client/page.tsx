@@ -175,7 +175,7 @@ export default function AdminCreateClientPage() {
 
         <Panel title="Bot details">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-            {BUSINESS_TYPES.map((bt) => {
+            {BUSINESS_TYPES.filter((bt) => !bt.hidden).map((bt) => {
               const active = businessType === bt.type;
               return (
                 <button

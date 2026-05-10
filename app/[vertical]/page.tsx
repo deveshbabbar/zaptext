@@ -10,7 +10,7 @@
 // Pre-renders all 7 verticals at build time via generateStaticParams.
 // Unknown slugs (/foobar) hit notFound() instead of breaking the route.
 
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { BUSINESS_TYPES } from '@/lib/constants';
@@ -20,12 +20,24 @@ import { PLANS } from '@/lib/plans';
 
 const VALID_VERTICALS = Object.keys(VERTICAL_CONTENT) as BusinessType[];
 
+// Slugs that have been merged into another vertical. The old slug
+// redirects to the canonical one so existing SEO + ad-link traffic still
+// lands on a real page. Existing rows in the DB with the old `type` keep
+// working — only the marketing landing redirects.
+const MERGED_VERTICALS: Partial<Record<BusinessType, BusinessType>> = {
+  d2c: 'ecommerce',
+};
+
 function isValidVertical(s: string): s is BusinessType {
   return (VALID_VERTICALS as string[]).includes(s);
 }
 
 export function generateStaticParams() {
-  return VALID_VERTICALS.map((vertical) => ({ vertical }));
+  // Don't pre-render slugs that redirect — they are handled at request
+  // time by `redirect()` below.
+  return VALID_VERTICALS
+    .filter((v) => !(v in MERGED_VERTICALS))
+    .map((vertical) => ({ vertical }));
 }
 
 export async function generateMetadata(
@@ -51,6 +63,10 @@ export default async function VerticalLandingPage(
 ) {
   const { vertical } = await params;
   if (!isValidVertical(vertical)) notFound();
+
+  // Redirect deprecated slugs to the merged canonical vertical.
+  const mergedTarget = MERGED_VERTICALS[vertical as BusinessType];
+  if (mergedTarget) redirect(`/${mergedTarget}`);
 
   const copy = getVerticalContent(vertical);
   const meta = BUSINESS_TYPES.find((b) => b.type === vertical)!;

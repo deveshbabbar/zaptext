@@ -297,33 +297,47 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
       </div>
 
       <h3 className="text-lg font-semibold border-b border-border pb-2 pt-4">
-        Payment (UPI){' '}
-        <span className="text-sm font-normal text-muted-foreground">— optional, enables in-chat payments</span>
+        Payment{' '}
+        <span className="text-xs font-normal uppercase tracking-wide bg-amber-100 text-amber-900 px-2 py-0.5 rounded ml-2">
+          COD-only mode active
+        </span>
       </h3>
+      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+        <p className="text-xs text-amber-900">
+          ⚠️ <b>Cash payments only right now.</b> Your bot will refuse to share UPI links / Razorpay / payment-gateway URLs with customers regardless of what you enter below.
+          Online payments (UPI / Razorpay / Cashfree / EMI partners) will roll out in a future release &mdash; the fields below are kept so you can fill them now and have them auto-activate the day the integration goes live.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-60">
         <div>
-          <Label htmlFor="upiId">UPI ID</Label>
+          <Label htmlFor="upiId">
+            UPI ID <span className="text-[10px] uppercase tracking-wide text-muted-foreground ml-1">Coming soon</span>
+          </Label>
           <Input
             id="upiId"
             placeholder="e.g., rohit@ybl or 98xxx@upi"
             value={(data.upiId as string) || ''}
             onChange={(e) => onChange('upiId', e.target.value.trim())}
+            disabled
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Format: name@bank. Bot uses this to build payment links for customers.
+            Stored for future use. Bot will NOT share this in customer chat right now.
           </p>
         </div>
         <div>
-          <Label htmlFor="upiName">Payee Name</Label>
+          <Label htmlFor="upiName">
+            Payee Name <span className="text-[10px] uppercase tracking-wide text-muted-foreground ml-1">Coming soon</span>
+          </Label>
           <Input
             id="upiName"
             placeholder="e.g., Rohit's Biryani"
             value={(data.upiName as string) || ''}
             onChange={(e) => onChange('upiName', e.target.value)}
+            disabled
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Shown to customer in their UPI app. Usually your business name.
+            Stored for future use. Will appear in your customer&apos;s UPI app once online payments go live.
           </p>
         </div>
       </div>

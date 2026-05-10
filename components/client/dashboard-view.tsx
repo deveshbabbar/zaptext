@@ -190,6 +190,23 @@ const TYPE_COPY: Record<BusinessType, DashboardCopy> = {
     scheduleSub: (n) => (n === 0 ? 'No deliveries yet' : `${n} order${n === 1 ? '' : 's'} out`),
     quickLink: { href: '/client/inventory', emoji: '🥬', label: 'Stock' },
   },
+  ecommerce: {
+    heroTitle: (
+      <>
+        Orders streaming in <span className="zt-serif">all day</span>.
+      </>
+    ),
+    heroDesc: (n) => (
+      <>
+        Your AI handled <b style={{ color: '#fff' }}>{n}</b> messages — answering product queries, tracking orders, recovering carts.
+      </>
+    ),
+    todayLabel: "Today's orders",
+    scheduleTitle: "Today's orders",
+    scheduleEmpty: 'No orders yet today.',
+    scheduleSub: (n) => (n === 0 ? 'No orders yet' : `${n} order${n === 1 ? '' : 's'}`),
+    quickLink: { href: '/client/inventory', emoji: '🛒', label: 'Catalog' },
+  },
 };
 
 interface Stats {
@@ -294,6 +311,8 @@ export function ClientDashboard({
 
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead title={<>Namaste, <span className="zt-serif">{userName}</span> 👋</>} />
+
+        {!activeBot.phone_number_id && <WebhookSetupCard activeBot={activeBot} />}
 
         {showActivationBanner && (
           <div
@@ -491,6 +510,113 @@ function ScheduleSkeleton({ rows = 3 }: { rows?: number }) {
           <div className="h-3 w-24 rounded bg-[var(--line)]" />
         </div>
       ))}
+    </div>
+  );
+}
+
+// Setup banner shown when the bot exists but its WhatsApp Business
+// `phone_number_id` is empty — meaning the owner hasn't pointed Meta at
+// us yet. Without this card the owner sees a "live" dashboard but the
+// bot will never receive a message. The card walks them through the
+// 3 things to do inside Meta Business Manager and copy-buttons the
+// webhook URL so they don't fat-finger it.
+function WebhookSetupCard({ activeBot }: { activeBot: ClientRow }) {
+  const [origin, setOrigin] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  const webhookUrl = origin ? `${origin}/api/webhook` : '/api/webhook';
+
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* no-op */
+    }
+  };
+
+  return (
+    <div
+      className="rounded-[18px] mb-4"
+      style={{
+        padding: '20px 22px',
+        background: 'color-mix(in oklab, #C8FF6E 14%, transparent)',
+        border: '1px solid color-mix(in oklab, #C8FF6E 55%, transparent)',
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 rounded-[12px] bg-[var(--ink)] text-[var(--background)] grid place-items-center text-[20px] flex-shrink-0">
+          🔌
+        </div>
+        <div className="flex-1">
+          <b className="text-[15px]">Connect your WhatsApp Business account to go live</b>
+          <div className="text-[12.5px] text-[var(--ink-2)] mt-1">
+            Your bot for <b>{activeBot.business_name}</b> is created but not yet receiving messages.
+            Finish the 3-step Meta hand-off below.
+          </div>
+
+          {/* Step 1 — webhook URL */}
+          <div className="mt-3 rounded-[12px] border border-[var(--line)] bg-[var(--card)] p-3">
+            <div className="text-[11px] zt-mono uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
+              Step 1 · Webhook URL
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-[12px] bg-[var(--bg-2)] rounded px-2 py-1.5 font-mono break-all">
+                {webhookUrl}
+              </code>
+              <button
+                type="button"
+                onClick={() => copy(webhookUrl)}
+                className="text-[11px] px-2.5 py-1.5 rounded bg-[var(--ink)] text-[var(--background)] font-semibold hover:opacity-90"
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <div className="text-[11px] text-[var(--ink-2)] mt-1.5">
+              Paste this in <b>Meta Business Suite → WhatsApp → Configuration → Callback URL</b>.
+            </div>
+          </div>
+
+          {/* Step 2 — verify token */}
+          <div className="mt-2 rounded-[12px] border border-[var(--line)] bg-[var(--card)] p-3">
+            <div className="text-[11px] zt-mono uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
+              Step 2 · Verify token
+            </div>
+            <div className="text-[12px] text-[var(--ink-2)]">
+              Use the token your ZapText admin shared with you (the same value lives in your account&apos;s
+              setup email). Paste it in <b>Verify token</b>, then hit <b>Verify and save</b>.
+            </div>
+          </div>
+
+          {/* Step 3 — Phone Number ID */}
+          <div className="mt-2 rounded-[12px] border border-[var(--line)] bg-[var(--card)] p-3">
+            <div className="text-[11px] zt-mono uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
+              Step 3 · Phone Number ID
+            </div>
+            <div className="text-[12px] text-[var(--ink-2)]">
+              In <b>WhatsApp → API Setup</b>, copy the <b>Phone number ID</b> shown next to your number,
+              then send it to your ZapText admin (or paste it on{' '}
+              <Link href="/client/settings" className="border-b border-[var(--ink)] text-[var(--ink)]">
+                Settings
+              </Link>
+              ). Without it, the bot can&apos;t reply to messages.
+            </div>
+          </div>
+
+          <div className="text-[11px] text-[var(--mute)] mt-3">
+            Stuck? Mail{' '}
+            <a className="text-[var(--ink)] border-b border-[var(--ink)]" href="mailto:zaptextofficial@gmail.com">
+              zaptextofficial@gmail.com
+            </a>{' '}
+            with subject <b>&quot;Webhook setup&quot;</b> &mdash; we&apos;ll walk you through it.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

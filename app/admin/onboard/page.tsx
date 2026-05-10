@@ -15,7 +15,7 @@ export default function AdminOnboardPage() {
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {BUSINESS_TYPES.map((bt) => (
+          {BUSINESS_TYPES.filter((bt) => !bt.hidden).map((bt) => (
             <Link
               key={bt.type}
               href={`/admin/onboard/${bt.type}`}

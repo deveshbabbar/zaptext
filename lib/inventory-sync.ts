@@ -168,6 +168,22 @@ export async function syncProductsFromConfig(
         });
       }
       break;
+
+    case 'ecommerce':
+      for (const product of config.products || []) {
+        if (!product.name?.trim()) continue;
+        // Free-text category from the form — fall back to "Other" so items
+        // are never orphaned outside a real category row.
+        const cat = (product.category || '').trim() || 'Other';
+        toCreate.push({
+          name: product.name,
+          price: parsePrice(product.price),
+          notes: [product.description, product.bestseller ? 'bestseller' : ''].filter(Boolean).join(' · '),
+          category: cat,
+          tracks_stock: true,
+        });
+      }
+      break;
   }
 
   // Deduplicate by normalized name so one sync doesn't upsert the same item twice.

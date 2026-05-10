@@ -2,6 +2,10 @@
 import { useState } from 'react';
 import type { SubstitutionGroup, GroceryProduct } from '@/lib/grocery/types';
 import { toast } from 'sonner';
+import { Panel, Pill } from '@/components/app/primitives';
+
+const inputCls =
+  'rounded-[10px] bg-[var(--card)] border border-[var(--line)] px-3 py-2 text-[13.5px] focus:outline-none focus:border-[var(--ink)]';
 
 export default function SubGroupsCard({
   initial,
@@ -45,71 +49,66 @@ export default function SubGroupsCard({
   const productById = new Map(products.map((p) => [p.id, p]));
 
   return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 md:col-span-2">
-      <h2 className="text-lg font-semibold">Substitution groups</h2>
-      <p className="mt-1 text-xs text-neutral-400">
-        Group items that can replace each other when out of stock.
-        E.g. palak &harr; methi &harr; sarson (leafy greens).
-      </p>
-
-      <div className="mt-3 space-y-2">
+    <Panel
+      title="Substitution groups"
+      sub="Group items that can replace each other when out of stock. E.g. palak ↔ methi ↔ sarson (leafy greens)."
+    >
+      <div className="space-y-3 mb-4">
         <input
-          className="w-full rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={`${inputCls} w-full`}
           placeholder="Group name (e.g. leafy greens)"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {products.map((p) => (
             <button
               key={p.id}
               onClick={() => toggle(p.id)}
-              className={`rounded px-2 py-1 text-xs ${
+              className={`px-2 py-1 text-[11px] zt-mono uppercase tracking-[.04em] rounded-full ${
                 picked.includes(p.id)
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-neutral-800 text-neutral-300'
+                  ? 'bg-[var(--ink)] text-[var(--background)] font-semibold'
+                  : 'bg-[var(--card)] border border-[var(--line)] text-[var(--mute)] hover:text-[var(--ink)]'
               }`}
             >
               {p.name}
             </button>
           ))}
         </div>
-        <button
-          onClick={add}
-          className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium"
-        >
+        <Pill variant="ink" onClick={add}>
           Create group
-        </button>
+        </Pill>
       </div>
 
-      <ul className="mt-4 space-y-2">
-        {groups.map((g) => (
-          <li
-            key={g.id}
-            className="flex items-center justify-between rounded border border-neutral-800 px-3 py-2 text-sm"
-          >
-            <div>
-              <span className="font-medium">{g.name}:</span>{' '}
-              <span className="text-neutral-400">
-                {g.product_ids
-                  .map((id) => productById.get(id)?.name ?? '?')
-                  .join(' ↔ ')}
-              </span>
-            </div>
-            <button
-              onClick={() => remove(g.id)}
-              className="rounded bg-red-600/20 px-2 py-1 text-xs text-red-300"
+      {groups.length === 0 ? (
+        <div className="py-12 text-center text-[13.5px] text-[var(--mute)]">
+          No substitution groups yet.
+        </div>
+      ) : (
+        <ul className="flex flex-col">
+          {groups.map((g) => (
+            <li
+              key={g.id}
+              className="flex items-center justify-between gap-3 py-3 border-b border-[var(--line)] last:border-b-0"
             >
-              Delete
-            </button>
-          </li>
-        ))}
-        {groups.length === 0 && (
-          <li className="rounded border border-dashed border-neutral-800 p-4 text-center text-neutral-500">
-            No substitution groups yet.
-          </li>
-        )}
-      </ul>
-    </section>
+              <div className="text-[13.5px]">
+                <span className="font-semibold capitalize">{g.name}:</span>{' '}
+                <span className="text-[var(--mute)]">
+                  {g.product_ids
+                    .map((id) => productById.get(id)?.name ?? '?')
+                    .join(' ↔ ')}
+                </span>
+              </div>
+              <button
+                onClick={() => remove(g.id)}
+                className="text-[12px] font-medium text-[#D93A2E] hover:underline"
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }

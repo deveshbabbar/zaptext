@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { RecurringOrder } from '@/lib/grocery/types';
 import { toast } from 'sonner';
+import { Panel, StatusPill } from '@/components/app/primitives';
 
 const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -28,58 +29,63 @@ export default function RecurringList({ initial }: { initial: RecurringOrder[] }
 
   if (list.length === 0) {
     return (
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-center text-neutral-500">
-        No recurring orders yet.
-      </div>
+      <Panel>
+        <div className="py-12 text-center text-[13.5px] text-[var(--mute)]">
+          No recurring orders yet.
+        </div>
+      </Panel>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {list.map((r) => (
-        <div
-          key={r.id}
-          className="rounded-lg border border-neutral-800 bg-neutral-900 p-3"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">
-                {r.customer_phone} · Every {DOW[r.day_of_week]}
+        <Panel key={r.id}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="font-semibold text-[14.5px]">
+                {r.customer_phone}{' '}
+                <span className="text-[var(--mute)] font-normal">
+                  · Every {DOW[r.day_of_week]}
+                </span>
               </div>
-              <div className="text-xs text-neutral-400">
-                {r.template_items.length} items · last run {r.last_run_date ?? 'never'}
+              <div className="text-[11.5px] zt-mono uppercase tracking-[.06em] text-[var(--mute)] mt-1">
+                {r.template_items.length} items · last run{' '}
+                {r.last_run_date ?? 'never'}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => toggle(r)}
-                className={`rounded px-2 py-1 text-xs ${
-                  r.is_active
-                    ? 'bg-emerald-600/20 text-emerald-300'
-                    : 'bg-neutral-700 text-neutral-400'
-                }`}
+                className="cursor-pointer"
               >
-                {r.is_active ? 'Active' : 'Paused'}
+                <StatusPill variant={r.is_active ? 'active' : 'pending'}>
+                  {r.is_active ? 'Active' : 'Paused'}
+                </StatusPill>
               </button>
               <button
                 onClick={() => remove(r)}
-                className="rounded bg-red-600/20 px-2 py-1 text-xs text-red-300"
+                className="text-[12px] font-medium text-[#D93A2E] hover:underline"
               >
                 Cancel
               </button>
             </div>
           </div>
-          <details className="mt-2 text-sm">
-            <summary className="cursor-pointer text-neutral-400">Items</summary>
-            <ul className="mt-1 space-y-0.5 text-neutral-300">
+          <details className="mt-3 text-[13px]">
+            <summary className="cursor-pointer text-[var(--mute)] zt-mono text-[11px] uppercase tracking-[.06em]">
+              Items
+            </summary>
+            <ul className="mt-2 space-y-0.5 text-[var(--ink-2)]">
               {r.template_items.map((it, i) => (
                 <li key={i}>
-                  {it.qty}{it.unit === 'piece' ? '' : it.unit} {it.name}
+                  {it.qty}
+                  {it.unit === 'piece' ? '' : it.unit} {it.name}
                 </li>
               ))}
             </ul>
           </details>
-        </div>
+        </Panel>
       ))}
     </div>
   );

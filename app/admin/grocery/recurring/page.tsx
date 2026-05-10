@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { getClientByOwnerUserId } from '@/lib/db/clients';
 import { listRecurring } from '@/lib/db/grocery-recurring-orders';
 import RecurringList from './_components/recurring-list';
+import { PageTopbar, PageHead } from '@/components/app/primitives';
 
 export default async function RecurringPage() {
   const { userId } = await auth();
@@ -12,13 +13,25 @@ export default async function RecurringPage() {
   if (!c || c.type !== 'grocery') redirect('/admin');
   const recurring = await listRecurring(c.client_id);
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Recurring orders</h1>
-      <p className="text-sm text-neutral-400">
-        Customers who set &quot;har [day] repeat&quot;. Each instance still requires their confirm —
-        nothing is auto-placed.
-      </p>
-      <RecurringList initial={recurring} />
-    </div>
+    <>
+      <PageTopbar
+        crumbs={
+          <>
+            Admin · Grocery · <b className="text-foreground">Recurring</b>
+          </>
+        }
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={
+            <>
+              Recurring <span className="zt-serif">orders.</span>
+            </>
+          }
+          sub={`Customers who set "har [day] repeat". Each instance still requires their confirm — nothing is auto-placed.`}
+        />
+        <RecurringList initial={recurring} />
+      </div>
+    </>
   );
 }

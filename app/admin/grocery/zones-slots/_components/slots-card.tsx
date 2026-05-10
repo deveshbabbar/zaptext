@@ -2,8 +2,12 @@
 import { useState } from 'react';
 import type { GrocerySlot } from '@/lib/grocery/types';
 import { toast } from 'sonner';
+import { Panel, Pill, StatusPill } from '@/components/app/primitives';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const inputCls =
+  'rounded-[10px] bg-[var(--card)] border border-[var(--line)] px-3 py-2 text-[13.5px] focus:outline-none focus:border-[var(--ink)]';
 
 export default function SlotsCard({ initial }: { initial: GrocerySlot[] }) {
   const [slots, setSlots] = useState(initial);
@@ -59,104 +63,114 @@ export default function SlotsCard({ initial }: { initial: GrocerySlot[] }) {
   }
 
   return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <h2 className="text-lg font-semibold">Delivery slots</h2>
-      <p className="mt-1 text-xs text-neutral-400">
-        Time windows you deliver in. Cutoff = order-by time on the previous day.
-      </p>
-
-      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+    <Panel
+      title="Delivery slots"
+      sub="Time windows you deliver in. Cutoff = order-by time on the previous day."
+    >
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5 mb-2">
         <input
-          className="rounded bg-neutral-800 px-3 py-2 text-sm md:col-span-2"
+          className={`${inputCls} md:col-span-2`}
           placeholder="Label (e.g. Tomorrow 7-9am)"
           value={draft.label}
           onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
         />
         <input
           type="time"
-          className="rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={inputCls}
           value={draft.start_time}
           onChange={(e) => setDraft((d) => ({ ...d, start_time: e.target.value }))}
         />
         <input
           type="time"
-          className="rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={inputCls}
           value={draft.end_time}
           onChange={(e) => setDraft((d) => ({ ...d, end_time: e.target.value }))}
         />
         <input
           type="time"
-          className="rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={inputCls}
           title="Cutoff"
           value={draft.cutoff_time}
           onChange={(e) => setDraft((d) => ({ ...d, cutoff_time: e.target.value }))}
         />
       </div>
-      <div className="mt-2 flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1.5 items-center mb-4">
         {DOW.map((d, i) => (
           <button
             key={d}
             onClick={() => toggleDay(i)}
-            className={`rounded px-2 py-1 text-xs ${
-              draft.days.includes(i) ? 'bg-emerald-600 text-white' : 'bg-neutral-800 text-neutral-400'
+            className={`px-2 py-1 text-[11px] zt-mono uppercase tracking-[.04em] rounded-full ${
+              draft.days.includes(i)
+                ? 'bg-[var(--ink)] text-[var(--background)] font-semibold'
+                : 'bg-[var(--card)] border border-[var(--line)] text-[var(--mute)] hover:text-[var(--ink)]'
             }`}
           >
             {d}
           </button>
         ))}
-        <button onClick={add} className="ml-auto rounded bg-emerald-600 px-3 py-1 text-sm font-medium">
-          Add slot
-        </button>
+        <div className="ml-auto">
+          <Pill variant="ink" onClick={add}>
+            Add slot
+          </Pill>
+        </div>
       </div>
 
-      <table className="mt-4 w-full text-sm">
-        <thead className="text-left text-neutral-400">
-          <tr>
-            <th className="py-2">Label</th>
-            <th className="py-2">Window</th>
-            <th className="py-2">Cutoff</th>
-            <th className="py-2">Days</th>
-            <th className="py-2">Active</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {slots.map((s) => (
-            <tr key={s.id} className="border-t border-neutral-800">
-              <td className="py-2">{s.label}</td>
-              <td className="py-2">
-                {s.start_time}–{s.end_time}
-              </td>
-              <td className="py-2">{s.cutoff_time}</td>
-              <td className="py-2 text-neutral-400">
-                {s.days_of_week.map((d) => DOW[d]).join(', ')}
-              </td>
-              <td className="py-2">
-                <button
-                  onClick={() => toggleActive(s)}
-                  className={`rounded px-2 py-1 text-xs ${
-                    s.is_active ? 'bg-emerald-600/20 text-emerald-300' : 'bg-neutral-700 text-neutral-400'
-                  }`}
-                >
-                  {s.is_active ? 'On' : 'Off'}
-                </button>
-              </td>
-              <td className="py-2 text-right">
-                <button onClick={() => remove(s.id)} className="rounded bg-red-600/20 px-2 py-1 text-xs text-red-300">
-                  Delete
-                </button>
-              </td>
+      {slots.length === 0 ? (
+        <div className="py-12 text-center">
+          <div className="text-[13.5px] text-[var(--mute)] mb-3">
+            No slots yet. Add at least one (e.g. &quot;Tomorrow 7–9am&quot;).
+          </div>
+        </div>
+      ) : (
+        <table className="w-full text-[13.5px]">
+          <thead>
+            <tr className="text-left zt-mono text-[10.5px] uppercase tracking-[.06em] text-[var(--mute)] border-b border-[var(--line)]">
+              <th className="py-2.5 pr-4">Label</th>
+              <th className="py-2.5 pr-4">Window</th>
+              <th className="py-2.5 pr-4">Cutoff</th>
+              <th className="py-2.5 pr-4">Days</th>
+              <th className="py-2.5 pr-4">Active</th>
+              <th className="py-2.5 pr-4"></th>
             </tr>
-          ))}
-          {slots.length === 0 && (
-            <tr>
-              <td colSpan={6} className="py-6 text-center text-neutral-500">
-                No slots yet. Add at least one (e.g. &quot;Tomorrow 7–9am&quot;).
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
+          </thead>
+          <tbody>
+            {slots.map((s) => (
+              <tr
+                key={s.id}
+                className="border-b border-[var(--line)] last:border-b-0"
+              >
+                <td className="py-3 pr-4 font-medium">{s.label}</td>
+                <td className="py-3 pr-4 zt-mono text-[12px]">
+                  {s.start_time}–{s.end_time}
+                </td>
+                <td className="py-3 pr-4 zt-mono text-[12px]">{s.cutoff_time}</td>
+                <td className="py-3 pr-4 text-[var(--mute)]">
+                  {s.days_of_week.map((d) => DOW[d]).join(', ')}
+                </td>
+                <td className="py-3 pr-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleActive(s)}
+                    className="cursor-pointer"
+                  >
+                    <StatusPill variant={s.is_active ? 'active' : 'pending'}>
+                      {s.is_active ? 'On' : 'Off'}
+                    </StatusPill>
+                  </button>
+                </td>
+                <td className="py-3 pr-4 text-right">
+                  <button
+                    onClick={() => remove(s.id)}
+                    className="text-[12px] font-medium text-[#D93A2E] hover:underline"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Panel>
   );
 }

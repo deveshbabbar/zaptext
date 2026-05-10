@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { getClientByOwnerUserId } from '@/lib/db/clients';
 import { listOrders } from '@/lib/db/grocery-orders';
 import OrdersList from './_components/orders-list';
+import { PageTopbar, PageHead, Pill } from '@/components/app/primitives';
 
 export default async function OrdersPage({
   searchParams,
@@ -18,9 +19,30 @@ export default async function OrdersPage({
   const status = (sp.status as any) || undefined;
   const orders = await listOrders(c.client_id, { status, limit: 200 });
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Orders</h1>
-      <OrdersList initial={orders} activeStatus={status ?? null} />
-    </div>
+    <>
+      <PageTopbar
+        crumbs={
+          <>
+            Admin · Grocery · <b className="text-foreground">Orders</b>
+          </>
+        }
+        actions={
+          <Pill variant="ghost" href="/admin/grocery/today">
+            Update list
+          </Pill>
+        }
+      />
+      <div style={{ padding: '28px 32px 60px' }}>
+        <PageHead
+          title={
+            <>
+              Orders <span className="zt-serif">queue.</span>
+            </>
+          }
+          sub="Track today's deliveries and confirm new orders as they come in."
+        />
+        <OrdersList initial={orders} activeStatus={status ?? null} />
+      </div>
+    </>
   );
 }

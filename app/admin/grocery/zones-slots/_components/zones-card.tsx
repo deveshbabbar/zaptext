@@ -2,6 +2,10 @@
 import { useState } from 'react';
 import type { GroceryZone } from '@/lib/grocery/types';
 import { toast } from 'sonner';
+import { Panel, Pill } from '@/components/app/primitives';
+
+const inputCls =
+  'rounded-[10px] bg-[var(--card)] border border-[var(--line)] px-3 py-2 text-[13.5px] focus:outline-none focus:border-[var(--ink)]';
 
 export default function ZonesCard({ initial }: { initial: GroceryZone[] }) {
   const [zones, setZones] = useState(initial);
@@ -43,86 +47,100 @@ export default function ZonesCard({ initial }: { initial: GroceryZone[] }) {
   }
 
   return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <h2 className="text-lg font-semibold">Delivery zones</h2>
-      <p className="mt-1 text-xs text-neutral-400">
-        Pin codes / area names you deliver to. Customer&apos;s address is matched against these.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
+    <Panel
+      title="Delivery zones"
+      sub="Pin codes / area names you deliver to. Customer's address is matched against these."
+    >
+      <div className="flex flex-wrap gap-2 mb-4">
         <input
-          className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={`${inputCls} flex-1 min-w-[140px]`}
           placeholder="Label (e.g. Sector 21)"
           value={draft.label}
           onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
         />
         <input
-          className="w-28 rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={`${inputCls} w-28`}
           placeholder="Pin code"
           value={draft.pincode}
           onChange={(e) => setDraft((d) => ({ ...d, pincode: e.target.value }))}
         />
         <input
-          className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm"
-          placeholder="Keywords (comma-sep) e.g. 21A, sector 21, model town"
+          className={`${inputCls} flex-1 min-w-[180px]`}
+          placeholder="Keywords (comma-sep) e.g. 21A, sector 21"
           value={draft.keywords}
           onChange={(e) => setDraft((d) => ({ ...d, keywords: e.target.value }))}
         />
         <input
           type="number"
-          className="w-24 rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={`${inputCls} w-24`}
           placeholder="Fee ₹"
           value={draft.fee || ''}
-          onChange={(e) => setDraft((d) => ({ ...d, fee: parseFloat(e.target.value) || 0 }))}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, fee: parseFloat(e.target.value) || 0 }))
+          }
         />
         <input
           type="number"
-          className="w-28 rounded bg-neutral-800 px-3 py-2 text-sm"
+          className={`${inputCls} w-28`}
           placeholder="Min order ₹"
           value={draft.minOrder || ''}
-          onChange={(e) => setDraft((d) => ({ ...d, minOrder: parseFloat(e.target.value) || 0 }))}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, minOrder: parseFloat(e.target.value) || 0 }))
+          }
         />
-        <button onClick={add} className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium">
+        <Pill variant="ink" onClick={add}>
           Add zone
-        </button>
+        </Pill>
       </div>
-      <table className="mt-4 w-full text-sm">
-        <thead className="text-left text-neutral-400">
-          <tr>
-            <th className="py-2">Label</th>
-            <th className="py-2">Pin</th>
-            <th className="py-2">Keywords</th>
-            <th className="py-2">Fee</th>
-            <th className="py-2">Min</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {zones.map((z) => (
-            <tr key={z.id} className="border-t border-neutral-800">
-              <td className="py-2">{z.label}</td>
-              <td className="py-2">{z.pincode ?? '—'}</td>
-              <td className="py-2 text-neutral-400">{z.area_keywords.join(', ')}</td>
-              <td className="py-2">₹{z.delivery_fee}</td>
-              <td className="py-2">{z.min_order != null ? `₹${z.min_order}` : '—'}</td>
-              <td className="py-2 text-right">
-                <button
-                  onClick={() => remove(z.id)}
-                  className="rounded bg-red-600/20 px-2 py-1 text-xs text-red-300"
-                >
-                  Delete
-                </button>
-              </td>
+
+      {zones.length === 0 ? (
+        <div className="py-12 text-center">
+          <div className="text-[13.5px] text-[var(--mute)] mb-3">
+            No zones yet. Add at least one before customers can order.
+          </div>
+        </div>
+      ) : (
+        <table className="w-full text-[13.5px]">
+          <thead>
+            <tr className="text-left zt-mono text-[10.5px] uppercase tracking-[.06em] text-[var(--mute)] border-b border-[var(--line)]">
+              <th className="py-2.5 pr-4">Label</th>
+              <th className="py-2.5 pr-4">Pin</th>
+              <th className="py-2.5 pr-4">Keywords</th>
+              <th className="py-2.5 pr-4">Fee</th>
+              <th className="py-2.5 pr-4">Min</th>
+              <th className="py-2.5 pr-4"></th>
             </tr>
-          ))}
-          {zones.length === 0 && (
-            <tr>
-              <td colSpan={6} className="py-6 text-center text-neutral-500">
-                No zones yet. Add at least one before customers can order.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
+          </thead>
+          <tbody>
+            {zones.map((z) => (
+              <tr
+                key={z.id}
+                className="border-b border-[var(--line)] last:border-b-0"
+              >
+                <td className="py-3 pr-4 font-medium">{z.label}</td>
+                <td className="py-3 pr-4 text-[var(--mute)] zt-mono text-[12px]">
+                  {z.pincode ?? '—'}
+                </td>
+                <td className="py-3 pr-4 text-[var(--mute)]">
+                  {z.area_keywords.join(', ')}
+                </td>
+                <td className="py-3 pr-4">₹{z.delivery_fee}</td>
+                <td className="py-3 pr-4">
+                  {z.min_order != null ? `₹${z.min_order}` : '—'}
+                </td>
+                <td className="py-3 pr-4 text-right">
+                  <button
+                    onClick={() => remove(z.id)}
+                    className="text-[12px] font-medium text-[#D93A2E] hover:underline"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Panel>
   );
 }

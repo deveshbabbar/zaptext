@@ -45,7 +45,7 @@ function textToSizes(text: string): Array<{ label: string; price: number }> | un
 
 export function RestaurantMenuBulkImport({ data, onChange }: { data: Data; onChange: OnChange }) {
   const [open, setOpen] = useState(false);
-  const existing = (data.menuCategories as Array<{ name?: string; items?: Array<unknown> }>) || [];
+  const existing = (data.menuCategories as Array<{ category?: string; items?: Array<unknown> }>) || [];
   const existingCount = existing.reduce((n, c) => n + (Array.isArray(c.items) ? c.items.length : 0), 0);
 
   return (
@@ -76,9 +76,15 @@ export function RestaurantMenuBulkImport({ data, onChange }: { data: Data; onCha
         }}
         rowFromItem={(item) => ({ ...item, sizes: sizesToText(item.sizes as Array<{ label: string; price: number }> | undefined) })}
         onConfirm={(items, mergeMode) => {
+          // Group rows by category. If NO item has a category, everything
+          // collapses into a single "Menu" bucket — this is what the user
+          // expects when the input has no section headers (e.g., a flat
+          // price list pasted from WhatsApp).
+          const anyHasCat = items.some((it) => !!(it.category && String(it.category).trim()));
           const byCat = new Map<string, Array<Record<string, unknown>>>();
           for (const item of items) {
-            const cat = (item.category as string) || 'Menu';
+            const rawCat = String(item.category ?? '').trim();
+            const cat = anyHasCat ? (rawCat || 'Other') : 'Menu';
             const sizes = item.sizes as Array<{ label: string; price: number }> | undefined;
             const list = byCat.get(cat) ?? [];
             list.push({
@@ -91,14 +97,20 @@ export function RestaurantMenuBulkImport({ data, onChange }: { data: Data; onCha
             });
             byCat.set(cat, list);
           }
-          const newCategories = Array.from(byCat.entries()).map(([name, list]) => ({ name, items: list }));
+          // Form's stored shape uses `category` (string) — NOT `name` — for the section.
+          // Earlier versions wrote `name` here, which silently lost section labels.
+          const newCategories = Array.from(byCat.entries()).map(([category, list]) => ({ category, items: list }));
           if (mergeMode === 'replace') {
             onChange('menuCategories', newCategories);
             return;
           }
-          const merged = [...existing] as Array<{ name?: string; items?: Array<unknown> }>;
+          // Append: merge by category label. Drop the form's default empty-row
+          // placeholder so users don't see "<blank>" + their real sections.
+          const merged = (existing || []).filter(
+            (c) => (c.category || '').trim() !== '' || (Array.isArray(c.items) && c.items.some((it) => it && (it as Record<string, unknown>).name))
+          ) as Array<{ category?: string; items?: Array<unknown> }>;
           for (const cat of newCategories) {
-            const found = merged.find((c) => c.name === cat.name);
+            const found = merged.find((c) => c.category === cat.category);
             if (found) {
               found.items = [...(found.items || []), ...cat.items];
             } else {

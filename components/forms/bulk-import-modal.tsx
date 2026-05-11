@@ -52,7 +52,9 @@ export function BulkImportModal({
 }: Props) {
   const [mode, setMode] = useState<Mode>('text');
   const [text, setText] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  // Image mode accepts multiple files (multi-page menus often span 2-3 photos).
+  // Excel/CSV stay single-file.
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<Record<string, unknown>[] | null>(null);
@@ -60,7 +62,7 @@ export function BulkImportModal({
   useEffect(() => {
     if (!open) {
       setText('');
-      setFile(null);
+      setFiles([]);
       setParsed(null);
       setError(null);
       setMode('text');
@@ -85,12 +87,17 @@ export function BulkImportModal({
         }
         form.append('text', text);
       } else {
-        if (!file) {
+        if (files.length === 0) {
           setError('Choose a file first.');
           setLoading(false);
           return;
         }
-        form.append('file', file);
+        // Multiple image uploads supported. Excel uses only the first file.
+        if (mode === 'image') {
+          for (const f of files) form.append('files', f);
+        } else {
+          form.append('file', files[0]);
+        }
       }
       const res = await fetch('/api/parse-catalog', { method: 'POST', body: form });
       const data = (await res.json()) as {
@@ -179,14 +186,33 @@ export function BulkImportModal({
               </TabsContent>
 
               <TabsContent value="image" className="mt-4">
-                <Label className="text-xs">Upload a photo of your menu / catalog</Label>
+                <Label className="text-xs">Upload photo(s) of your menu / catalog</Label>
                 <Input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/heic"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  multiple
+                  onChange={(e) => setFiles(Array.from(e.target.files || []))}
                   className="mt-2"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">Max 5 MB. A clear photo of a printed menu card works perfectly.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Max 5 MB per image, up to 6 images. Pick multiple if your menu spans more than one page.
+                </p>
+                {files.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {files.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                        <span className="truncate">{i + 1}. {f.name} ({(f.size / 1024).toFixed(0)} KB)</span>
+                        <button
+                          type="button"
+                          onClick={() => setFiles(files.filter((_, idx) => idx !== i))}
+                          className="ml-2 hover:text-destructive"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="excel" className="mt-4">
@@ -194,7 +220,7 @@ export function BulkImportModal({
                 <Input
                   type="file"
                   accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  onChange={(e) => setFiles(e.target.files?.[0] ? [e.target.files[0]] : [])}
                   className="mt-2"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">Max 5 MB. Any layout — AI figures out columns.</p>

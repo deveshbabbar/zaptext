@@ -46,36 +46,50 @@ export async function parseTextWithLLM(
   }
 }
 
-// ─── Image → JSON ────────────────────────────────────────────────────────
-// `imageBase64` is the bare base64 string (no data: prefix). MIME must be
-// one Groq vision accepts: image/jpeg, image/png, image/webp, image/gif.
-// We bundle the system prompt as the FIRST text part so the model treats
-// the instruction as primary and the image as supporting evidence.
+// ─── Image(s) → JSON ────────────────────────────────────────────────────
+// Accepts one OR more images in a single vision call. Multi-page menus
+// commonly span 2-3 photos; we send all of them in one message so the
+// model can build a single unified extraction (one "items" array across
+// pages) rather than running the call N times and de-duping.
+//
+// Each input is the raw base64 string (no data: prefix) plus MIME type.
+// Groq vision accepts image/jpeg, image/png, image/webp, image/gif.
+
+export type ImageInput = { base64: string; mimeType: string };
 
 export async function parseImageWithLLM(
   systemPrompt: string,
-  imageBase64: string,
-  mimeType: string
+  images: ImageInput[]
 ): Promise<unknown> {
-  const cleanMime = mimeType.split(';')[0].trim() || 'image/jpeg';
-  const dataUrl = `data:${cleanMime};base64,${imageBase64}`;
+  if (images.length === 0) throw new Error('parseImageWithLLM: no images supplied');
+
+  const multiPageHint =
+    images.length > 1
+      ? `\n\nThis menu spans ${images.length} pages — extract items from ALL pages and combine them into ONE "items" array. Do NOT duplicate items that appear on more than one page (e.g., a section header repeated at the top of page 2).`
+      : '';
+
+  const content: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+  > = [
+    {
+      type: 'text',
+      text: systemPrompt + multiPageHint + '\n\nReturn ONLY valid JSON. No prose, no markdown fences.',
+    },
+  ];
+  for (const img of images) {
+    const cleanMime = img.mimeType.split(';')[0].trim() || 'image/jpeg';
+    content.push({
+      type: 'image_url',
+      image_url: { url: `data:${cleanMime};base64,${img.base64}` },
+    });
+  }
 
   const res = await groq().chat.completions.create({
     model: GROQ_VISION_MODEL,
     temperature: 0.1,
     response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: systemPrompt + '\n\nReturn ONLY valid JSON. No prose, no markdown fences.',
-          },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
-      },
-    ],
+    messages: [{ role: 'user', content }],
   });
   const raw = res.choices[0]?.message?.content;
   if (!raw) throw new Error('Groq vision returned empty content');

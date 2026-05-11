@@ -20,7 +20,8 @@ import { extractTextFromExcel, extractTextFromCsv } from '@/lib/catalog/excel';
 import { SCHEMAS, isSupportedVertical } from '@/lib/catalog/schemas';
 
 const MAX_TEXT = 8_000;
-const MAX_IMAGE = 5 * 1024 * 1024;
+const MAX_IMAGE = 5 * 1024 * 1024;        // per image
+const MAX_IMAGE_FILES = 6;                // multi-page menus cap out around here
 const MAX_PDF = 10 * 1024 * 1024;
 const MAX_EXCEL = 5 * 1024 * 1024;
 
@@ -90,20 +91,42 @@ export async function POST(request: NextRequest) {
       const normalized = extractTextFromCsv(text);
       rawResult = await parseTextWithLLM(schema.prompt, normalized);
     } else if (mode === 'image') {
-      const file = form.get('file');
-      if (!(file instanceof File)) {
+      // Multi-image support: client sends one or more files under the "files"
+      // key (a multi-page menu typically lives across 2-3 photos). For
+      // backward compatibility we also accept a single "file" entry.
+      const multi = form.getAll('files').filter((f): f is File => f instanceof File);
+      const singleEntry = form.get('file');
+      const imageFiles =
+        multi.length > 0
+          ? multi
+          : singleEntry instanceof File
+            ? [singleEntry]
+            : [];
+
+      if (imageFiles.length === 0) {
         return NextResponse.json({ success: false, error: 'Missing image file' }, { status: 400 });
       }
-      if (file.size > MAX_IMAGE) {
+      if (imageFiles.length > MAX_IMAGE_FILES) {
         return NextResponse.json(
-          { success: false, error: 'Image too large. Max 5 MB.' },
+          { success: false, error: `Too many images. Max ${MAX_IMAGE_FILES}.` },
           { status: 413 }
         );
       }
-      const buf = Buffer.from(await file.arrayBuffer());
-      const base64 = buf.toString('base64');
-      const mime = file.type || 'image/jpeg';
-      rawResult = await parseImageWithLLM(schema.prompt, base64, mime);
+      for (const f of imageFiles) {
+        if (f.size > MAX_IMAGE) {
+          return NextResponse.json(
+            { success: false, error: `Image "${f.name}" too large. Max 5 MB each.` },
+            { status: 413 }
+          );
+        }
+      }
+      const images = await Promise.all(
+        imageFiles.map(async (f) => ({
+          base64: Buffer.from(await f.arrayBuffer()).toString('base64'),
+          mimeType: f.type || 'image/jpeg',
+        }))
+      );
+      rawResult = await parseImageWithLLM(schema.prompt, images);
     } else if (mode === 'pdf') {
       const file = form.get('file');
       if (!(file instanceof File)) {

@@ -79,8 +79,9 @@ interface SidebarNavProps {
 }
 
 // Vertical-specific workspace links. Shown as a third section between
-// "Workspace" and "Account" when the active bot's type matches. Restaurant
-// is the first vertical to ship; others follow the same pattern.
+// "Workspace" and "Account" when the active bot's type matches. All 7
+// verticals follow the same pattern: an overview + a catalog page + one
+// or two activity pages backed by bookings or conversations.
 const VERTICAL_SECTIONS: Record<string, NavSection> = {
   restaurant: {
     title: 'Vertical · Restaurant',
@@ -90,6 +91,54 @@ const VERTICAL_SECTIONS: Record<string, NavSection> = {
       { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },
       { href: '/client/restaurant/tables', icon: '🪑', label: 'Tables' },
       { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
+    ],
+  },
+  coaching: {
+    title: 'Vertical · Coaching',
+    items: [
+      { href: '/client/coaching', icon: '🎓', label: 'Overview' },
+      { href: '/client/coaching/courses', icon: '📚', label: 'Courses' },
+      { href: '/client/coaching/batches', icon: '📅', label: 'Batches' },
+    ],
+  },
+  realestate: {
+    title: 'Vertical · Real Estate',
+    items: [
+      { href: '/client/realestate', icon: '🏠', label: 'Overview' },
+      { href: '/client/realestate/listings', icon: '🏷️', label: 'Listings' },
+      { href: '/client/realestate/visits', icon: '📅', label: 'Site visits' },
+    ],
+  },
+  salon: {
+    title: 'Vertical · Salon',
+    items: [
+      { href: '/client/salon', icon: '💇', label: 'Overview' },
+      { href: '/client/salon/services', icon: '✂️', label: 'Services' },
+      { href: '/client/salon/appointments', icon: '📅', label: 'Appointments' },
+    ],
+  },
+  gym: {
+    title: 'Vertical · Gym',
+    items: [
+      { href: '/client/gym', icon: '💪', label: 'Overview' },
+      { href: '/client/gym/plans', icon: '🎟️', label: 'Plans' },
+      { href: '/client/gym/schedule', icon: '📅', label: 'Schedule' },
+    ],
+  },
+  tiffin: {
+    title: 'Vertical · Tiffin',
+    items: [
+      { href: '/client/tiffin', icon: '🍱', label: 'Overview' },
+      { href: '/client/tiffin/plans', icon: '📋', label: 'Plans' },
+      { href: '/client/tiffin/route', icon: '📍', label: "Today's route" },
+    ],
+  },
+  ecommerce: {
+    title: 'Vertical · Ecommerce',
+    items: [
+      { href: '/client/ecommerce', icon: '🛒', label: 'Overview' },
+      { href: '/client/ecommerce/products', icon: '📦', label: 'Products' },
+      { href: '/client/ecommerce/orders', icon: '🧾', label: 'Orders' },
     ],
   },
 };

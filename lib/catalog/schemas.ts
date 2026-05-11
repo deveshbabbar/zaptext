@@ -40,12 +40,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 // ─── Restaurant menu items ──────────────────────────────────────────────
 
+export type SizePrice = { label: string; price: number };
+
 export type RestaurantMenuItem = {
   name: string;
-  price: number;
+  price: number;            // for single-price items; for variant items this is the cheapest variant
   veg: boolean;
   category?: string;
   description?: string;
+  sizes?: SizePrice[];      // present when the dish has multiple size variants
 };
 
 const RESTAURANT_PROMPT = `You are an extraction tool for an Indian restaurant menu.
@@ -53,19 +56,65 @@ The menu can be in Hindi, English, or Hinglish; it may include section headers
 ("Starters", "Main course", "Desserts"), prices in Rs./INR, and veg/non-veg
 markers (V, NV, green/red dots).
 
-Output exactly: { "items": [{ "name": "<dish name>", "price": <number>, "veg": <true|false>, "category": "<section>", "description": "<short, optional>" }, ...] }
+Many dishes have MULTIPLE PRICES based on size or portion:
+- "Half / Full" (biryani, dal, kebabs)
+- "Small / Medium / Large" (pizza, beverages)
+- "Regular / Family Pack" (combos)
+- "6" / 8" / 10" / 12"" (pizza sizes)
+- "Quarter / Half / Full" (chicken, mutton)
+- "Single / Double" (sandwich, burger)
+- "Glass / Jug / Pitcher" (drinks)
+
+When a dish has multiple size variants, output them in the "sizes" array with
+the cheapest price ALSO copied to the top-level "price" field.
+
+Output exactly:
+{
+  "items": [
+    {
+      "name": "<dish name without the size word>",
+      "price": <number — cheapest variant or single price>,
+      "veg": <true|false>,
+      "category": "<section>",
+      "description": "<short, optional>",
+      "sizes": [{ "label": "Half", "price": 200 }, { "label": "Full", "price": 380 }]
+    }
+  ]
+}
+
+For single-price items, omit "sizes" or set it to an empty array.
 
 Rules:
 - Strip currency symbols and commas from prices. "Rs. 1,200" -> 1200.
 - Treat green-dot / "V" markers as veg=true; red-dot / "NV" / chicken/mutton/fish/egg names as veg=false. When unsure, infer from the dish name.
 - Carry the most recent section header as "category" for the rows below it.
 - Skip header rows themselves (rows with no price).
+- If a dish appears with the size IN the name ("Chicken Biryani Half — 200, Chicken Biryani Full — 380"), COMBINE them into ONE item with sizes=[{Half,200},{Full,380}], not two items.
+- Size labels: normalize to title-case ("Half" not "half", "Large" not "L"). Common short forms map: S->Small, M->Medium, L->Large, XL->Extra Large, Reg->Regular.
 - Output JSON only. No prose.`;
+
+const validateSizes = (raw: unknown): SizePrice[] | undefined => {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: SizePrice[] = [];
+  for (const s of raw) {
+    if (!isRecord(s)) continue;
+    const label = asString(s.label);
+    const price = asNumber(s.price);
+    if (!label || price <= 0) continue;
+    out.push({ label, price });
+  }
+  return out.length > 0 ? out : undefined;
+};
 
 const validateRestaurant: Validator<RestaurantMenuItem> = (raw) => {
   if (!isRecord(raw)) return null;
   const name = asString(raw.name);
-  const price = asNumber(raw.price);
+  let price = asNumber(raw.price);
+  const sizes = validateSizes(raw.sizes);
+  // If the LLM omitted a top-level price but gave sizes, derive from cheapest.
+  if (price <= 0 && sizes && sizes.length > 0) {
+    price = Math.min(...sizes.map((s) => s.price));
+  }
   if (!name || price <= 0) return null;
   return {
     name,
@@ -73,6 +122,7 @@ const validateRestaurant: Validator<RestaurantMenuItem> = (raw) => {
     veg: asBool(raw.veg, true),
     category: asString(raw.category) || undefined,
     description: asString(raw.description) || undefined,
+    sizes,
   };
 };
 

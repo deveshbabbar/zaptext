@@ -30,6 +30,11 @@ interface Props {
   columns: PreviewColumn[];
   onConfirm: (items: Record<string, unknown>[], mode: 'append' | 'replace') => void;
   existingCount: number;
+  // Optional hooks for complex fields (e.g. an array shown as a comma string).
+  // rowFromItem:    transform parsed item -> editable row (e.g. sizes[] -> "Half:200, Full:380")
+  // beforeRowToForm: transform edited row -> final item shape (parses the string back to array)
+  rowFromItem?: (item: Record<string, unknown>) => Record<string, unknown>;
+  beforeRowToForm?: (row: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export function BulkImportModal({
@@ -42,6 +47,8 @@ export function BulkImportModal({
   columns,
   onConfirm,
   existingCount,
+  rowFromItem,
+  beforeRowToForm,
 }: Props) {
   const [mode, setMode] = useState<Mode>('text');
   const [text, setText] = useState('');
@@ -98,7 +105,8 @@ export function BulkImportModal({
         setLoading(false);
         return;
       }
-      setParsed(data.items || []);
+      const items = data.items || [];
+      setParsed(rowFromItem ? items.map(rowFromItem) : items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -128,7 +136,8 @@ export function BulkImportModal({
 
   function handleConfirm(action: 'append' | 'replace') {
     if (!parsed || parsed.length === 0) return;
-    onConfirm(parsed, action);
+    const out = beforeRowToForm ? parsed.map(beforeRowToForm) : parsed;
+    onConfirm(out, action);
     onClose();
   }
 

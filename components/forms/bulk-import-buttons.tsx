@@ -18,6 +18,31 @@ function genId() {
 
 // ─── Restaurant ─────────────────────────────────────────────────────────
 
+function formatPriceWithSizes(price: number, sizes?: Array<{ label: string; price: number }>): string {
+  if (!sizes || sizes.length === 0) return `Rs.${price}`;
+  // Render as "Half Rs.200 / Full Rs.380" so the bot can quote each variant inline.
+  return sizes.map((s) => `${s.label} Rs.${s.price}`).join(' / ');
+}
+
+function sizesToText(sizes?: Array<{ label: string; price: number }>): string {
+  if (!sizes || sizes.length === 0) return '';
+  return sizes.map((s) => `${s.label}:${s.price}`).join(', ');
+}
+
+function textToSizes(text: string): Array<{ label: string; price: number }> | undefined {
+  const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return undefined;
+  const out: Array<{ label: string; price: number }> = [];
+  for (const p of parts) {
+    const [label, priceRaw] = p.split(':').map((s) => s.trim());
+    if (!label || !priceRaw) continue;
+    const price = parseFloat(priceRaw.replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(price) || price <= 0) continue;
+    out.push({ label, price });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export function RestaurantMenuBulkImport({ data, onChange }: { data: Data; onChange: OnChange }) {
   const [open, setOpen] = useState(false);
   const existing = (data.menuCategories as Array<{ name?: string; items?: Array<unknown> }>) || [];
@@ -34,25 +59,35 @@ export function RestaurantMenuBulkImport({ data, onChange }: { data: Data; onCha
         vertical="restaurant"
         title="Import menu items"
         sectionLabel="Restaurant menu"
-        textPlaceholder={`STARTERS\nPaneer Tikka     Rs. 249   V\nChicken 65       Rs. 299   NV\nVeg Spring Roll  150\n\nMAIN COURSE\nDal Makhani      280\nButter Chicken   420`}
+        textPlaceholder={`STARTERS\nPaneer Tikka       Rs. 249   V\nChicken 65         Rs. 299   NV\n\nBIRYANI\nChicken Biryani   Half 220 / Full 380\nVeg Biryani       Half 180 / Full 320\n\nPIZZA\nMargherita        Small 199 / Medium 349 / Large 499`}
         columns={[
           { key: 'name', label: 'Name' },
-          { key: 'price', label: 'Price', type: 'number' },
+          { key: 'price', label: 'Base price', type: 'number' },
+          { key: 'sizes', label: 'Sizes (Half:200, Full:380)' },
           { key: 'veg', label: 'Veg?', type: 'boolean' },
           { key: 'category', label: 'Section' },
         ]}
         existingCount={existingCount}
+        // Preview-table edits flow back as strings; we transform the "sizes" cell
+        // back into the structured array on confirm so the form gets a clean shape.
+        beforeRowToForm={(row) => {
+          const sizesText = String(row.sizes ?? '');
+          return { ...row, sizes: sizesText ? textToSizes(sizesText) : undefined };
+        }}
+        rowFromItem={(item) => ({ ...item, sizes: sizesToText(item.sizes as Array<{ label: string; price: number }> | undefined) })}
         onConfirm={(items, mergeMode) => {
           const byCat = new Map<string, Array<Record<string, unknown>>>();
           for (const item of items) {
             const cat = (item.category as string) || 'Menu';
+            const sizes = item.sizes as Array<{ label: string; price: number }> | undefined;
             const list = byCat.get(cat) ?? [];
             list.push({
               name: item.name,
-              price: `Rs.${item.price}`,
+              price: formatPriceWithSizes(Number(item.price) || 0, sizes),
               description: item.description || '',
               isVeg: item.veg !== false,
               isBestseller: false,
+              sizes: sizes ?? null,
             });
             byCat.set(cat, list);
           }

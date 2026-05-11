@@ -238,9 +238,14 @@ export function SalonServicesBulkImport({ data, onChange }: { data: Data; onChan
         ]}
         existingCount={existingCount}
         onConfirm={(items, mergeMode) => {
+          // Same bucketing as Restaurant: if NO row has a category, collapse
+          // everything into one "Services" bucket. Mixed case falls back to
+          // "Other" for un-categorised rows.
+          const anyHasCat = items.some((it) => !!(it.category && String(it.category).trim()));
           const byCat = new Map<string, Array<Record<string, unknown>>>();
           for (const item of items) {
-            const cat = (item.category as string) || 'Services';
+            const rawCat = String(item.category ?? '').trim();
+            const cat = anyHasCat ? (rawCat || 'Other') : 'Services';
             const list = byCat.get(cat) ?? [];
             list.push({
               name: item.name,
@@ -254,7 +259,10 @@ export function SalonServicesBulkImport({ data, onChange }: { data: Data; onChan
             onChange('services', newCategories);
             return;
           }
-          const merged = [...existing] as Array<{ category?: string; items?: Array<unknown> }>;
+          // Drop the form's default empty-row placeholder so Append doesn't leave a blank section.
+          const merged = (existing || []).filter(
+            (c) => (c.category || '').trim() !== '' || (Array.isArray(c.items) && c.items.some((it) => it && (it as Record<string, unknown>).name))
+          ) as Array<{ category?: string; items?: Array<unknown> }>;
           for (const cat of newCategories) {
             const found = merged.find((c) => c.category === cat.category);
             if (found) {

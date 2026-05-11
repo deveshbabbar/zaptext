@@ -141,24 +141,35 @@ export function CoachingCoursesBulkImport({ data, onChange }: { data: Data; onCh
         vertical="coaching"
         title="Import courses"
         sectionLabel="Coaching course list"
-        textPlaceholder={`JEE Main + Advanced 2-year  Rs.1,80,000   Foundation\nNEET 1-year Crash           Rs.85,000     Crash\nCAT Weekend Batch           Rs.42,000     Hybrid`}
+        textPlaceholder={`JEE Main + Advanced 2-year   Online 1,40,000 / Offline 1,80,000\nNEET 1-year Crash            Rs.85,000\nCAT Weekend                  Standard 42,000 / Premium 65,000`}
         columns={[
           { key: 'name', label: 'Course' },
           { key: 'duration', label: 'Duration' },
-          { key: 'price', label: 'Fee', type: 'number' },
+          { key: 'price', label: 'Base fee', type: 'number' },
+          { key: 'variants', label: 'Variants (Online:40000, Offline:60000)' },
           { key: 'batchType', label: 'Batch type' },
           { key: 'faculty', label: 'Faculty' },
         ]}
         existingCount={existing.length}
+        rowFromItem={(item) => ({ ...item, variants: sizesToText(item.variants as Array<{ label: string; price: number }> | undefined) })}
+        beforeRowToForm={(row) => {
+          const variantsText = String(row.variants ?? '');
+          return { ...row, variants: variantsText ? textToSizes(variantsText) : undefined };
+        }}
         onConfirm={(items, mergeMode) => {
-          const transformed = items.map((it) => ({
-            name: it.name,
-            targetAudience: '',
-            duration: it.duration,
-            fee: `Rs.${it.price}`,
-            schedule: '',
-            mode: it.batchType || '',
-          }));
+          const transformed = items.map((it) => {
+            const variants = it.variants as Array<{ label: string; price: number }> | undefined;
+            const basePrice = Number(it.price) || 0;
+            return {
+              name: it.name,
+              targetAudience: '',
+              duration: it.duration,
+              fee: formatPriceWithSizes(basePrice, variants),
+              schedule: '',
+              mode: it.batchType || '',
+              variants: variants ?? null,
+            };
+          });
           onChange('coursesOffered', mergeMode === 'replace' ? transformed : [...existing, ...transformed]);
         }}
       />
@@ -228,29 +239,34 @@ export function SalonServicesBulkImport({ data, onChange }: { data: Data; onChan
         vertical="salon"
         title="Import salon services"
         sectionLabel="Service menu"
-        textPlaceholder={`HAIR\nHaircut F        Rs.500   45 min\nHair Color       Rs.2,500  90 min\nBlow Dry         Rs.300\n\nBRIDAL\nBridal Makeup    Rs.15,000  3 hr\nMehendi (full)   Rs.5,000`}
+        textPlaceholder={`HAIR\nHaircut          Short 500 / Long 800     45 min\nHair Color       Short 1500 / Long 2500   90 min\nBlow Dry         Rs.300\n\nBRIDAL\nMehendi          Half 2500 / Full 5000\nBridal Makeup    Rs.15,000  3 hr`}
         columns={[
           { key: 'name', label: 'Service' },
-          { key: 'price', label: 'Price', type: 'number' },
+          { key: 'price', label: 'Base price', type: 'number' },
+          { key: 'variants', label: 'Variants (Short:500, Long:800)' },
           { key: 'durationMin', label: 'Mins', type: 'number' },
           { key: 'gender', label: 'Gender' },
           { key: 'category', label: 'Section' },
         ]}
         existingCount={existingCount}
+        rowFromItem={(item) => ({ ...item, variants: sizesToText(item.variants as Array<{ label: string; price: number }> | undefined) })}
+        beforeRowToForm={(row) => {
+          const variantsText = String(row.variants ?? '');
+          return { ...row, variants: variantsText ? textToSizes(variantsText) : undefined };
+        }}
         onConfirm={(items, mergeMode) => {
-          // Same bucketing as Restaurant: if NO row has a category, collapse
-          // everything into one "Services" bucket. Mixed case falls back to
-          // "Other" for un-categorised rows.
           const anyHasCat = items.some((it) => !!(it.category && String(it.category).trim()));
           const byCat = new Map<string, Array<Record<string, unknown>>>();
           for (const item of items) {
             const rawCat = String(item.category ?? '').trim();
             const cat = anyHasCat ? (rawCat || 'Other') : 'Services';
+            const variants = item.variants as Array<{ label: string; price: number }> | undefined;
             const list = byCat.get(cat) ?? [];
             list.push({
               name: item.name,
-              price: `Rs.${item.price}`,
+              price: formatPriceWithSizes(Number(item.price) || 0, variants),
               duration: item.durationMin ? `${item.durationMin} min` : '',
+              variants: variants ?? null,
             });
             byCat.set(cat, list);
           }
@@ -378,28 +394,39 @@ export function EcommerceProductsBulkImport({ data, onChange }: { data: Data; on
         vertical="ecommerce"
         title="Import products"
         sectionLabel="Product catalog"
-        textPlaceholder={`SKU-001  Cotton Kurta L       Rs.1,499  MRP 1,999  stock 25  Fashion\nSKU-002  Silk Saree Red       Rs.4,299  MRP 5,999  stock 8   Fashion\nSKU-101  Vitamin C Serum 30ml Rs.799   MRP 1,200  stock 60  Beauty`}
+        textPlaceholder={`SKU-001  Cotton Kurta       S 999 / M 999 / L 1099 / XL 1199    MRP 1,499  Fashion\nSKU-002  Vitamin C Serum   30ml 799 / 50ml 1,199 / 100ml 1,999  Beauty\nSKU-101  Almonds            250g 220 / 500g 420 / 1kg 800        Grocery`}
         columns={[
           { key: 'sku', label: 'SKU' },
           { key: 'name', label: 'Name' },
-          { key: 'price', label: 'Price', type: 'number' },
+          { key: 'price', label: 'Base price', type: 'number' },
+          { key: 'variants', label: 'Variants (S:999, M:999, L:1099)' },
           { key: 'mrp', label: 'MRP', type: 'number' },
           { key: 'stock', label: 'Stock', type: 'number' },
           { key: 'category', label: 'Category' },
         ]}
         existingCount={existing.length}
+        rowFromItem={(item) => ({ ...item, variants: sizesToText(item.variants as Array<{ label: string; price: number }> | undefined) })}
+        beforeRowToForm={(row) => {
+          const variantsText = String(row.variants ?? '');
+          return { ...row, variants: variantsText ? textToSizes(variantsText) : undefined };
+        }}
         onConfirm={(items, mergeMode) => {
-          const transformed = items.map((it) => ({
-            name: it.name,
-            price: `Rs.${it.price}`,
-            description: it.description || '',
-            category: it.category || '',
-            bestseller: false,
-            inStock: true,
-            sku: it.sku || '',
-            mrp: it.mrp ? `Rs.${it.mrp}` : '',
-            stock: it.stock || 0,
-          }));
+          const transformed = items.map((it) => {
+            const variants = it.variants as Array<{ label: string; price: number }> | undefined;
+            const basePrice = Number(it.price) || 0;
+            return {
+              name: it.name,
+              price: formatPriceWithSizes(basePrice, variants),
+              description: it.description || '',
+              category: it.category || '',
+              bestseller: false,
+              inStock: true,
+              sku: it.sku || '',
+              mrp: it.mrp ? `Rs.${it.mrp}` : '',
+              stock: it.stock || 0,
+              variants: variants ?? null,
+            };
+          });
           onChange('products', mergeMode === 'replace' ? transformed : [...existing, ...transformed]);
         }}
       />
@@ -424,21 +451,26 @@ export function GroceryProductsBulkImport({ data, onChange }: { data: Data; onCh
         vertical="grocery"
         title="Import grocery products"
         sectionLabel="Common everyday products"
-        textPlaceholder={`Basmati Rice 1kg     Rs.180  Rice & Grains\nAtta Aashirvaad 5kg  Rs.290  Atta\nToor Dal 1kg         Rs.140  Dal\nAmul Milk 1L         Rs.66   Dairy\nLays Classic 80g     Rs.20   Snacks`}
+        textPlaceholder={`Aashirvaad Atta      1kg 290 / 5kg 1290 / 10kg 2400    Atta\nAmul Milk            500ml 35 / 1L 66                  Dairy\nToor Dal Tata        500g 90 / 1kg 175                 Dal\nLays Classic         30g 10 / 80g 20 / Party Pack 75   Snacks\nBasmati Rice         1kg 180                           Rice & Grains`}
         columns={[
           { key: 'name', label: 'Name' },
-          { key: 'price', label: 'Price', type: 'number' },
-          { key: 'unit', label: 'Unit' },
+          { key: 'price', label: 'Base price', type: 'number' },
+          { key: 'unit', label: 'Smallest pack' },
+          { key: 'variants', label: 'Pack sizes (1kg:290, 5kg:1290)' },
           { key: 'category', label: 'Category' },
         ]}
         existingCount={existingNames.length}
+        rowFromItem={(item) => ({ ...item, variants: sizesToText(item.variants as Array<{ label: string; price: number }> | undefined) })}
+        beforeRowToForm={(row) => {
+          const variantsText = String(row.variants ?? '');
+          return { ...row, variants: variantsText ? textToSizes(variantsText) : undefined };
+        }}
         onConfirm={(items, mergeMode) => {
-          // Onboarding form stores defaultProducts as a string[] of names.
-          // Full pricing/units get re-imported into grocery_products from the
-          // admin /admin/grocery/products page after onboarding.
+          // Onboarding form stores defaultProducts as a string[] of names only.
+          // The structured payload (with variants and per-pack pricing) is stashed
+          // in groceryProductsToSeed for later seeding into grocery_products from
+          // the admin /admin/grocery/products page.
           const names = items.map((it) => String(it.name || '')).filter(Boolean);
-          // Preserve the full structured payload so the onboarding API can
-          // optionally seed grocery_products on first bot creation.
           const fullRows = items.map((it) => ({
             id: genId(),
             name: it.name,
@@ -446,6 +478,7 @@ export function GroceryProductsBulkImport({ data, onChange }: { data: Data; onCh
             unit: it.unit || 'piece',
             category: it.category || '',
             inStock: true,
+            variants: it.variants ?? null,
           }));
           if (mergeMode === 'replace') {
             onChange('defaultProducts', names);

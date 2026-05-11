@@ -134,24 +134,42 @@ export type CoachingCourse = {
   price: number;
   batchType?: string;
   faculty?: string;
+  variants?: SizePrice[];   // Online/Offline, With-materials/Without, Standard/Premium
 };
 
 const COACHING_PROMPT = `You are an extraction tool for an Indian coaching institute's course catalog.
 Courses target exams like JEE, NEET, CAT, UPSC, SSC, Banking, GATE, Class 9-12, etc.
 
-Output exactly: { "items": [{ "name": "<course>", "duration": "<e.g., 1 year / 6 months>", "price": <number>, "batchType": "<crash|foundation|repeater|online|offline|hybrid>", "faculty": "<lead faculty if mentioned>" }, ...] }
+Many courses have MULTIPLE PRICES based on delivery format or inclusions:
+- "Online / Offline / Hybrid" (live class vs in-person vs both)
+- "With Materials / Without Materials"
+- "Standard / Premium" (extra mock tests, 1-on-1 doubt support)
+- "Crash / Regular / Foundation" (when same course offered at different intensities)
+
+When a course has multiple variants, output them in "variants" with the
+cheapest variant also copied to the top-level "price" field.
+
+Output exactly: { "items": [{ "name": "<course>", "duration": "<e.g., 1 year / 6 months>", "price": <number — cheapest variant or single fee>, "batchType": "<crash|foundation|repeater|online|offline|hybrid>", "faculty": "<lead faculty if mentioned>", "variants": [{ "label": "Online", "price": 40000 }, { "label": "Offline", "price": 60000 }] }, ...] }
+
+For single-fee courses, omit "variants" or set it to an empty array.
 
 Rules:
 - Price: full-program fee, not monthly EMI. Strip Rs./commas.
 - Duration: keep original phrasing ("1 year", "11 months", "8 weeks").
 - batchType: pick best match from the enum or leave empty.
+- If a course appears with the variant IN the name ("JEE Online 40000, JEE Offline 60000"), COMBINE them into ONE item with variants=[{Online,40000},{Offline,60000}].
+- Variant labels: title-case ("Online" not "online", "With Materials" not "with mats").
 - Skip rows without a price OR without a course name.
 - Output JSON only.`;
 
 const validateCoaching: Validator<CoachingCourse> = (raw) => {
   if (!isRecord(raw)) return null;
   const name = asString(raw.name);
-  const price = asNumber(raw.price);
+  let price = asNumber(raw.price);
+  const variants = validateSizes(raw.variants);
+  if (price <= 0 && variants && variants.length > 0) {
+    price = Math.min(...variants.map((s) => s.price));
+  }
   if (!name || price <= 0) return null;
   return {
     name,
@@ -159,6 +177,7 @@ const validateCoaching: Validator<CoachingCourse> = (raw) => {
     price,
     batchType: asString(raw.batchType) || undefined,
     faculty: asString(raw.faculty) || undefined,
+    variants,
   };
 };
 
@@ -216,22 +235,42 @@ export type SalonService = {
   durationMin?: number;
   gender?: string;
   category?: string;
+  variants?: SizePrice[];   // Short/Medium/Long hair, Mens/Womens, Single/Double, Half/Full
 };
 
 const SALON_PROMPT = `You are an extraction tool for an Indian salon/beauty parlour service menu.
 Services include haircut, color, facial, mehendi, bridal makeup, threading, waxing, etc.
 
-Output exactly: { "items": [{ "name": "<service>", "price": <number>, "durationMin": <number minutes>, "gender": "<unisex|female|male>", "category": "<Hair|Skin|Bridal|Spa|Nails>" }, ...] }
+Many services have MULTIPLE PRICES based on length, gender, or extent:
+- "Short Hair / Medium Hair / Long Hair" (haircut, color, smoothening, keratin)
+- "Mens / Womens" (when same service different price)
+- "Half / Full" (mehendi, waxing, arms/legs)
+- "Single / Double" (eyebrows + upper lip combo)
+- "With Wash / Without Wash"
+- "Basic / Premium" (facials, manicures)
+
+When a service has multiple variants, output them in "variants" with the
+cheapest variant copied to top-level "price".
+
+Output exactly: { "items": [{ "name": "<service>", "price": <number — cheapest or single>, "durationMin": <number minutes>, "gender": "<unisex|female|male>", "category": "<Hair|Skin|Bridal|Spa|Nails>", "variants": [{ "label": "Short", "price": 500 }, { "label": "Long", "price": 800 }] }, ...] }
+
+For single-price services, omit "variants" or set to empty array.
 
 Rules:
 - Strip Rs./commas from price.
 - durationMin: convert "1 hr" -> 60, "30 min" -> 30. Omit if not stated.
+- If a service appears as "Haircut Short 500 / Haircut Long 800", COMBINE into ONE item with variants.
+- Variant labels: title-case ("Short", "Long", "With Wash"). Don't expand abbreviations: M stays "Medium", L stays "Long".
 - Output JSON only.`;
 
 const validateSalon: Validator<SalonService> = (raw) => {
   if (!isRecord(raw)) return null;
   const name = asString(raw.name);
-  const price = asNumber(raw.price);
+  let price = asNumber(raw.price);
+  const variants = validateSizes(raw.variants);
+  if (price <= 0 && variants && variants.length > 0) {
+    price = Math.min(...variants.map((s) => s.price));
+  }
   if (!name || price <= 0) return null;
   return {
     name,
@@ -239,6 +278,7 @@ const validateSalon: Validator<SalonService> = (raw) => {
     durationMin: asNumber(raw.durationMin) || undefined,
     gender: asString(raw.gender) || undefined,
     category: asString(raw.category) || undefined,
+    variants,
   };
 };
 
@@ -320,21 +360,40 @@ export type EcommerceProduct = {
   category?: string;
   stock?: number;
   description?: string;
+  variants?: SizePrice[];   // clothing sizes S/M/L/XL, pack sizes 250g/500g/1kg, volume 30ml/50ml/100ml
 };
 
 const ECOMMERCE_PROMPT = `You are an extraction tool for an Indian D2C / online seller's product catalog.
 
-Output exactly: { "items": [{ "name": "<product>", "price": <selling price number>, "mrp": <MRP number>, "sku": "<SKU/code>", "category": "<category>", "stock": <quantity>, "description": "<short>" }, ...] }
+Many products have MULTIPLE PRICES based on size, pack, or quantity:
+- Clothing sizes: "S / M / L / XL / XXL" (price often same for S/M/L, jumps at XL/XXL)
+- Pack sizes: "250g / 500g / 1kg / 5kg"
+- Volume: "30ml / 50ml / 100ml / 200ml"
+- Quantity: "Pack of 1 / Pack of 3 / Pack of 6"
+- Pieces: "1pc / 2pc / 4pc"
+
+When a product has multiple variants, output them in "variants" with the
+cheapest variant also copied to top-level "price".
+
+Output exactly: { "items": [{ "name": "<product>", "price": <selling price — cheapest or single>, "mrp": <MRP number>, "sku": "<SKU/code>", "category": "<category>", "stock": <quantity>, "description": "<short>", "variants": [{ "label": "S", "price": 999 }, { "label": "M", "price": 999 }, { "label": "L", "price": 1099 }] }, ...] }
+
+For single-price products, omit "variants" or set to empty array.
 
 Rules:
 - Strip Rs./commas.
 - If MRP and selling price both present, use both. If only one, put it in price.
+- If a product appears as "Cotton Kurta S 999, Cotton Kurta M 999, Cotton Kurta L 1099", COMBINE into ONE item with variants array.
+- Variant labels: keep them concise as written. "S", "M", "L", "XL", "250g", "500ml", "Pack of 3".
 - Output JSON only.`;
 
 const validateEcommerce: Validator<EcommerceProduct> = (raw) => {
   if (!isRecord(raw)) return null;
   const name = asString(raw.name);
-  const price = asNumber(raw.price);
+  let price = asNumber(raw.price);
+  const variants = validateSizes(raw.variants);
+  if (price <= 0 && variants && variants.length > 0) {
+    price = Math.min(...variants.map((s) => s.price));
+  }
   if (!name || price <= 0) return null;
   return {
     name,
@@ -344,6 +403,7 @@ const validateEcommerce: Validator<EcommerceProduct> = (raw) => {
     category: asString(raw.category) || undefined,
     stock: asNumber(raw.stock) || undefined,
     description: asString(raw.description) || undefined,
+    variants,
   };
 };
 
@@ -354,28 +414,49 @@ export type GroceryProduct = {
   price: number;
   unit: string;
   category?: string;
+  variants?: SizePrice[];   // pack sizes 250g/500g/1kg/5kg, 200ml/500ml/1L
 };
 
 const GROCERY_PROMPT = `You are an extraction tool for an Indian kirana/grocery store's product list.
 Products include rice, atta, dal, oil, biscuits, milk, soap, etc.
 
-Output exactly: { "items": [{ "name": "<product>", "price": <number>, "unit": "<1 kg|500 g|1 L|pack|piece>", "category": "<Rice & Grains|Atta|Dal|Oil|Snacks|Dairy|Personal Care|Household>" }, ...] }
+Many products come in MULTIPLE PACK SIZES at the same brand:
+- "Aashirvaad Atta 1kg / 5kg / 10kg"
+- "Amul Milk 200ml / 500ml / 1L"
+- "Tata Salt 1kg / 200g"
+- "Surf Excel 500g pouch / 1kg pouch / 2kg bucket"
+- "Lays 30g / 80g / Party Pack"
+
+When a product has multiple pack sizes, combine into ONE item with
+variants[] where the LABEL is the pack size. Top-level "price" is the
+smallest pack's price; "unit" is the smallest pack as well.
+
+Output exactly: { "items": [{ "name": "<product brand+name, no size>", "price": <number — smallest pack>, "unit": "<smallest pack>", "category": "<Rice & Grains|Atta|Dal|Oil|Snacks|Dairy|Personal Care|Household>", "variants": [{ "label": "1kg", "price": 290 }, { "label": "5kg", "price": 1290 }] }, ...] }
+
+For single-pack products, omit "variants" or set to empty array.
 
 Rules:
 - Strip Rs./commas.
-- Unit: keep the exact pack size as written ("1 kg", "500 g", "1 L", "200 ml").
+- "name" should NOT include the size. "Aashirvaad Atta 1kg" -> name="Aashirvaad Atta", unit="1 kg".
+- If a product appears as separate lines for each pack size, COMBINE into one item with variants.
+- Variant labels: as written — "1kg" / "1 kg" / "500g" / "1 L" / "Pack of 6" — keep concise.
 - Output JSON only.`;
 
 const validateGrocery: Validator<GroceryProduct> = (raw) => {
   if (!isRecord(raw)) return null;
   const name = asString(raw.name);
-  const price = asNumber(raw.price);
+  let price = asNumber(raw.price);
+  const variants = validateSizes(raw.variants);
+  if (price <= 0 && variants && variants.length > 0) {
+    price = Math.min(...variants.map((s) => s.price));
+  }
   if (!name || price <= 0) return null;
   return {
     name,
     price,
     unit: asString(raw.unit) || 'piece',
     category: asString(raw.category) || undefined,
+    variants,
   };
 };
 

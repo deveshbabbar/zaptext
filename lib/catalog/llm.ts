@@ -24,6 +24,8 @@ const GROQ_VISION_MODEL =
 
 // ─── Text → JSON ─────────────────────────────────────────────────────────
 
+const TEXT_MAX_TOKENS = Number(process.env.GROQ_TEXT_MAX_TOKENS) || 8192;
+
 export async function parseTextWithLLM(
   systemPrompt: string,
   userText: string
@@ -31,6 +33,7 @@ export async function parseTextWithLLM(
   const res = await groq().chat.completions.create({
     model: GROQ_MODEL,
     temperature: 0.1,
+    max_tokens: TEXT_MAX_TOKENS,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -47,49 +50,51 @@ export async function parseTextWithLLM(
 }
 
 // ─── Image(s) → JSON ────────────────────────────────────────────────────
-// Accepts one OR more images in a single vision call. Multi-page menus
-// commonly span 2-3 photos; we send all of them in one message so the
-// model can build a single unified extraction (one "items" array across
-// pages) rather than running the call N times and de-duping.
+// Strategy: one model call per image, in parallel, then merge the items[]
+// arrays. We tried single-call multi-image first and it worked, but the
+// vision model's 8192-token completion budget gets exhausted before the
+// JSON closes for menus with ~40+ items — the model emits a clean partial
+// array (JSON mode never returns broken JSON, it just stops early). One
+// call per page sidesteps this entirely and parallelism keeps latency flat.
 //
 // Each input is the raw base64 string (no data: prefix) plus MIME type.
 // Groq vision accepts image/jpeg, image/png, image/webp, image/gif.
 
 export type ImageInput = { base64: string; mimeType: string };
 
-export async function parseImageWithLLM(
+const VISION_MAX_TOKENS = Number(process.env.GROQ_VISION_MAX_TOKENS) || 8192;
+
+async function parseSingleImage(
   systemPrompt: string,
-  images: ImageInput[]
+  image: ImageInput,
+  pageHint?: string
 ): Promise<unknown> {
-  if (images.length === 0) throw new Error('parseImageWithLLM: no images supplied');
-
-  const multiPageHint =
-    images.length > 1
-      ? `\n\nThis menu spans ${images.length} pages — extract items from ALL pages and combine them into ONE "items" array. Do NOT duplicate items that appear on more than one page (e.g., a section header repeated at the top of page 2).`
-      : '';
-
-  const content: Array<
-    | { type: 'text'; text: string }
-    | { type: 'image_url'; image_url: { url: string } }
-  > = [
-    {
-      type: 'text',
-      text: systemPrompt + multiPageHint + '\n\nReturn ONLY valid JSON. No prose, no markdown fences.',
-    },
-  ];
-  for (const img of images) {
-    const cleanMime = img.mimeType.split(';')[0].trim() || 'image/jpeg';
-    content.push({
-      type: 'image_url',
-      image_url: { url: `data:${cleanMime};base64,${img.base64}` },
-    });
-  }
+  const cleanMime = image.mimeType.split(';')[0].trim() || 'image/jpeg';
 
   const res = await groq().chat.completions.create({
     model: GROQ_VISION_MODEL,
     temperature: 0.1,
+    max_tokens: VISION_MAX_TOKENS,
     response_format: { type: 'json_object' },
-    messages: [{ role: 'user', content }],
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text:
+              systemPrompt +
+              (pageHint ? `\n\n${pageHint}` : '') +
+              '\n\nExtract EVERY visible item — do not skip any. Be exhaustive.' +
+              '\n\nReturn ONLY valid JSON. No prose, no markdown fences.',
+          },
+          {
+            type: 'image_url',
+            image_url: { url: `data:${cleanMime};base64,${image.base64}` },
+          },
+        ],
+      },
+    ],
   });
   const raw = res.choices[0]?.message?.content;
   if (!raw) throw new Error('Groq vision returned empty content');
@@ -98,6 +103,43 @@ export async function parseImageWithLLM(
   } catch {
     throw new Error(`Groq vision returned non-JSON: ${raw.slice(0, 200)}`);
   }
+}
+
+export async function parseImageWithLLM(
+  systemPrompt: string,
+  images: ImageInput[]
+): Promise<unknown> {
+  if (images.length === 0) throw new Error('parseImageWithLLM: no images supplied');
+
+  // Single image: one direct call, no merge needed.
+  if (images.length === 1) {
+    return parseSingleImage(systemPrompt, images[0]);
+  }
+
+  // Multi-image: parallel calls, one per page, then concatenate the
+  // items[] arrays. We don't dedupe in code — the user reviews the preview
+  // table and can delete any header/footer rows that slipped through.
+  const results = await Promise.all(
+    images.map((img, idx) =>
+      parseSingleImage(
+        systemPrompt,
+        img,
+        `This is page ${idx + 1} of ${images.length} of a multi-page menu. Extract only what is visible on THIS page.`
+      )
+    )
+  );
+
+  const allItems: unknown[] = [];
+  for (const r of results) {
+    if (
+      typeof r === 'object' &&
+      r !== null &&
+      Array.isArray((r as { items?: unknown }).items)
+    ) {
+      allItems.push(...((r as { items: unknown[] }).items));
+    }
+  }
+  return { items: allItems };
 }
 
 // ─── PDF → JSON ──────────────────────────────────────────────────────────

@@ -7,6 +7,16 @@ import { Switch } from '@/components/ui/switch';
 import { DynamicList } from './dynamic-list';
 import { BusinessType, FAQ } from '@/lib/types';
 import { FAQ_TEMPLATES } from '@/lib/constants';
+import {
+  RestaurantMenuBulkImport,
+  CoachingCoursesBulkImport,
+  RealEstateListingsBulkImport,
+  SalonServicesBulkImport,
+  GymPlansBulkImport,
+  TiffinPlansBulkImport,
+  EcommerceProductsBulkImport,
+  GroceryProductsBulkImport,
+} from './bulk-import-buttons';
 
 interface TypeFieldsProps {
   type: BusinessType;
@@ -353,7 +363,10 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
         <Input placeholder="https://zomato.com/..." value={(data.zomatoSwiggyLinks as string) || ''} onChange={(e) => onChange('zomatoSwiggyLinks', e.target.value)} />
       </div>
 
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Menu</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Menu</h3>
+        <RestaurantMenuBulkImport data={data} onChange={onChange} />
+      </div>
       {menuCategories.map((cat, catIndex) => (
         <div key={catIndex} className="border border-border rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -1198,7 +1211,10 @@ function CoachingForm({ data, onChange }: { data: Record<string, unknown>; onCha
         </div>
       </div>
 
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Courses</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Courses</h3>
+        <CoachingCoursesBulkImport data={data} onChange={onChange} />
+      </div>
       <DynamicList
         items={courses}
         onChange={(items) => onChange('coursesOffered', items)}
@@ -1970,7 +1986,10 @@ function RealEstateForm({ data, onChange }: { data: Record<string, unknown>; onC
       />
 
       {/* Listings — extended */}
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Current Listings</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Current Listings</h3>
+        <RealEstateListingsBulkImport data={data} onChange={onChange} />
+      </div>
       <p className="text-[10px] text-amber-700">⚠️ RERA Act §11: every property advertisement must carry a valid RERA registration number. Add it per listing.</p>
       <DynamicList
         items={listings}
@@ -2249,7 +2268,10 @@ function SalonForm({ data, onChange }: { data: Record<string, unknown>; onChange
         </div>
       </div>
 
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Services</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Services</h3>
+        <SalonServicesBulkImport data={data} onChange={onChange} />
+      </div>
       {services.map((cat, catIndex) => (
         <div key={catIndex} className="border border-border rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -3176,7 +3198,10 @@ function GymForm({ data, onChange }: { data: Record<string, unknown>; onChange: 
       </div>
 
       {/* Membership plans (extended) */}
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Membership Plans</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Membership Plans</h3>
+        <GymPlansBulkImport data={data} onChange={onChange} />
+      </div>
       <DynamicList
         items={plans}
         onChange={(items) => onChange('membershipPlans', items)}
@@ -3911,7 +3936,10 @@ function TiffinForm({ data, onChange }: { data: Record<string, unknown>; onChang
         />
       </div>
 
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Subscription Plans</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Subscription Plans</h3>
+        <TiffinPlansBulkImport data={data} onChange={onChange} />
+      </div>
       <DynamicList
         items={plans}
         onChange={(items) => onChange('plans', items)}
@@ -4646,7 +4674,10 @@ function EcommerceForm({ data, onChange }: { data: Record<string, unknown>; onCh
         )}
       </div>
 
-      <h3 className="text-lg font-semibold border-b border-border pb-2">Products</h3>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <h3 className="text-lg font-semibold">Products</h3>
+        <EcommerceProductsBulkImport data={data} onChange={onChange} />
+      </div>
       <DynamicList
         items={products}
         onChange={(items) => onChange('products', items)}
@@ -4919,13 +4950,16 @@ function GroceryForm({ data, onChange }: { data: Record<string, unknown>; onChan
 
       {/* Static catalog (keeps backward-compat with existing GroceryFields.defaultProducts) */}
       <div>
-        <Label>Common everyday products (comma-separated)</Label>
+        <div className="flex items-center justify-between mb-1">
+          <Label>Common everyday products (comma-separated)</Label>
+          <GroceryProductsBulkImport data={data} onChange={onChange} />
+        </div>
         <Input
           placeholder="Atta, Rice, Dal, Sugar, Tea, Milk, Curd"
           value={defaultProducts.join(', ')}
           onChange={(e) => onChange('defaultProducts', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
         />
-        <p className="text-[10px] text-muted-foreground mt-1">Bot uses this when customer asks &quot;what do you have?&quot; before today&apos;s list is updated.</p>
+        <p className="text-[10px] text-muted-foreground mt-1">Bot uses this when customer asks &quot;what do you have?&quot; before today&apos;s list is updated. Bulk import accepts photo / PDF / Excel of your full price list.</p>
       </div>
 
       {/* Delivery zones */}

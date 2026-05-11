@@ -1,7 +1,7 @@
 'use client';
 
 // Reusable bulk-import modal for ALL 8 verticals.
-// Owner gives us their existing list (text, photo, PDF, Excel, CSV);
+// Owner gives us their existing list (text, photo, Excel, CSV);
 // we POST to /api/parse-catalog and render structured rows in an
 // editable preview table, then merge into form state on confirm.
 
@@ -11,6 +11,52 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+
+// ─── Client-side image compression ──────────────────────────────────────
+// Phone cameras and AI image generators produce 2-5 MB PNGs that are far
+// larger than needed for text extraction. We shrink them to a max 1600px
+// long edge and re-encode as JPEG q=0.85 — typical result is 200-600 KB,
+// which avoids the Next.js dev-server body limit and the platform 4.5 MB
+// cap on serverless deployments.
+
+async function compressImage(file: File, maxDim = 1600, quality = 0.85): Promise<File> {
+  // Already small enough — skip the canvas round-trip.
+  if (file.size < 400_000) return file;
+  // HEIC and other non-decodable types: send as-is.
+  if (!file.type.startsWith('image/') || file.type === 'image/heic') return file;
+
+  const url = URL.createObjectURL(file);
+  try {
+    const img: HTMLImageElement = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('image decode failed'));
+      i.src = url;
+    });
+
+    const longEdge = Math.max(img.width, img.height);
+    const scale = longEdge > maxDim ? maxDim / longEdge : 1;
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', quality)
+    );
+    if (!blob || blob.size >= file.size) return file; // never make it bigger
+    return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+  } catch {
+    return file; // any decode/canvas failure → fall back to original
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 type Mode = 'text' | 'image' | 'pdf' | 'excel' | 'csv';
 
@@ -55,6 +101,7 @@ export function BulkImportModal({
   // Image mode accepts multiple files (multi-page menus often span 2-3 photos).
   // Excel/CSV stay single-file.
   const [files, setFiles] = useState<File[]>([]);
+  const [processing, setProcessing] = useState(false); // client-side compression in flight
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<Record<string, unknown>[] | null>(null);
@@ -68,6 +115,20 @@ export function BulkImportModal({
       setMode('text');
     }
   }, [open]);
+
+  async function handleImageSelect(selected: FileList | null) {
+    if (!selected || selected.length === 0) {
+      setFiles([]);
+      return;
+    }
+    setProcessing(true);
+    try {
+      const compressed = await Promise.all(Array.from(selected).map((f) => compressImage(f)));
+      setFiles(compressed);
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   if (!open) return null;
 
@@ -191,12 +252,16 @@ export function BulkImportModal({
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/heic"
                   multiple
-                  onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                  onChange={(e) => handleImageSelect(e.target.files)}
                   className="mt-2"
+                  disabled={processing}
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Max 5 MB per image, up to 6 images. Pick multiple if your menu spans more than one page.
+                  Up to 6 images. Large photos are auto-compressed to ~1600 px / JPEG so the upload stays fast.
                 </p>
+                {processing && (
+                  <p className="text-[11px] text-amber-700 mt-2">Compressing images…</p>
+                )}
                 {files.length > 0 && (
                   <div className="mt-2 space-y-1">
                     {files.map((f, i) => (
@@ -301,9 +366,9 @@ export function BulkImportModal({
         <div className="p-4 border-t flex items-center justify-end gap-2">
           {!parsed ? (
             <>
-              <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-              <Button onClick={handleParse} disabled={loading}>
-                {loading ? 'Parsing...' : 'Parse'}
+              <Button variant="outline" onClick={onClose} disabled={loading || processing}>Cancel</Button>
+              <Button onClick={handleParse} disabled={loading || processing}>
+                {loading ? 'Parsing...' : processing ? 'Compressing...' : 'Parse'}
               </Button>
             </>
           ) : (

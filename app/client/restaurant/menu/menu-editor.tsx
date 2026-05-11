@@ -1,0 +1,282 @@
+'use client';
+
+// Menu editor for the Restaurant client workspace.
+// Loads the active bot's knowledge_base via /api/client/settings, lets the
+// owner add/remove sections, add/remove items, bulk import, and save back.
+
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { PageTopbar, PageHead, Pill, Panel } from '@/components/app/primitives';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { RestaurantMenuBulkImport } from '@/components/forms/bulk-import-buttons';
+
+type MenuItem = {
+  name?: string;
+  price?: string;
+  description?: string;
+  isVeg?: boolean;
+  isBestseller?: boolean;
+  sizes?: Array<{ label: string; price: number }> | null;
+};
+
+type MenuCategory = { category?: string; items?: MenuItem[] };
+
+interface SettingsResponse {
+  knowledgeBase: string;
+}
+
+function emptyItem(): MenuItem {
+  return { name: '', price: '', description: '', isVeg: true, isBestseller: false };
+}
+
+export function MenuEditor({ businessName }: { businessName: string }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [kb, setKb] = useState<Record<string, unknown>>({});
+  const [menu, setMenu] = useState<MenuCategory[]>([]);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/client/settings');
+        if (!res.ok) throw new Error(`load failed (${res.status})`);
+        const data = (await res.json()) as SettingsResponse;
+        const parsed = data.knowledgeBase ? JSON.parse(data.knowledgeBase) : {};
+        setKb(parsed);
+        const cats = Array.isArray(parsed.menuCategories) ? parsed.menuCategories : [];
+        setMenu(cats);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not load menu');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  function markDirty() {
+    setDirty(true);
+  }
+
+  // Bulk-import wrapper expects { data, onChange }. We feed it the live menu
+  // via a synthetic data object, intercept the onChange so we can re-route
+  // the updated menuCategories into our local state.
+  const bulkImportData = { menuCategories: menu };
+  const bulkImportOnChange = (field: string, value: unknown) => {
+    if (field === 'menuCategories' && Array.isArray(value)) {
+      setMenu(value as MenuCategory[]);
+      markDirty();
+    }
+  };
+
+  function addCategory() {
+    setMenu([...menu, { category: '', items: [emptyItem()] }]);
+    markDirty();
+  }
+
+  function removeCategory(idx: number) {
+    setMenu(menu.filter((_, i) => i !== idx));
+    markDirty();
+  }
+
+  function updateCategoryName(idx: number, name: string) {
+    const next = [...menu];
+    next[idx] = { ...next[idx], category: name };
+    setMenu(next);
+    markDirty();
+  }
+
+  function addItem(catIdx: number) {
+    const next = [...menu];
+    const items = [...(next[catIdx].items || []), emptyItem()];
+    next[catIdx] = { ...next[catIdx], items };
+    setMenu(next);
+    markDirty();
+  }
+
+  function removeItem(catIdx: number, itemIdx: number) {
+    const next = [...menu];
+    const items = (next[catIdx].items || []).filter((_, i) => i !== itemIdx);
+    next[catIdx] = { ...next[catIdx], items };
+    setMenu(next);
+    markDirty();
+  }
+
+  function updateItem(catIdx: number, itemIdx: number, patch: Partial<MenuItem>) {
+    const next = [...menu];
+    const items = [...(next[catIdx].items || [])];
+    items[itemIdx] = { ...items[itemIdx], ...patch };
+    next[catIdx] = { ...next[catIdx], items };
+    setMenu(next);
+    markDirty();
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const nextKb = { ...kb, menuCategories: menu };
+      const res = await fetch('/api/client/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulk: { knowledge_base_json: JSON.stringify(nextKb) } }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || data.error || `save failed (${res.status})`);
+      }
+      setKb(nextKb);
+      setDirty(false);
+      toast.success('Menu saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalItems = menu.reduce((n, c) => n + (Array.isArray(c.items) ? c.items.length : 0), 0);
+
+  if (loading) {
+    return (
+      <div style={{ padding: '60px 32px' }}>
+        <p className="text-sm text-muted-foreground">Loading menu…</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PageTopbar
+        crumbs={
+          <>
+            Restaurant /{' '}
+            <a href="/client/restaurant" className="hover:underline">
+              Overview
+            </a>{' '}
+            / <b className="text-foreground">Menu</b>
+          </>
+        }
+        actions={
+          <>
+            <RestaurantMenuBulkImport data={bulkImportData} onChange={bulkImportOnChange} />
+            <Pill variant="ink" onClick={handleSave} disabled={!dirty || saving}>
+              {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+            </Pill>
+          </>
+        }
+      />
+      <div style={{ padding: '28px 32px 80px' }}>
+        <PageHead
+          title={
+            <>
+              {businessName} <span className="zt-serif">menu.</span>
+            </>
+          }
+          sub={`${totalItems} item${totalItems === 1 ? '' : 's'} across ${menu.length} section${menu.length === 1 ? '' : 's'}. Bulk import a photo / Excel of your existing menu, or add items manually.`}
+        />
+
+        <div className="space-y-4">
+          {menu.length === 0 && (
+            <Panel
+              title="No menu yet"
+              sub="Use Bulk import to load your existing menu from a photo, paste, or Excel — or click Add section to start manually."
+            >
+              <Button type="button" onClick={addCategory}>
+                + Add section
+              </Button>
+            </Panel>
+          )}
+
+          {menu.map((cat, catIdx) => (
+            <Panel
+              key={catIdx}
+              title={
+                <Input
+                  className="h-9 text-base font-semibold"
+                  placeholder="Section name (e.g., Starters)"
+                  value={cat.category || ''}
+                  onChange={(e) => updateCategoryName(catIdx, e.target.value)}
+                />
+              }
+              action={
+                <button
+                  type="button"
+                  onClick={() => removeCategory(catIdx)}
+                  className="text-xs text-muted-foreground hover:text-destructive"
+                >
+                  Remove section
+                </button>
+              }
+            >
+              <div className="space-y-3">
+                {(cat.items || []).map((item, itemIdx) => (
+                  <div key={itemIdx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start border-b border-border pb-3 last:border-b-0">
+                    <div className="md:col-span-4">
+                      <Label className="text-xs">Dish name</Label>
+                      <Input
+                        placeholder="Paneer Tikka"
+                        value={item.name || ''}
+                        onChange={(e) => updateItem(catIdx, itemIdx, { name: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <Label className="text-xs">Price</Label>
+                      <Input
+                        placeholder="Rs.249 or Half Rs.200 / Full Rs.380"
+                        value={item.price || ''}
+                        onChange={(e) => updateItem(catIdx, itemIdx, { price: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <Label className="text-xs">Description</Label>
+                      <Input
+                        placeholder="Marinated cottage cheese in tandoor"
+                        value={item.description || ''}
+                        onChange={(e) => updateItem(catIdx, itemIdx, { description: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-2 flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={item.isVeg ?? true}
+                          onCheckedChange={(v) => updateItem(catIdx, itemIdx, { isVeg: v })}
+                        />
+                        <span className="text-xs">Veg</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={item.isBestseller ?? false}
+                          onCheckedChange={(v) => updateItem(catIdx, itemIdx, { isBestseller: v })}
+                        />
+                        <span className="text-xs">Bestseller</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(catIdx, itemIdx)}
+                        className="text-[11px] text-muted-foreground hover:text-destructive self-start"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => addItem(catIdx)}>
+                  + Add item
+                </Button>
+              </div>
+            </Panel>
+          ))}
+
+          {menu.length > 0 && (
+            <Button type="button" variant="outline" onClick={addCategory}>
+              + Add another section
+            </Button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

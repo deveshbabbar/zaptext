@@ -75,13 +75,35 @@ function isActive(currentPath: string, href: string): boolean {
 
 interface SidebarNavProps {
   isTrial?: boolean;
+  activeBotType?: string;
 }
 
-export function SidebarNav({ isTrial = false }: SidebarNavProps) {
+// Vertical-specific workspace links. Shown as a third section between
+// "Workspace" and "Account" when the active bot's type matches. Restaurant
+// is the first vertical to ship; others follow the same pattern.
+const VERTICAL_SECTIONS: Record<string, NavSection> = {
+  restaurant: {
+    title: 'Vertical · Restaurant',
+    items: [
+      { href: '/client/restaurant', icon: '🍽️', label: 'Overview' },
+      { href: '/client/restaurant/menu', icon: '📋', label: 'Menu' },
+      { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },
+      { href: '/client/restaurant/tables', icon: '🪑', label: 'Tables' },
+      { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
+    ],
+  },
+};
+
+export function SidebarNav({ isTrial = false, activeBotType }: SidebarNavProps) {
   const pathname = usePathname() || '';
+  // Splice the vertical-specific section in between Workspace and Account.
+  const verticalSection = activeBotType ? VERTICAL_SECTIONS[activeBotType] : undefined;
+  const sections: NavSection[] = verticalSection
+    ? [SECTIONS[0], verticalSection, SECTIONS[1]]
+    : SECTIONS;
   return (
     <>
-      {SECTIONS.map((section) => (
+      {sections.map((section) => (
         <div key={section.title}>
           <div
             className="zt-mono text-[10px] uppercase tracking-[.09em] text-white/55"

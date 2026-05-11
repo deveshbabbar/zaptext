@@ -147,7 +147,7 @@ export default async function ClientLayout({ children }: { children: React.React
           )}
         </div>
 
-        <SidebarNav isTrial={isTrial} />
+        <SidebarNav isTrial={isTrial} activeBotType={user.activeBot?.type} />
 
         <div className="mt-auto pt-3 border-t border-white/10 flex items-center gap-2.5">
           <div className="w-[34px] h-[34px] rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[13px]">

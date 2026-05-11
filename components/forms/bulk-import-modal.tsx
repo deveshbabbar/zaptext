@@ -93,7 +93,8 @@ export function BulkImportModal({
         detail?: string;
       };
       if (!res.ok || !data.success) {
-        setError(data.error || `Parse failed (${res.status})`);
+        const main = data.error || `Parse failed (${res.status})`;
+        setError(data.detail ? `${main}\n\nDetail: ${data.detail}` : main);
         setLoading(false);
         return;
       }
@@ -138,7 +139,7 @@ export function BulkImportModal({
           <div>
             <h2 className="text-lg font-semibold">{title}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {sectionLabel} — paste, upload an image / PDF / Excel of your existing list. The AI parses it; you review before saving.
+              {sectionLabel} — paste, upload an image / Excel / CSV of your existing list. The AI parses it; you review before saving.
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
@@ -152,7 +153,6 @@ export function BulkImportModal({
               <TabsList>
                 <TabsTrigger value="text">Paste text</TabsTrigger>
                 <TabsTrigger value="image">Image / Photo</TabsTrigger>
-                <TabsTrigger value="pdf">PDF</TabsTrigger>
                 <TabsTrigger value="excel">Excel</TabsTrigger>
                 <TabsTrigger value="csv">CSV</TabsTrigger>
               </TabsList>
@@ -178,17 +178,6 @@ export function BulkImportModal({
                   className="mt-2"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">Max 5 MB. A clear photo of a printed menu card works perfectly.</p>
-              </TabsContent>
-
-              <TabsContent value="pdf" className="mt-4">
-                <Label className="text-xs">Upload a PDF (menu / brochure / price-list)</Label>
-                <Input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  className="mt-2"
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">Max 10 MB. Works for multi-page brochures.</p>
               </TabsContent>
 
               <TabsContent value="excel" className="mt-4">

@@ -33,6 +33,7 @@ function minutesSince(iso: string): number {
 export function LiveTablesClient({ cards }: { cards: Card[] }) {
   const router = useRouter();
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => router.refresh(), 30_000);
@@ -49,12 +50,31 @@ export function LiveTablesClient({ cards }: { cards: Card[] }) {
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) throw new Error(data.error || `Close failed (${res.status})`);
-      toast.success(`Table ${tableNumber} closed`);
+      toast.success(`Table ${tableNumber} closed — bill sent to customer`);
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Close failed');
     } finally {
       setClosingId(null);
+    }
+  }
+
+  async function updateStatus(orderId: string, status: DineInOrderStatus) {
+    setStatusUpdatingId(orderId);
+    try {
+      const res = await fetch(`/api/client/restaurant/orders/${orderId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error || `Update failed (${res.status})`);
+      toast.success(`Marked as ${status}`);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setStatusUpdatingId(null);
     }
   }
 
@@ -101,21 +121,39 @@ export function LiveTablesClient({ cards }: { cards: Card[] }) {
                 <ul className="divide-y divide-border">
                   {card.orders.map((order) => (
                     <li key={order.id} className="py-2">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="text-[13px] font-semibold">
                           ₹{order.total.toFixed(0)}{order.notes ? <span className="ml-2 text-xs font-normal text-muted-foreground">· {order.notes}</span> : null}
                         </div>
-                        <StatusPill
-                          variant={
-                            order.status === 'served'
-                              ? 'ok'
-                              : order.status === 'cancelled'
-                                ? 'cancel'
-                                : 'pending'
-                          }
-                        >
-                          {order.status}
-                        </StatusPill>
+                        <div className="flex items-center gap-2">
+                          <StatusPill
+                            variant={
+                              order.status === 'served'
+                                ? 'ok'
+                                : order.status === 'cancelled'
+                                  ? 'cancel'
+                                  : 'pending'
+                            }
+                          >
+                            {order.status}
+                          </StatusPill>
+                          {order.status !== 'served' && order.status !== 'cancelled' && (
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v) updateStatus(order.id, v as DineInOrderStatus);
+                              }}
+                              disabled={statusUpdatingId === order.id}
+                              className="text-[11px] px-2 py-1 rounded border border-border bg-background"
+                            >
+                              <option value="">Mark…</option>
+                              {order.status !== 'preparing' && <option value="preparing">Preparing</option>}
+                              <option value="served">Served</option>
+                              <option value="cancelled">Cancel</option>
+                            </select>
+                          )}
+                        </div>
                       </div>
                       <ul className="mt-1 text-[12.5px] text-foreground/80">
                         {order.items.map((it, i) => (

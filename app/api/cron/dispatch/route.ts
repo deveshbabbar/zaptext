@@ -25,11 +25,13 @@ const TASK_PIPELINES: Record<string, string[]> = {
     '/api/cron/expiry-warning',
     '/api/cron/auto-cancel-stale',
     '/api/cron/grocery-recurring',
+    '/api/cron/restaurant-sessions/close-stale',
   ],
   evening: [
     '/api/cron/evening-summary',
     '/api/cron/reminders',
     '/api/cron/auto-cancel-stale',
+    '/api/cron/restaurant-sessions/close-stale',
   ],
 };
 

@@ -15,6 +15,7 @@ interface FlatItem {
   description: string;
   isVeg: boolean;
   isBestseller: boolean;
+  sizes: Array<{ label: string; price: number }>;
 }
 
 interface Props {
@@ -56,24 +57,42 @@ export function MenuOrderClient({
     return [...map.entries()];
   }, [items]);
 
+  // Cart keys: "<itemId>" for single-price items, "<itemId>|<variantLabel>"
+  // for variant items. We split on '|' to recover the display info.
+  function splitKey(key: string): { itemId: string; variant: string | null } {
+    const idx = key.indexOf('|');
+    return idx === -1 ? { itemId: key, variant: null } : { itemId: key.slice(0, idx), variant: key.slice(idx + 1) };
+  }
+
   const cartLines = useMemo(() => {
     return Object.entries(cart)
       .filter(([, qty]) => qty > 0)
-      .map(([id, qty]) => {
-        const it = items.find((x) => x.id === id);
+      .map(([key, qty]) => {
+        const { itemId, variant } = splitKey(key);
+        const it = items.find((x) => x.id === itemId);
         if (!it) return null;
-        const unit = parsePrice(it.price);
-        return { id, name: it.name, qty, unit, line: unit * qty };
+        let unit: number;
+        let displayName: string;
+        if (variant && it.sizes.length > 0) {
+          const sz = it.sizes.find((s) => s.label === variant);
+          if (!sz) return null;
+          unit = sz.price;
+          displayName = `${it.name} (${sz.label})`;
+        } else {
+          unit = parsePrice(it.price);
+          displayName = it.name;
+        }
+        return { key, name: displayName, qty, unit, line: unit * qty };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
   }, [cart, items]);
 
   const total = cartLines.reduce((s, l) => s + l.line, 0);
 
-  function bump(id: string, delta: number) {
+  function bump(key: string, delta: number) {
     setCart((prev) => {
-      const next = { ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) };
-      if (next[id] === 0) delete next[id];
+      const next = { ...prev, [key]: Math.max(0, (prev[key] || 0) + delta) };
+      if (next[key] === 0) delete next[key];
       return next;
     });
   }
@@ -169,31 +188,66 @@ export function MenuOrderClient({
               <h2 style={{ fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#999', margin: '12px 0 6px' }}>{cat}</h2>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {list.map((it) => {
-                  const qty = cart[it.id] || 0;
+                  const hasVariants = it.sizes.length > 0;
+                  // For variant items, the qty shown is total across all variants.
+                  const singleQty = hasVariants ? 0 : cart[it.id] || 0;
+                  const variantQtys = hasVariants
+                    ? it.sizes.map((s) => ({ size: s, qty: cart[`${it.id}|${s.label}`] || 0 }))
+                    : [];
+                  const totalQty = hasVariants ? variantQtys.reduce((n, v) => n + v.qty, 0) : singleQty;
                   return (
-                    <li key={it.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, padding: '10px 0', borderBottom: '1px solid #f3f3f3' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ width: 10, height: 10, border: `2px solid ${it.isVeg ? '#1a9b3a' : '#c0392b'}`, borderRadius: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ width: 4, height: 4, borderRadius: 99, background: it.isVeg ? '#1a9b3a' : '#c0392b' }} />
-                          </span>
-                          <span style={{ fontWeight: 600 }}>{it.name}</span>
-                          {it.isBestseller && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 99, background: '#fff4d6', color: '#8a6d00' }}>BESTSELLER</span>}
+                    <li key={it.id} style={{ padding: '10px 0', borderBottom: '1px solid #f3f3f3' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 10, height: 10, border: `2px solid ${it.isVeg ? '#1a9b3a' : '#c0392b'}`, borderRadius: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ width: 4, height: 4, borderRadius: 99, background: it.isVeg ? '#1a9b3a' : '#c0392b' }} />
+                            </span>
+                            <span style={{ fontWeight: 600 }}>{it.name}</span>
+                            {it.isBestseller && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 99, background: '#fff4d6', color: '#8a6d00' }}>BESTSELLER</span>}
+                            {totalQty > 0 && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 99, background: '#111', color: '#fff' }}>{totalQty} in cart</span>}
+                          </div>
+                          {it.description && <p style={{ fontSize: 12, color: '#666', margin: '2px 0 0' }}>{it.description}</p>}
+                          {!hasVariants && <p style={{ fontSize: 13, fontWeight: 500, margin: '4px 0 0' }}>{it.price || '—'}</p>}
                         </div>
-                        {it.description && <p style={{ fontSize: 12, color: '#666', margin: '2px 0 0' }}>{it.description}</p>}
-                        <p style={{ fontSize: 13, fontWeight: 500, margin: '4px 0 0' }}>{it.price || '—'}</p>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {qty === 0 ? (
-                          <button onClick={() => bump(it.id, 1)} style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid #111', background: '#fff', fontWeight: 600 }}>Add</button>
-                        ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 99, background: '#111', color: '#fff' }}>
-                            <button onClick={() => bump(it.id, -1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>−</button>
-                            <span style={{ minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{qty}</span>
-                            <button onClick={() => bump(it.id, 1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>+</button>
+                        {!hasVariants && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {singleQty === 0 ? (
+                              <button onClick={() => bump(it.id, 1)} style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid #111', background: '#fff', fontWeight: 600 }}>Add</button>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 99, background: '#111', color: '#fff' }}>
+                                <button onClick={() => bump(it.id, -1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>−</button>
+                                <span style={{ minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{singleQty}</span>
+                                <button onClick={() => bump(it.id, 1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>+</button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
+                      {hasVariants && (
+                        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {variantQtys.map(({ size, qty }) => {
+                            const key = `${it.id}|${size.label}`;
+                            return (
+                              <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 8px', borderRadius: 8, background: '#f7f7f7' }}>
+                                <div style={{ fontSize: 13 }}>
+                                  <span style={{ fontWeight: 500 }}>{size.label}</span>
+                                  <span style={{ marginLeft: 8, color: '#444' }}>₹{size.price}</span>
+                                </div>
+                                {qty === 0 ? (
+                                  <button onClick={() => bump(key, 1)} style={{ padding: '4px 12px', borderRadius: 99, border: '1px solid #111', background: '#fff', fontWeight: 600, fontSize: 12 }}>Add</button>
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px', borderRadius: 99, background: '#111', color: '#fff' }}>
+                                    <button onClick={() => bump(key, -1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 16, lineHeight: 1, cursor: 'pointer' }}>−</button>
+                                    <span style={{ minWidth: 14, textAlign: 'center', fontWeight: 600, fontSize: 13 }}>{qty}</span>
+                                    <button onClick={() => bump(key, 1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 16, lineHeight: 1, cursor: 'pointer' }}>+</button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </li>
                   );
                 })}

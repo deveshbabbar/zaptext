@@ -34,6 +34,8 @@ export function QrCodesClient({ initialTables, botPhone }: Props) {
   const [rotating, setRotating] = useState(false);
   const [newTable, setNewTable] = useState('');
   const [newSeats, setNewSeats] = useState('');
+  const [bulkCount, setBulkCount] = useState('');
+  const [bulking, setBulking] = useState(false);
 
   async function addTable() {
     const tableNumber = newTable.trim();
@@ -79,6 +81,31 @@ export function QrCodesClient({ initialTables, botPhone }: Props) {
     }
   }
 
+  async function bulkAddTables() {
+    const count = Number(bulkCount) || 0;
+    if (count < 1 || count > 100) {
+      toast.error('Enter a count between 1 and 100');
+      return;
+    }
+    setBulking(true);
+    try {
+      const res = await fetch('/api/client/restaurant/tables/bulk-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; created?: number; skipped?: number; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error || `Bulk add failed (${res.status})`);
+      toast.success(`Added ${data.created || 0} tables${data.skipped ? `, skipped ${data.skipped} duplicate${data.skipped === 1 ? '' : 's'}` : ''}`);
+      setBulkCount('');
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Bulk add failed');
+    } finally {
+      setBulking(false);
+    }
+  }
+
   async function rotateAll() {
     if (!confirm('Rotate ALL table tokens? Currently printed QRs will stop working — make sure you re-print after.')) return;
     setRotating(true);
@@ -97,7 +124,19 @@ export function QrCodesClient({ initialTables, botPhone }: Props) {
 
   return (
     <div className="space-y-4">
-      <Panel title="Add a table" sub="Common names: 1, 2, 3 ... or T1, T2 ... or Counter-A, Outdoor-3. Up to 16 characters.">
+      <Panel title="Quick setup" sub="Numbered tables 1, 2, 3... Skips numbers you already have.">
+        <div className="flex flex-col md:flex-row gap-2 md:items-end">
+          <div style={{ width: 160 }}>
+            <Label className="text-xs">How many tables?</Label>
+            <Input type="number" placeholder="10" value={bulkCount} onChange={(e) => setBulkCount(e.target.value)} />
+          </div>
+          <Button type="button" variant="outline" onClick={bulkAddTables} disabled={bulking || !botPhone}>
+            {bulking ? 'Adding…' : 'Add tables 1–N'}
+          </Button>
+        </div>
+      </Panel>
+
+      <Panel title="Or add one at a time" sub="Common names: 1, 2, 3 ... or T1, T2 ... or Counter-A, Outdoor-3. Up to 16 characters.">
         <div className="flex flex-col md:flex-row gap-2 md:items-end">
           <div className="flex-1">
             <Label className="text-xs">Table number / label</Label>

@@ -867,9 +867,33 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         'You may briefly acknowledge their language ("Got it!") but the substantive answer must be in English.';
     }
 
+    // Dine-in context: if this customer has an open table session, tell the
+    // AI which table they're at so food items in the message are treated
+    // as table additions (not home-delivery queries). The intercept above
+    // handles QR scans + commands; this branch fires for free-text food
+    // requests mid-session.
+    let dineInContext = '';
+    if (client.type === 'restaurant') {
+      try {
+        const { describeActiveSession } = await import('@/lib/restaurant/dine-in-handler');
+        const active = await describeActiveSession(client.client_id, customerPhone);
+        if (active) {
+          dineInContext =
+            `\n\nDINE-IN SESSION ACTIVE:\n` +
+            `Customer is currently at Table ${active.tableNumber}.\n` +
+            `Treat any food items they mention as additions to THIS table's order.\n` +
+            `Do NOT ask for a delivery address. Do NOT switch to home-delivery mode.\n` +
+            `If they want to leave or pay, tell them to type "CLOSE TABLE".\n` +
+            `If they explicitly mention home delivery, ask them to confirm: add to table, CLOSE TABLE, or PARCEL.`;
+        }
+      } catch (err) {
+        console.error('[dine-in] describeActiveSession failed', err);
+      }
+    }
+
     // Generate AI response with booking + payment + order + staff context
     let aiResponse = await generateBotResponse(
-      basePrompt + availabilityContext + paymentContext + orderContext + staffContext,
+      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext,
       pastHistory,
       msg.text
     );

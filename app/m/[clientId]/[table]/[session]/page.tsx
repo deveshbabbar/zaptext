@@ -15,7 +15,14 @@ import { getClientById } from '@/lib/db/clients';
 import { getSessionById, getTable } from '@/lib/db/restaurant-dine-in';
 import { MenuOrderClient } from './menu-order-client';
 
-interface MenuItem { name: string; price: string; description?: string; isVeg?: boolean; isBestseller?: boolean }
+interface MenuItem {
+  name: string;
+  price: string;
+  description?: string;
+  isVeg?: boolean;
+  isBestseller?: boolean;
+  sizes?: Array<{ label: string; price: number }> | null;
+}
 interface MenuCategory { category?: string; items?: MenuItem[] }
 
 export default async function PublicMenuPage({
@@ -47,11 +54,18 @@ export default async function PublicMenuPage({
     if (Array.isArray(kb.menuCategories)) menu = kb.menuCategories as MenuCategory[];
   } catch { /* ignore */ }
 
-  const flatItems: Array<{ id: string; category: string; name: string; price: string; description: string; isVeg: boolean; isBestseller: boolean }> = [];
+  const flatItems: Array<{ id: string; category: string; name: string; price: string; description: string; isVeg: boolean; isBestseller: boolean; sizes: Array<{ label: string; price: number }> }> = [];
   menu.forEach((cat, ci) => {
     (cat.items || []).forEach((it, ii) => {
       const name = (it.name || '').trim();
       if (!name) return;
+      const validSizes = Array.isArray(it.sizes)
+        ? it.sizes
+            .filter((s): s is { label: string; price: number } =>
+              !!s && typeof s.label === 'string' && typeof s.price === 'number' && s.price > 0
+            )
+            .map((s) => ({ label: s.label, price: s.price }))
+        : [];
       flatItems.push({
         id: `${ci}-${ii}`,
         category: (cat.category || 'Menu').trim() || 'Menu',
@@ -60,6 +74,7 @@ export default async function PublicMenuPage({
         description: it.description || '',
         isVeg: it.isVeg !== false,
         isBestseller: !!it.isBestseller,
+        sizes: validSizes,
       });
     });
   });

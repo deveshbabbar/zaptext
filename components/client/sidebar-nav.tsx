@@ -88,8 +88,10 @@ const VERTICAL_SECTIONS: Record<string, NavSection> = {
     items: [
       { href: '/client/restaurant', icon: '🍽️', label: 'Overview' },
       { href: '/client/restaurant/menu', icon: '📋', label: 'Menu' },
+      { href: '/client/restaurant/tables-live', icon: '🟢', label: 'Live tables' },
+      { href: '/client/restaurant/qr-codes', icon: '📱', label: 'QR codes' },
       { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },
-      { href: '/client/restaurant/tables', icon: '🪑', label: 'Tables' },
+      { href: '/client/restaurant/tables', icon: '🪑', label: 'Reservations' },
       { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
     ],
   },

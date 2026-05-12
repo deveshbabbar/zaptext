@@ -1,0 +1,77 @@
+// Public mobile menu page for dine-in customers.
+// URL: /m/<clientId>/<tableNumber>/<sessionId>
+//
+// Lands customers who tapped the bot's menu link. Renders the restaurant's
+// menuCategories from the bot's knowledge_base. Customer selects items,
+// totals shown live, hits Submit — order POSTs to /api/dine-in/submit
+// which writes the order and notifies the manager dashboard.
+//
+// No auth: anyone with a valid (clientId, tableNumber, sessionId) tuple
+// can submit. The submit API revalidates that the session is still open
+// for that table.
+
+import { notFound } from 'next/navigation';
+import { getClientById } from '@/lib/db/clients';
+import { getSessionById, getTable } from '@/lib/db/restaurant-dine-in';
+import { MenuOrderClient } from './menu-order-client';
+
+interface MenuItem { name: string; price: string; description?: string; isVeg?: boolean; isBestseller?: boolean }
+interface MenuCategory { category?: string; items?: MenuItem[] }
+
+export default async function PublicMenuPage({
+  params,
+}: {
+  params: Promise<{ clientId: string; table: string; session: string }>;
+}) {
+  const { clientId, table, session } = await params;
+
+  const [client, sessionRow, tableRow] = await Promise.all([
+    getClientById(clientId).catch(() => null),
+    getSessionById(session).catch(() => null),
+    getTable(clientId, table).catch(() => null),
+  ]);
+
+  if (!client || client.type !== 'restaurant' || !tableRow) {
+    notFound();
+  }
+
+  const sessionValid =
+    sessionRow &&
+    sessionRow.client_id === clientId &&
+    sessionRow.table_number === table &&
+    sessionRow.status === 'open';
+
+  let menu: MenuCategory[] = [];
+  try {
+    const kb = client.knowledge_base_json ? (JSON.parse(client.knowledge_base_json) as Record<string, unknown>) : {};
+    if (Array.isArray(kb.menuCategories)) menu = kb.menuCategories as MenuCategory[];
+  } catch { /* ignore */ }
+
+  const flatItems: Array<{ id: string; category: string; name: string; price: string; description: string; isVeg: boolean; isBestseller: boolean }> = [];
+  menu.forEach((cat, ci) => {
+    (cat.items || []).forEach((it, ii) => {
+      const name = (it.name || '').trim();
+      if (!name) return;
+      flatItems.push({
+        id: `${ci}-${ii}`,
+        category: (cat.category || 'Menu').trim() || 'Menu',
+        name,
+        price: it.price || '',
+        description: it.description || '',
+        isVeg: it.isVeg !== false,
+        isBestseller: !!it.isBestseller,
+      });
+    });
+  });
+
+  return (
+    <MenuOrderClient
+      businessName={client.business_name}
+      clientId={clientId}
+      tableNumber={table}
+      sessionId={session}
+      sessionValid={!!sessionValid}
+      items={flatItems}
+    />
+  );
+}

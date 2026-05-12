@@ -571,6 +571,82 @@ export const processed_webhook_messages = pgTable(
   })
 );
 
+// ─── restaurant dine-in: tables, sessions, orders ───────────────────────
+//
+// QR-code-driven dine-in flow:
+//   1. restaurant_tables — one row per physical table; holds the rotating
+//      shift token used in the QR's wa.me URL.
+//   2. table_sessions — one row per "customer-at-table" session. Opens on
+//      the first valid scan, auto-closes after 2hr inactivity or manager
+//      action. customer_phones is a JSON array — multiple phones can join
+//      the same table.
+//   3. dine_in_orders — every order coming from a table session, with
+//      explicit order_type so dine-in / home-delivery / parcel-takeaway
+//      flow into separate sections of the manager dashboard.
+
+export const restaurant_tables = pgTable(
+  'restaurant_tables',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    table_number: varchar('table_number', { length: 16 }).notNull(),
+    qr_token: varchar('qr_token', { length: 64 }).notNull(),
+    qr_token_rotated_at: timestamp('qr_token_rotated_at', { withTimezone: true }).notNull().defaultNow(),
+    seats: integer('seats').default(0),
+    is_active: boolean('is_active').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    clientTableUnique: uniqueIndex('restaurant_tables_client_table_unique').on(t.client_id, t.table_number),
+    clientIdx: index('restaurant_tables_client_idx').on(t.client_id),
+  })
+);
+
+export const table_sessions = pgTable(
+  'table_sessions',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    table_number: varchar('table_number', { length: 16 }).notNull(),
+    status: varchar('status', { length: 16 }).notNull().default('open'),
+    customer_phones: text('customer_phones').notNull().default('[]'),
+    started_at: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    last_activity_at: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
+    closed_at: timestamp('closed_at', { withTimezone: true }),
+    closed_reason: varchar('closed_reason', { length: 32 }),
+  },
+  (t) => ({
+    clientStatusIdx: index('table_sessions_client_status_idx').on(t.client_id, t.status),
+    activityIdx: index('table_sessions_activity_idx').on(t.last_activity_at),
+  })
+);
+
+export const dine_in_orders = pgTable(
+  'dine_in_orders',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    session_id: text('session_id'),
+    table_number: varchar('table_number', { length: 16 }),
+    customer_phone: varchar('customer_phone', { length: 32 }).notNull(),
+    customer_name: varchar('customer_name', { length: 200 }).default(''),
+    order_type: varchar('order_type', { length: 24 }).notNull().default('dine_in'),
+    items: text('items').notNull(),
+    subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull().default('0'),
+    total: numeric('total', { precision: 12, scale: 2 }).notNull().default('0'),
+    delivery_address: text('delivery_address').default(''),
+    status: varchar('status', { length: 24 }).notNull().default('placed'),
+    special_notes: text('special_notes').default(''),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    served_at: timestamp('served_at', { withTimezone: true }),
+  },
+  (t) => ({
+    clientCreatedIdx: index('dine_in_orders_client_created_idx').on(t.client_id, t.created_at),
+    sessionIdx: index('dine_in_orders_session_idx').on(t.session_id),
+    typeStatusIdx: index('dine_in_orders_type_status_idx').on(t.client_id, t.order_type, t.status),
+  })
+);
+
 // ─── inferred row types ──────────────────────────────────────────────────
 
 export type ClientRow = typeof clients.$inferSelect;
@@ -599,6 +675,12 @@ export type WelcomeMenuRow = typeof welcome_menus.$inferSelect;
 export type NewWelcomeMenuRow = typeof welcome_menus.$inferInsert;
 export type PausedCustomerRow = typeof paused_customers.$inferSelect;
 export type NewPausedCustomerRow = typeof paused_customers.$inferInsert;
+export type RestaurantTableRow = typeof restaurant_tables.$inferSelect;
+export type NewRestaurantTableRow = typeof restaurant_tables.$inferInsert;
+export type TableSessionRow = typeof table_sessions.$inferSelect;
+export type NewTableSessionRow = typeof table_sessions.$inferInsert;
+export type DineInOrderRow = typeof dine_in_orders.$inferSelect;
+export type NewDineInOrderRow = typeof dine_in_orders.$inferInsert;
 
 // ─── grocery vertical ────────────────────────────────────────────────────
 

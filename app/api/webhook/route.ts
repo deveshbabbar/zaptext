@@ -521,6 +521,37 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       message_type: 'text',
     });
 
+    // ─── Restaurant dine-in intercept ─────────────────────────────────
+    // QR-scan greeting, session open/refresh, CLOSE / home-delivery
+    // confirmation gate. Fires only for restaurant bots; returns
+    // handled=true with a bilingual reply when it owns the message.
+    if (client.type === 'restaurant') {
+      try {
+        const { handleDineInIncoming } = await import('@/lib/restaurant/dine-in-handler');
+        const dineRes = await handleDineInIncoming({
+          client_id: client.client_id,
+          client_type: client.type,
+          business_name: client.business_name,
+          customer_phone: customerPhone,
+          message: msg.text,
+        });
+        if (dineRes.handled && dineRes.reply) {
+          await sendWhatsAppMessage(phoneNumberId, customerPhone, dineRes.reply);
+          await addConversationMessage({
+            timestamp: getISTTimestamp(),
+            client_id: client.client_id,
+            customer_phone: customerPhone,
+            direction: 'outgoing',
+            message: dineRes.reply,
+            message_type: 'text',
+          });
+          if (dineRes.suppressAi) continue;
+        }
+      } catch (err) {
+        console.error('[dine-in] intercept failed — falling through to AI', err);
+      }
+    }
+
     // ─── Live-takeover pause check ────────────────────────────────────
     // If the owner has clicked "Take over" for this customer in the
     // dashboard, we LOG the inbound (so they see it in the thread view)

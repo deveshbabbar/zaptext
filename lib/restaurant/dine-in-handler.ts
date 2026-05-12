@@ -21,6 +21,24 @@ import {
   touchSession,
   closeStaleSessions,
 } from '@/lib/db/restaurant-dine-in';
+import { canUse } from '@/lib/feature-gates';
+import { getActiveSubscription } from '@/lib/db/subscriptions';
+import { getClientById } from '@/lib/db/clients';
+
+// Resolves whether the OWNER of this client has the dine_in feature.
+// Dine-in is a Growth+ feature (₹1,499/mo). On Trial / Starter we
+// surface a friendly upgrade prompt instead of opening a session.
+export async function isDineInEnabledForClient(clientId: string): Promise<boolean> {
+  try {
+    const client = await getClientById(clientId);
+    if (!client?.owner_user_id) return false;
+    const sub = await getActiveSubscription(client.owner_user_id);
+    return canUse(sub?.plan, 'dine_in').allowed;
+  } catch (err) {
+    console.error('[dine-in] feature gate lookup failed', err);
+    return false;
+  }
+}
 
 export interface DineInIncoming {
   client_id: string;
@@ -28,6 +46,22 @@ export interface DineInIncoming {
   business_name: string;
   customer_phone: string;
   message: string;
+  /** Optional knowledge-base hint. If `['English']`, replies skip the
+   *  Hinglish half. Defaults to bilingual when undefined / multi. */
+  languages?: string[];
+}
+
+// Splits a bilingual reply (EN block, blank line, Hinglish block) into the
+// EN-only half when the owner has set languages: ['English']. Anything else
+// — Hindi-only, Hinglish-only, multi-language — stays bilingual because
+// that's the safe default for QR-scanning customers who haven't told us
+// their preference yet.
+function maybeStripHinglish(reply: string, languages?: string[]): string {
+  if (!languages || languages.length === 0) return reply;
+  const onlyEnglish = languages.length === 1 && languages[0].trim().toLowerCase() === 'english';
+  if (!onlyEnglish) return reply;
+  const idx = reply.indexOf('\n\n');
+  return idx === -1 ? reply : reply.slice(0, idx);
 }
 
 export interface DineInResult {
@@ -61,6 +95,14 @@ function invalidTokenReply(): string {
     `This QR code looks expired. Please scan the latest QR at your table, or ask the staff to refresh it.`,
     ``,
     `Yeh QR purana lag raha hai. Apne table ka latest QR scan kariye, ya staff se naya QR maangiye.`,
+  ].join('\n');
+}
+
+function planLockedReply(businessName: string): string {
+  return [
+    `${businessName}: dine-in table ordering isn't enabled on this bot yet. Please ask staff to take your order at the counter.`,
+    ``,
+    `${businessName}: yahan ka dine-in QR ordering abhi enable nahi hai. Counter par staff se order kar lijiye.`,
   ].join('\n');
 }
 
@@ -109,15 +151,21 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
   // 1. Did the customer just scan a QR? "Order Table 9 ABCD1234EFGH"
   const trigger = parseDineInTrigger(input.message);
   if (trigger) {
+    // Plan gate: dine-in is Growth+. If the owner is on Trial / Starter,
+    // tell the customer to ask staff instead — no session opens.
+    const enabled = await isDineInEnabledForClient(input.client_id);
+    if (!enabled) {
+      return { handled: true, reply: maybeStripHinglish(planLockedReply(input.business_name), input.languages), suppressAi: true };
+    }
     const table = await getTable(input.client_id, trigger.tableNumber).catch((err) => {
       console.error('[dine-in] getTable failed', { clientId: input.client_id, tableNumber: trigger.tableNumber, err });
       return null;
     });
     if (!table || !table.is_active) {
-      return { handled: true, reply: unknownTableReply(trigger.tableNumber), suppressAi: true };
+      return { handled: true, reply: maybeStripHinglish(unknownTableReply(trigger.tableNumber), input.languages), suppressAi: true };
     }
     if (table.qr_token !== trigger.token) {
-      return { handled: true, reply: invalidTokenReply(), suppressAi: true };
+      return { handled: true, reply: maybeStripHinglish(invalidTokenReply(), input.languages), suppressAi: true };
     }
     const session = await openOrJoinSession({
       client_id: input.client_id,
@@ -127,7 +175,7 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
     const menuUrl = tablePublicMenuUrl(input.client_id, table.table_number, session.id);
     return {
       handled: true,
-      reply: welcomeReply(input.business_name, table.table_number, menuUrl),
+      reply: maybeStripHinglish(welcomeReply(input.business_name, table.table_number, menuUrl), input.languages),
       suppressAi: true,
       sessionId: session.id,
     };
@@ -143,7 +191,7 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
     await closeSession(session.id, 'manager');
     return {
       handled: true,
-      reply: sessionClosedAck(session.table_number),
+      reply: maybeStripHinglish(sessionClosedAck(session.table_number), input.languages),
       suppressAi: true,
       sessionId: session.id,
     };
@@ -153,7 +201,7 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
     await touchSession(session.id);
     return {
       handled: true,
-      reply: confirmHomeVsTableReply(session.table_number),
+      reply: maybeStripHinglish(confirmHomeVsTableReply(session.table_number), input.languages),
       suppressAi: true,
       sessionId: session.id,
     };

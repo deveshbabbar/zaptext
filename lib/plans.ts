@@ -36,7 +36,8 @@ export type FeatureKey =
   | 'white_label'           // hide ZapText branding
   | 'dedicated_csm'         // dedicated customer success manager
   | 'custom_integrations'   // bespoke integrations (CRM, ERP, custom)
-  | 'sla_uptime';           // 99.9% uptime SLA contract
+  | 'sla_uptime'            // 99.9% uptime SLA contract
+  | 'dine_in';              // Restaurant QR table dine-in ordering (Growth+)
 
 interface PlanDef {
   name: string;
@@ -92,6 +93,7 @@ export const PLANS = {
       dedicated_csm: false,
       custom_integrations: false,
       sla_uptime: false,
+      dine_in: false,           // power feature, Growth+ only
     },
     featureList: [
       `Full-feature trial — first ${TRIAL_MESSAGE_LIMIT} replies free`,
@@ -132,6 +134,7 @@ export const PLANS = {
       dedicated_csm: false,
       custom_integrations: false,
       sla_uptime: false,
+      dine_in: false,
     },
     featureList: [
       '2,000 conversations / month — never miss a customer ping',
@@ -179,6 +182,7 @@ export const PLANS = {
       dedicated_csm: false,
       custom_integrations: false,
       sla_uptime: false,
+      dine_in: true,           // unlocks QR-table ordering for restaurants
     },
     featureList: [
       '10,000 conversations / month — scale into festive surge without hiring',
@@ -224,6 +228,7 @@ export const PLANS = {
       dedicated_csm: false,
       custom_integrations: false,
       sla_uptime: false,
+      dine_in: true,
     },
     featureList: [
       '50,000 conversations / month — chain-store volume',
@@ -272,6 +277,7 @@ export const PLANS = {
       dedicated_csm: true,
       custom_integrations: true,
       sla_uptime: true,
+      dine_in: true,
     },
     featureList: [
       '200,000 conversations / month — agency / multi-city operator scale',

@@ -153,6 +153,7 @@ function humanFeature(f: FeatureKey): string {
     case 'dedicated_csm': return 'Dedicated success manager';
     case 'custom_integrations': return 'Custom integrations';
     case 'sla_uptime': return 'Uptime SLA';
+    case 'dine_in': return 'Restaurant QR-table dine-in ordering';
   }
 }
 

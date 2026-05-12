@@ -79,6 +79,19 @@ export default async function PublicMenuPage({
     });
   });
 
+  // Optional brand fields from the bot's knowledge_base. Owners can set
+  // brandLogoUrl + brandColor in their bot's KB to customise the public
+  // menu header; we fall back to a clean default when unset.
+  let brandLogoUrl = '';
+  let brandColor = '';
+  let tagline = '';
+  try {
+    const kb = client.knowledge_base_json ? (JSON.parse(client.knowledge_base_json) as Record<string, unknown>) : {};
+    if (typeof kb.brandLogoUrl === 'string') brandLogoUrl = kb.brandLogoUrl;
+    if (typeof kb.brandColor === 'string') brandColor = kb.brandColor;
+    if (typeof kb.tagline === 'string') tagline = kb.tagline;
+  } catch { /* ignore */ }
+
   return (
     <MenuOrderClient
       businessName={client.business_name}
@@ -87,6 +100,9 @@ export default async function PublicMenuPage({
       sessionId={session}
       sessionValid={!!sessionValid}
       items={flatItems}
+      brandLogoUrl={brandLogoUrl}
+      brandColor={brandColor}
+      tagline={tagline}
     />
   );
 }

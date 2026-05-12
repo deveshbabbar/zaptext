@@ -165,6 +165,11 @@ const SECTIONS: { name: string; rows: Row[] }[] = [
         zapText: { text: 'Vertical-aware menu (Browse menu / Book / Track / Talk to staff)', ok: true },
       },
       {
+        feature: 'Restaurant: QR-table dine-in ordering (scan QR → WhatsApp → menu link → order to kitchen)',
+        freeBot: { text: 'No — diners ask the waiter', ok: false },
+        zapText: { text: 'Per-table QRs, rotating shift tokens, live tables dashboard, bilingual EN+Hinglish flow (Growth+)', ok: true },
+      },
+      {
         feature: 'Public API access — wire ZapText into your CRM / ERP / accounting',
         freeBot: { text: 'No', ok: false },
         zapText: { text: 'REST API on Scale + Enterprise tiers', ok: true },

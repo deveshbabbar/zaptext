@@ -1199,6 +1199,24 @@ function Features() {
               </div>
             </div>
           </FeatCard>
+          <FeatCard span={12} variant="ink" label="07 · Restaurant: dine-in QR ordering" title="Table par baith ke order. Bina waiter dhundhe.">
+            <p className="text-[14.5px] m-0" style={{ color: "#ffffffbb" }}>
+              Restaurant ke har table par alag QR. Customer scan kare → WhatsApp khule → Send dabaye → menu link mile → order place kare. Sab kuch WhatsApp ke andar. Multiple sizes (Half / Full / Family Pack), bilingual EN+Hinglish, manager dashboard pe live tables — order status updates jaate hain customer ko bhi.
+            </p>
+            <div className="mt-auto pt-4.5 grid grid-cols-1 md:grid-cols-4 gap-2 text-[12.5px]">
+              {[
+                { tag: 'PRINT', body: 'One PDF, one QR per table. Cmd+P, cut, paste, done.' },
+                { tag: 'ANTI-FRAUD', body: 'Rotating shift tokens + 2hr session auto-close.' },
+                { tag: 'NO CLASH', body: 'Dine-in vs home delivery routed automatically.' },
+                { tag: 'AVAILABLE ON', body: 'Growth · Scale · Enterprise plans.' },
+              ].map((c) => (
+                <div key={c.tag} className="rounded-[10px] p-2.5" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                  <div className="zt-mono text-[10px] tracking-[.08em] mb-1" style={{ color: 'var(--accent)' }}>{c.tag}</div>
+                  <div style={{ color: '#ffffffcc' }}>{c.body}</div>
+                </div>
+              ))}
+            </div>
+          </FeatCard>
         </div>
       </div>
     </section>

@@ -11,6 +11,7 @@ import {
   deactivateTable,
 } from '@/lib/db/restaurant-dine-in';
 import { generateQrToken } from '@/lib/restaurant-qr';
+import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
 
 async function authedClient(): Promise<{ clientId: string } | NextResponse> {
   const user = await requireClientWithBots().catch(() => null);
@@ -18,6 +19,15 @@ async function authedClient(): Promise<{ clientId: string } | NextResponse> {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
   return { clientId: user.activeBot.client_id };
+}
+
+async function requireDineInEnabled(clientId: string): Promise<NextResponse | null> {
+  const enabled = await isDineInEnabledForClient(clientId);
+  if (enabled) return null;
+  return NextResponse.json(
+    { ok: false, error: 'PLAN_LIMIT', message: 'Dine-in QR ordering is on Growth+ plans. Upgrade to unlock.', upgradeTo: 'growth' },
+    { status: 403 }
+  );
 }
 
 export async function GET() {
@@ -30,6 +40,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const auth = await authedClient();
   if (auth instanceof NextResponse) return auth;
+  const gate = await requireDineInEnabled(auth.clientId);
+  if (gate) return gate;
 
   let body: { tableNumber?: string; seats?: number };
   try {

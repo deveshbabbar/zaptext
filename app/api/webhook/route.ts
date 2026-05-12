@@ -528,12 +528,24 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     if (client.type === 'restaurant') {
       try {
         const { handleDineInIncoming } = await import('@/lib/restaurant/dine-in-handler');
+        // Respect bot's configured languages if set to English-only;
+        // otherwise default to bilingual (safe for first-time scanners).
+        let botLanguages: string[] | undefined;
+        try {
+          if (client.knowledge_base_json) {
+            const kbObj = JSON.parse(client.knowledge_base_json) as Record<string, unknown>;
+            if (Array.isArray(kbObj.languages)) {
+              botLanguages = (kbObj.languages as unknown[]).filter((v): v is string => typeof v === 'string');
+            }
+          }
+        } catch { /* ignore — bilingual default */ }
         const dineRes = await handleDineInIncoming({
           client_id: client.client_id,
           client_type: client.type,
           business_name: client.business_name,
           customer_phone: customerPhone,
           message: msg.text,
+          languages: botLanguages,
         });
         if (dineRes.handled && dineRes.reply) {
           await sendWhatsAppMessage(phoneNumberId, customerPhone, dineRes.reply);

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireClientWithBots } from '@/lib/auth';
 import { listTables, upsertTable } from '@/lib/db/restaurant-dine-in';
 import { generateQrToken } from '@/lib/restaurant-qr';
+import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
 
 const MAX_BULK = 100;
 
@@ -33,6 +34,12 @@ export async function POST(request: NextRequest) {
   }
 
   const clientId = user.activeBot.client_id;
+  if (!(await isDineInEnabledForClient(clientId))) {
+    return NextResponse.json(
+      { ok: false, error: 'PLAN_LIMIT', message: 'Dine-in QR ordering is on Growth+ plans. Upgrade to unlock.', upgradeTo: 'growth' },
+      { status: 403 }
+    );
+  }
   const existing = new Set((await listTables(clientId).catch(() => [])).map((t) => t.table_number));
 
   let created = 0;

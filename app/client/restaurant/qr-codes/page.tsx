@@ -5,6 +5,7 @@
 import { redirect } from 'next/navigation';
 import { requireClientWithBots } from '@/lib/auth';
 import { listTables } from '@/lib/db/restaurant-dine-in';
+import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
 import { buildWaUrlForTable, generateQrDataUrl } from '@/lib/restaurant-qr';
 import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
 import { QrCodesClient } from './qr-codes-client';
@@ -13,6 +14,7 @@ export default async function RestaurantQrCodesPage() {
   const user = await requireClientWithBots();
   if (!user.activeBot || user.activeBot.type !== 'restaurant') redirect('/client/dashboard');
 
+  const dineInUnlocked = await isDineInEnabledForClient(user.activeBot.client_id);
   const tables = await listTables(user.activeBot.client_id).catch(() => []);
   const botPhone = user.activeBot.whatsapp_number || '';
 
@@ -48,6 +50,18 @@ export default async function RestaurantQrCodesPage() {
           title={<>Table <span className="zt-serif">QR codes.</span></>}
           sub="Each table gets its own QR. Customers scan, tap Send on WhatsApp, and the bot opens their menu. Rotate tokens once per shift to keep stale photos / screenshots from working."
         />
+
+        {!dineInUnlocked && (
+          <Panel
+            title="Dine-in is a Growth feature"
+            sub="Unlock QR-table ordering by upgrading to Growth (₹1,499/mo) or higher."
+            action={<a href="/client/subscription#upgrade" className="text-xs font-semibold underline">Upgrade →</a>}
+          >
+            <p className="text-sm text-muted-foreground">
+              You can preview the setup below, but customer-side ordering won&apos;t fire until you upgrade. Free / Starter customers will be told to ask staff at the counter when they scan.
+            </p>
+          </Panel>
+        )}
 
         {!phoneConfigured && (
           <Panel title="WhatsApp number not configured">

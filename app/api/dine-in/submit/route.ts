@@ -10,6 +10,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { getClientById } from '@/lib/db/clients';
 import { getSessionById, getTable, createOrder, type DineInOrderItem } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
 
 interface SubmitBody {
   clientId?: string;
@@ -81,6 +82,12 @@ export async function POST(request: NextRequest) {
 
   if (!client || client.type !== 'restaurant') {
     return NextResponse.json({ ok: false, error: 'Restaurant not found' }, { status: 404 });
+  }
+  if (!(await isDineInEnabledForClient(clientId))) {
+    return NextResponse.json(
+      { ok: false, error: 'PLAN_LIMIT', message: 'Dine-in ordering is not enabled for this restaurant. Please ask staff to take your order at the counter.' },
+      { status: 403 }
+    );
   }
   if (!table || !table.is_active) {
     return NextResponse.json({ ok: false, error: 'Table not found or deactivated' }, { status: 404 });

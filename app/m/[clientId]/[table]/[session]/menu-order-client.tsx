@@ -25,6 +25,9 @@ interface Props {
   sessionId: string;
   sessionValid: boolean;
   items: FlatItem[];
+  brandLogoUrl?: string;
+  brandColor?: string;
+  tagline?: string;
 }
 
 function parsePrice(raw: string): number {
@@ -39,7 +42,11 @@ export function MenuOrderClient({
   sessionId,
   sessionValid,
   items,
+  brandLogoUrl,
+  brandColor,
+  tagline,
 }: Props) {
+  const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState('');
   const [notes, setNotes] = useState('');
@@ -168,11 +175,21 @@ export function MenuOrderClient({
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', paddingBottom: cartLines.length > 0 ? 120 : 32 }}>
-      <header style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>{businessName}</h1>
-        <p style={{ fontSize: 13, color: '#666', margin: '4px 0 0' }}>
-          Table {tableNumber} · Tap items to add / Items tap karke add kariye
-        </p>
+      <header style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 5, display: 'flex', alignItems: 'center', gap: 12 }}>
+        {brandLogoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={brandLogoUrl} alt={businessName} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>
+            {businessName.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h1 style={{ fontSize: 19, margin: 0, fontWeight: 700, letterSpacing: '-0.01em' }}>{businessName}</h1>
+          <p style={{ fontSize: 12.5, color: '#666', margin: '2px 0 0' }}>
+            Table {tableNumber}{tagline ? ` · ${tagline}` : ' · Tap items to add / Items tap karke add kariye'}
+          </p>
+        </div>
       </header>
 
       <main style={{ padding: '8px 12px' }}>
@@ -292,7 +309,7 @@ export function MenuOrderClient({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            style={{ padding: '12px 22px', borderRadius: 99, background: submitting ? '#888' : '#111', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15 }}
+            style={{ padding: '12px 22px', borderRadius: 99, background: submitting ? '#888' : accent, color: '#fff', border: 'none', fontWeight: 700, fontSize: 15 }}
           >
             {submitting ? 'Sending…' : 'Place order / Order place'}
           </button>

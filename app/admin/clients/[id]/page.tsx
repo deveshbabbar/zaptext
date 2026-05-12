@@ -421,6 +421,48 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   {savingType ? 'Saving…' : 'Save type'}
                 </Button>
               </div>
+
+              {/* Demo: flip vertical with pre-loaded data */}
+              <div className="rounded-[10px] border border-dashed border-[var(--line)] p-3 mt-4 space-y-2">
+                <p className="text-xs font-semibold m-0">⚡ Demo mode — load preset</p>
+                <p className="text-[11px] text-muted-foreground m-0">
+                  Picks a canned business identity for the chosen vertical and overwrites
+                  business_name + type + knowledge_base + system_prompt in one shot.
+                  Same phone number now behaves like that vertical. Customer-facing data
+                  (subscription, phone_number_id, owner) untouched.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {BUSINESS_TYPES.filter((bt) => !bt.hidden).map((bt) => (
+                    <Button
+                      key={bt.type}
+                      variant="outline"
+                      size="sm"
+                      disabled={savingType}
+                      onClick={async () => {
+                        if (!confirm(`Replace this bot with demo data for ${bt.label}? This rewrites business_name, type, knowledge_base, and system_prompt.`)) return;
+                        try {
+                          setSavingType(true);
+                          const res = await fetch(`/api/admin/bots/${client.client_id}/switch-vertical`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ vertical: bt.type }),
+                          });
+                          const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+                          if (!res.ok || !d.ok) throw new Error(d.error || `Switch failed (${res.status})`);
+                          toast.success(`Switched to ${bt.label} demo`);
+                          window.location.reload();
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Switch failed');
+                        } finally {
+                          setSavingType(false);
+                        }
+                      }}
+                    >
+                      {bt.icon} {bt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
         );

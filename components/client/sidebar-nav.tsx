@@ -30,31 +30,22 @@ interface NavSection {
   items: NavItem[];
 }
 
-const SECTIONS: NavSection[] = [
-  {
-    title: 'Workspace',
-    items: [
-      { href: '/client/dashboard', icon: '📊', label: 'Dashboard' },
-      { href: '/client/analytics', icon: '📈', label: 'Analytics' },
-      { href: '/client/conversations', icon: '💬', label: 'Conversations' },
-      { href: '/client/bookings', icon: '📅', label: 'Bookings' },
-      { href: '/client/inventory', icon: '📦', label: 'Inventory' },
-      { href: '/client/staff', icon: '👥', label: 'My Team' },
-      { href: '/client/availability', icon: '⏰', label: 'Availability' },
-      { href: '/client/calendar', icon: '📆', label: 'Calendar' },
-      { href: '/client/settings', icon: '⚙️', label: 'Bot Settings' },
-      { href: '/client/welcome-menu', icon: '👋', label: 'Welcome menu' },
-    ],
-  },
-  {
-    title: 'Account',
-    items: [
-      { href: '/client/subscription', icon: '💳', label: 'Subscription' },
-      { href: '/client/bots', icon: '🤖', label: 'All bots' },
-      { href: '/client/create-bot', icon: '✨', label: 'Create bot' },
-    ],
-  },
+// Common workspace items — appear in EVERY active bot's sidebar.
+const COMMON_WORKSPACE_ITEMS: NavItem[] = [
+  { href: '/client/dashboard', icon: '📊', label: 'Dashboard' },
+  { href: '/client/conversations', icon: '💬', label: 'Conversations' },
+  { href: '/client/settings', icon: '⚙️', label: 'Bot Settings' },
+  { href: '/client/welcome-menu', icon: '👋', label: 'Welcome menu' },
 ];
+
+const ACCOUNT_SECTION: NavSection = {
+  title: 'Account',
+  items: [
+    { href: '/client/subscription', icon: '💳', label: 'Subscription' },
+    { href: '/client/bots', icon: '🤖', label: 'All bots' },
+    { href: '/client/create-bot', icon: '✨', label: 'Create bot' },
+  ],
+};
 
 // Pages whose underlying feature isn't included in the Free plan (per
 // PLANS.trial.features in lib/plans.ts: bookings/payments/inventory/
@@ -78,81 +69,69 @@ interface SidebarNavProps {
   activeBotType?: string;
 }
 
-// Vertical-specific workspace links. Shown as a third section between
-// "Workspace" and "Account" when the active bot's type matches. All 7
-// verticals follow the same pattern: an overview + a catalog page + one
-// or two activity pages backed by bookings or conversations.
-const VERTICAL_SECTIONS: Record<string, NavSection> = {
-  restaurant: {
-    title: 'Vertical · Restaurant',
-    items: [
-      { href: '/client/restaurant', icon: '🍽️', label: 'Overview' },
-      { href: '/client/restaurant/analytics', icon: '📊', label: 'Analytics' },
-      { href: '/client/restaurant/menu', icon: '📋', label: 'Menu' },
-      { href: '/client/restaurant/tables-live', icon: '🟢', label: 'Live tables' },
-      { href: '/client/restaurant/qr-codes', icon: '📱', label: 'QR codes' },
-      { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },
-      { href: '/client/restaurant/tables', icon: '🪑', label: 'Reservations' },
-      { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
-    ],
-  },
-  coaching: {
-    title: 'Vertical · Coaching',
-    items: [
-      { href: '/client/coaching', icon: '🎓', label: 'Overview' },
-      { href: '/client/coaching/courses', icon: '📚', label: 'Courses' },
-      { href: '/client/coaching/batches', icon: '📅', label: 'Batches' },
-    ],
-  },
-  realestate: {
-    title: 'Vertical · Real Estate',
-    items: [
-      { href: '/client/realestate', icon: '🏠', label: 'Overview' },
-      { href: '/client/realestate/listings', icon: '🏷️', label: 'Listings' },
-      { href: '/client/realestate/visits', icon: '📅', label: 'Site visits' },
-    ],
-  },
-  salon: {
-    title: 'Vertical · Salon',
-    items: [
-      { href: '/client/salon', icon: '💇', label: 'Overview' },
-      { href: '/client/salon/services', icon: '✂️', label: 'Services' },
-      { href: '/client/salon/appointments', icon: '📅', label: 'Appointments' },
-    ],
-  },
-  gym: {
-    title: 'Vertical · Gym',
-    items: [
-      { href: '/client/gym', icon: '💪', label: 'Overview' },
-      { href: '/client/gym/plans', icon: '🎟️', label: 'Plans' },
-      { href: '/client/gym/schedule', icon: '📅', label: 'Schedule' },
-    ],
-  },
-  tiffin: {
-    title: 'Vertical · Tiffin',
-    items: [
-      { href: '/client/tiffin', icon: '🍱', label: 'Overview' },
-      { href: '/client/tiffin/plans', icon: '📋', label: 'Plans' },
-      { href: '/client/tiffin/route', icon: '📍', label: "Today's route" },
-    ],
-  },
-  ecommerce: {
-    title: 'Vertical · Ecommerce',
-    items: [
-      { href: '/client/ecommerce', icon: '🛒', label: 'Overview' },
-      { href: '/client/ecommerce/products', icon: '📦', label: 'Products' },
-      { href: '/client/ecommerce/orders', icon: '🧾', label: 'Orders' },
-    ],
-  },
+// Vertical-specific workspace links. These are MERGED into the Workspace
+// section based on the active bot's type — no separate "Vertical · X"
+// header. Each list appears between Dashboard and the common items.
+const VERTICAL_ITEMS: Record<string, NavItem[]> = {
+  restaurant: [
+    { href: '/client/restaurant', icon: '🍽️', label: 'Restaurant overview' },
+    { href: '/client/restaurant/analytics', icon: '📊', label: 'Analytics' },
+    { href: '/client/restaurant/menu', icon: '📋', label: 'Menu' },
+    { href: '/client/restaurant/tables-live', icon: '🟢', label: 'Live tables' },
+    { href: '/client/restaurant/qr-codes', icon: '📱', label: 'QR codes' },
+    { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },
+    { href: '/client/restaurant/tables', icon: '🪑', label: 'Reservations' },
+    { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
+  ],
+  coaching: [
+    { href: '/client/coaching', icon: '🎓', label: 'Coaching overview' },
+    { href: '/client/coaching/courses', icon: '📚', label: 'Courses' },
+    { href: '/client/coaching/batches', icon: '📅', label: 'Batches' },
+  ],
+  realestate: [
+    { href: '/client/realestate', icon: '🏠', label: 'Real Estate overview' },
+    { href: '/client/realestate/listings', icon: '🏷️', label: 'Listings' },
+    { href: '/client/realestate/visits', icon: '📅', label: 'Site visits' },
+  ],
+  salon: [
+    { href: '/client/salon', icon: '💇', label: 'Salon overview' },
+    { href: '/client/salon/services', icon: '✂️', label: 'Services' },
+    { href: '/client/salon/appointments', icon: '📅', label: 'Appointments' },
+  ],
+  gym: [
+    { href: '/client/gym', icon: '💪', label: 'Gym overview' },
+    { href: '/client/gym/plans', icon: '🎟️', label: 'Plans' },
+    { href: '/client/gym/schedule', icon: '📅', label: 'Schedule' },
+  ],
+  tiffin: [
+    { href: '/client/tiffin', icon: '🍱', label: 'Tiffin overview' },
+    { href: '/client/tiffin/plans', icon: '📋', label: 'Plans' },
+    { href: '/client/tiffin/route', icon: '📍', label: "Today's route" },
+  ],
+  ecommerce: [
+    { href: '/client/ecommerce', icon: '🛒', label: 'Ecommerce overview' },
+    { href: '/client/ecommerce/products', icon: '📦', label: 'Products' },
+    { href: '/client/ecommerce/orders', icon: '🧾', label: 'Orders' },
+  ],
 };
+
+function buildSections(activeBotType?: string): NavSection[] {
+  const verticalItems = activeBotType ? VERTICAL_ITEMS[activeBotType] || [] : [];
+  // Order: Dashboard → vertical items → common items below
+  const dashboardItem = COMMON_WORKSPACE_ITEMS[0];
+  const restCommon = COMMON_WORKSPACE_ITEMS.slice(1);
+  return [
+    {
+      title: 'Workspace',
+      items: [dashboardItem, ...verticalItems, ...restCommon],
+    },
+    ACCOUNT_SECTION,
+  ];
+}
 
 export function SidebarNav({ isTrial = false, activeBotType }: SidebarNavProps) {
   const pathname = usePathname() || '';
-  // Splice the vertical-specific section in between Workspace and Account.
-  const verticalSection = activeBotType ? VERTICAL_SECTIONS[activeBotType] : undefined;
-  const sections: NavSection[] = verticalSection
-    ? [SECTIONS[0], verticalSection, SECTIONS[1]]
-    : SECTIONS;
+  const sections = buildSections(activeBotType);
   return (
     <>
       {sections.map((section) => (

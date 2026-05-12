@@ -15,12 +15,11 @@ export default async function RestaurantWorkspaceLayout({
   children: React.ReactNode;
 }) {
   const user = await requireClientWithBots();
-  const hasRestaurantBot = user.allBots.some((b) => b.type === 'restaurant');
-  if (!hasRestaurantBot) redirect('/client/dashboard');
-  // If owner has multiple bots but the active one isn't restaurant, send
-  // them to the bot switcher first so they pick the right context.
-  if (user.activeBot && user.activeBot.type !== 'restaurant' && user.allBots.length > 1) {
-    redirect('/client/bots?need=restaurant');
-  }
+  // Only bounce if the owner doesn't have ANY restaurant bot. The
+  // previous "wrong active bot → redirect to /client/bots" check has
+  // been removed — the sidebar now only shows the restaurant items
+  // when the active bot IS restaurant, so users hitting these URLs
+  // are already on the right context.
+  if (!user.allBots.some((b) => b.type === 'restaurant')) redirect('/client/dashboard');
   return <>{children}</>;
 }

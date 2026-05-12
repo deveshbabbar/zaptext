@@ -14,10 +14,11 @@ export default function SignInPage() {
     <AuthShell mode="signin">
       <SignIn
         signUpUrl="/sign-up"
-        // Returning users land on the client dashboard. The server-side
-        // role-based redirect in `app/page.tsx` (admin -> admin dashboard)
-        // still applies if they hit `/` instead.
-        fallbackRedirectUrl="/client/dashboard"
+        // Land on `/` so the server-side getUserRole() in app/page.tsx
+        // routes admins to /admin/dashboard and clients to /client/dashboard
+        // based on Clerk publicMetadata.role. A hard-coded
+        // /client/dashboard here would override admin routing.
+        fallbackRedirectUrl="/"
         appearance={{
           elements: {
             rootBox: 'w-full',

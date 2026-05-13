@@ -25,10 +25,10 @@ import { BUSINESS_TYPES } from '@/lib/constants';
 const SEEDABLE = BUSINESS_TYPES.filter((bt) => !bt.hidden);
 
 export default function SeedDemoPage() {
-  const [email, setEmail] = useState('deveshbabbar09@gmail.com');
+  const [email, setEmail] = useState('dbabbar09@gmail.com');
   const [ownerUserId, setOwnerUserId] = useState('');
   const [ownerName, setOwnerName] = useState('Devesh Babbar');
-  const [sharedPhone, setSharedPhone] = useState('+919999999999');
+  const [sharedPhone, setSharedPhone] = useState('+919667879296');
   const [selected, setSelected] = useState<Record<string, boolean>>(() => {
     const map: Record<string, boolean> = {};
     for (const bt of SEEDABLE) map[bt.type] = bt.type !== 'gym';
@@ -96,7 +96,7 @@ export default function SeedDemoPage() {
               <Input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="deveshbabbar09@gmail.com"
+                placeholder="dbabbar09@gmail.com"
                 type="email"
               />
               <p className="text-[10.5px] text-muted-foreground mt-1">
@@ -129,7 +129,7 @@ export default function SeedDemoPage() {
             <Input
               value={sharedPhone}
               onChange={(e) => setSharedPhone(e.target.value)}
-              placeholder="+919999999999"
+              placeholder="+919667879296"
             />
             <p className="text-[10.5px] text-muted-foreground mt-1">
               Leave blank for legacy behaviour (each vertical gets a unique placeholder phone).

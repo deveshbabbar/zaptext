@@ -291,8 +291,8 @@ export function QrCodesClient({
                     Configure bot phone first
                   </div>
                 )}
-                <div className="text-[10px] text-muted-foreground mt-2 text-center break-all">
-                  Token: {t.qrToken}
+                <div className="text-[10px] text-muted-foreground mt-2 text-center">
+                  Scan opens: <span className="zt-mono">Order Table {t.tableNumber}</span>
                 </div>
                 <div className="flex gap-2 mt-3">
                   {t.waUrl && (

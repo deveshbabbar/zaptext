@@ -164,7 +164,12 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
     if (!table || !table.is_active) {
       return { handled: true, reply: maybeStripHinglish(unknownTableReply(trigger.tableNumber), input.languages), suppressAi: true };
     }
-    if (table.qr_token !== trigger.token) {
+    // Token mismatch only blocks if the message INCLUDES a token (legacy
+    // QR format). New QRs ship without a visible token — the message is
+    // just "Order Table N" — so trigger.token is empty and we accept by
+    // table number alone. See lib/restaurant-qr.ts header for the
+    // trade-off rationale.
+    if (trigger.token && table.qr_token !== trigger.token) {
       return { handled: true, reply: maybeStripHinglish(invalidTokenReply(), input.languages), suppressAi: true };
     }
     const session = await openOrJoinSession({

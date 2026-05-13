@@ -11,7 +11,15 @@ import { Separator } from '@/components/ui/separator';
 import { getBusinessTypeMeta, BUSINESS_TYPES } from '@/lib/constants';
 import { ClientRow, ConversationRow, AnalyticsRow, BusinessType } from '@/lib/types';
 
-const VALID_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'coaching', 'realestate', 'salon', 'd2c', 'gym', 'grocery'];
+// Must mirror the BusinessType union in lib/types.ts and the BUSINESS_TYPES
+// constant in lib/constants.ts. When this drifts, valid bots show the
+// "invalid: <type>" red badge and the type-dropdown silently strips a real
+// type back to empty on load (Tiffin + Ecommerce had this bug after they
+// were added to the union but not here).
+const VALID_BUSINESS_TYPES: BusinessType[] = [
+  'restaurant', 'coaching', 'realestate', 'salon', 'd2c',
+  'gym', 'grocery', 'tiffin', 'ecommerce',
+];
 import { toast } from 'sonner';
 
 interface ClientData {

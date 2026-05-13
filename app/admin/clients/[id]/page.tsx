@@ -457,14 +457,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ vertical: bt.type }),
                           });
-                          const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; source?: 'seeded_demo_bot' | 'static_demo_bundles'; business_name?: string };
+                          const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; source?: 'seeded_demo_bot' | 'static_demo_bundles'; business_name?: string; conversationsCleared?: number };
                           if (!res.ok || !d.ok) throw new Error(d.error || `Switch failed (${res.status})`);
                           // Surface the data source so admin knows whether seeded bot
                           // data was used (preferred) or static fallback.
                           const sourceNote = d.source === 'seeded_demo_bot'
                             ? `seeded demo bot${d.business_name ? ` (${d.business_name})` : ''}`
                             : 'static preset (no seeded bot found for this vertical)';
-                          toast.success(`Switched to ${bt.label} · from ${sourceNote}`);
+                          const wipeNote = typeof d.conversationsCleared === 'number'
+                            ? ` · cleared ${d.conversationsCleared} prior message${d.conversationsCleared === 1 ? '' : 's'}`
+                            : '';
+                          toast.success(`Switched to ${bt.label} · from ${sourceNote}${wipeNote}`, { duration: 8000 });
                           window.location.reload();
                         } catch (err) {
                           toast.error(err instanceof Error ? err.message : 'Switch failed');

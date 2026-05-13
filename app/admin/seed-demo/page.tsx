@@ -160,7 +160,7 @@ export default function SeedDemoPage() {
         </Panel>
 
         <div className="flex items-center gap-3 mt-5">
-          <Pill variant="ink" onClick={handleSeed} disabled={seeding || !ownerUserId.trim()}>
+          <Pill variant="ink" onClick={handleSeed} disabled={seeding || (!email.trim() && !ownerUserId.trim())}>
             {seeding ? 'Seeding…' : 'Seed selected verticals'}
           </Pill>
           {result && (

@@ -3,6 +3,14 @@
 // Ecommerce, Grocery) into the chosen Clerk user's account. Gym is
 // unchecked by default because the dbabbar account already has a real
 // "Gym Time Fitness" bot — the admin doesn't want it overwritten.
+//
+// Lookup: paste the owner's email; backend resolves Clerk user_id via
+// clerkClient. Falls back to manual user_id entry if email lookup fails.
+//
+// Shared phone: when filled, ALL seeded bots write the same WhatsApp
+// number — owner sees one number with N personalities and switches
+// between them in the bot-switcher to demo each vertical. Empty → legacy
+// per-vertical placeholders (one number per vertical).
 
 'use client';
 
@@ -17,25 +25,26 @@ import { BUSINESS_TYPES } from '@/lib/constants';
 const SEEDABLE = BUSINESS_TYPES.filter((bt) => !bt.hidden);
 
 export default function SeedDemoPage() {
+  const [email, setEmail] = useState('deveshbabbar09@gmail.com');
   const [ownerUserId, setOwnerUserId] = useState('');
   const [ownerName, setOwnerName] = useState('Devesh Babbar');
+  const [sharedPhone, setSharedPhone] = useState('+919999999999');
   const [selected, setSelected] = useState<Record<string, boolean>>(() => {
     const map: Record<string, boolean> = {};
     for (const bt of SEEDABLE) map[bt.type] = bt.type !== 'gym';
     return map;
   });
   const [seeding, setSeeding] = useState(false);
-  const [result, setResult] = useState<{ created?: number; skipped?: number; details?: unknown } | null>(null);
+  const [result, setResult] = useState<{ created?: number; skipped?: number; resolvedUserId?: string; details?: unknown } | null>(null);
 
   async function handleSeed() {
-    const owner = ownerUserId.trim();
-    if (!owner) {
-      toast.error('Enter the Clerk user ID first');
-      return;
-    }
     const verticals = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
     if (verticals.length === 0) {
       toast.error('Pick at least one vertical');
+      return;
+    }
+    if (!email.trim() && !ownerUserId.trim()) {
+      toast.error('Provide email OR Clerk user ID');
       return;
     }
     setSeeding(true);
@@ -44,13 +53,25 @@ export default function SeedDemoPage() {
       const res = await fetch('/api/admin/demo/seed-bots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerUserId: owner, ownerName, verticals }),
+        body: JSON.stringify({
+          ownerUserId: ownerUserId.trim() || undefined,
+          email: email.trim() || undefined,
+          ownerName,
+          verticals,
+          sharedPhone: sharedPhone.trim() || undefined,
+        }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; created?: unknown[]; skipped?: unknown[]; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        ownerUserId?: string;
+        created?: unknown[];
+        skipped?: unknown[];
+        error?: string;
+      };
       if (!res.ok || !data.ok) throw new Error(data.error || `Seed failed (${res.status})`);
       const c = Array.isArray(data.created) ? data.created.length : 0;
       const s = Array.isArray(data.skipped) ? data.skipped.length : 0;
-      setResult({ created: c, skipped: s, details: data });
+      setResult({ created: c, skipped: s, resolvedUserId: data.ownerUserId, details: data });
       toast.success(`Created ${c} demo bot${c === 1 ? '' : 's'}${s > 0 ? `, skipped ${s}` : ''}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Seed failed');
@@ -71,11 +92,23 @@ export default function SeedDemoPage() {
         <Panel title="Target owner">
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Clerk user ID (the owner_user_id field)</Label>
+              <Label className="text-xs">Owner email (recommended — backend resolves Clerk user ID)</Label>
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="deveshbabbar09@gmail.com"
+                type="email"
+              />
+              <p className="text-[10.5px] text-muted-foreground mt-1">
+                If the email matches multiple Clerk accounts, you&apos;ll get an error — use the user ID field below instead.
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs">Clerk user ID (overrides email if filled)</Label>
               <Input
                 value={ownerUserId}
                 onChange={(e) => setOwnerUserId(e.target.value)}
-                placeholder="user_2abc...xyz"
+                placeholder="user_2abc...xyz (optional)"
               />
               <p className="text-[10.5px] text-muted-foreground mt-1">
                 Find this on /admin/clients/[id] — it&apos;s the owner_user_id shown for any bot you already own.
@@ -85,6 +118,23 @@ export default function SeedDemoPage() {
               <Label className="text-xs">Owner name (cosmetic — appears as owner_name on each demo bot)</Label>
               <Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Devesh Babbar" />
             </div>
+          </div>
+        </Panel>
+
+        <div style={{ height: 14 }} />
+
+        <Panel title="Shared WhatsApp number (recommended for demos)" sub="Same number across all seeded bots — owner switches vertical via the bot-switcher and the same phone takes on each personality">
+          <div>
+            <Label className="text-xs">WhatsApp number</Label>
+            <Input
+              value={sharedPhone}
+              onChange={(e) => setSharedPhone(e.target.value)}
+              placeholder="+919999999999"
+            />
+            <p className="text-[10.5px] text-muted-foreground mt-1">
+              Leave blank for legacy behaviour (each vertical gets a unique placeholder phone).
+              Either way phone_number_id stays empty so no real WhatsApp traffic flows.
+            </p>
           </div>
         </Panel>
 
@@ -122,12 +172,17 @@ export default function SeedDemoPage() {
 
         {result && (
           <Panel title="Result" className="mt-5">
+            {result.resolvedUserId && (
+              <div className="text-xs mb-2">
+                Owner resolved to: <code className="zt-mono bg-muted px-1.5 py-0.5 rounded">{result.resolvedUserId}</code>
+              </div>
+            )}
             <pre className="text-[11px] zt-mono whitespace-pre-wrap overflow-x-auto" style={{ maxHeight: 320 }}>
               {JSON.stringify(result.details, null, 2)}
             </pre>
             <p className="text-xs text-muted-foreground mt-2">
               The seeded bots show up immediately under that owner&apos;s /client/bots and /client/dashboard.
-              They share placeholder WhatsApp numbers and won&apos;t receive real messages.
+              Phone_number_id stays empty so no real WhatsApp messages flow — they&apos;re for showing the dashboard with realistic per-vertical data.
             </p>
           </Panel>
         )}

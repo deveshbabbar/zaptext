@@ -118,10 +118,10 @@ export default async function RealEstateListingsPage() {
         { key: 'brochureUrl', label: 'Brochure URL', placeholder: 'https://...', colSpan: 6 },
         { key: 'walkthroughVideoUrl', label: 'Walkthrough video URL', placeholder: 'https://youtu.be/...', colSpan: 6 },
       ]}
-      newItem={() => ({
+      newItem={{
         title: '', type: '', price: '', area: '', highlights: '',
         reraNumber: '', carpetAreaSqft: '', configuration: '',
-      })}
+      }}
       emptyHint="Bulk-import your listing book from photo / paste / Excel — or add one manually. RERA number is mandatory per RERA Act §4."
       addLabel="Add listing"
       BulkImport={RealEstateListingsBulkImport}

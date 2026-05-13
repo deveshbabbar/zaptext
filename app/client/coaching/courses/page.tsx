@@ -21,7 +21,7 @@ export default async function CoachingCoursesPage() {
         { key: 'schedule', label: 'Schedule', placeholder: 'Mon-Fri 4-7 PM', colSpan: 6 },
         { key: 'mode', label: 'Mode', placeholder: 'Offline / Online / Hybrid', colSpan: 6 },
       ]}
-      newItem={() => ({ name: '', targetAudience: '', duration: '', fee: '', schedule: '', mode: '' })}
+      newItem={{ name: '', targetAudience: '', duration: '', fee: '', schedule: '', mode: '' }}
       emptyHint="Bulk import your course list from a photo / paste / Excel — or start by adding one manually."
       addLabel="Add course"
       BulkImport={CoachingCoursesBulkImport}

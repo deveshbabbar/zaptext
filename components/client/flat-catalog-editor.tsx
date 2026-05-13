@@ -39,7 +39,11 @@ interface Props {
   crumbLabel: string;
   field: string;
   fields: FlatFieldDef[];
-  newItem: () => Row;
+  /** Template for a new blank row. Plain object (NOT a function) so it
+   *  serializes across the Server → Client component boundary. We clone
+   *  it on each add. Server components can't pass functions to client
+   *  components in React 19 / Next.js 16+ (throws at runtime). */
+  newItem: Row;
   emptyHint: string;
   addLabel: string;
   BulkImport: ComponentType<{ data: Record<string, unknown>; onChange: (f: string, v: unknown) => void }>;
@@ -97,7 +101,8 @@ export function FlatCatalogEditor({
   };
 
   function addRow() {
-    setRows([...rows, newItem()]);
+    // Deep-clone the template so editing one row never mutates another.
+    setRows([...rows, JSON.parse(JSON.stringify(newItem)) as Row]);
     setDirty(true);
   }
   function removeRow(i: number) {

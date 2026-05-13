@@ -21,7 +21,7 @@ export default async function TiffinPlansPage() {
         { key: 'foodType', label: 'Food type', placeholder: 'veg / non-veg / jain', colSpan: 3 },
         { key: 'includes', label: 'Includes', placeholder: '4 rotis + 1 sabzi + dal + rice + salad', colSpan: 9 },
       ]}
-      newItem={() => ({ name: '', duration: '', price: '', mealType: 'lunch', foodType: 'veg', includes: '' })}
+      newItem={{ name: '', duration: '', price: '', mealType: 'lunch', foodType: 'veg', includes: '' }}
       emptyHint="Bulk-import your plans from photo / paste / Excel, or add manually."
       addLabel="Add plan"
       BulkImport={TiffinPlansBulkImport}

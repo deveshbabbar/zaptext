@@ -19,7 +19,7 @@ export default async function GymPlansPage() {
         { key: 'price', label: 'Price', placeholder: 'Rs.15,000 or Standard Rs.10000 / PT Rs.18000', colSpan: 5 },
         { key: 'includes', label: 'Includes', placeholder: 'PT, yoga, sauna', colSpan: 12 },
       ]}
-      newItem={() => ({ name: '', duration: '', price: '', includes: '' })}
+      newItem={{ name: '', duration: '', price: '', includes: '' }}
       emptyHint="Bulk-import your plans from photo / paste / Excel, or add one manually."
       addLabel="Add plan"
       BulkImport={GymPlansBulkImport}

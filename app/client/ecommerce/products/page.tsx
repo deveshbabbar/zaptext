@@ -24,7 +24,7 @@ export default async function EcommerceProductsPage() {
         { key: 'bestseller', label: 'Bestseller', type: 'boolean', colSpan: 3 },
         { key: 'description', label: 'Description', placeholder: 'Hand-block printed, M-XL', colSpan: 12 },
       ]}
-      newItem={() => ({ name: '', price: '', description: '', category: '', bestseller: false, inStock: true, sku: '', mrp: '', stock: 0 })}
+      newItem={{ name: '', price: '', description: '', category: '', bestseller: false, inStock: true, sku: '', mrp: '', stock: 0 }}
       emptyHint="Bulk-import your product catalog from photo / paste / Excel — or add one manually."
       addLabel="Add product"
       BulkImport={EcommerceProductsBulkImport}

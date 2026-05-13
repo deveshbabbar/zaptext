@@ -14,17 +14,22 @@ export function formatPhoneNumber(phone: string): string {
   return '+' + cleaned;
 }
 
+// Returns an ISO-8601 UTC timestamp. Name is historical ("IST") but the
+// callers ALL pipe this into DB `timestamptz` columns or into `new Date()`
+// constructors — both of which need an ISO-parseable string.
+//
+// We previously returned `toLocaleString('en-IN', ...)` which produced
+// `13/05/2026, 12:56:40` (DD/MM/YYYY). JavaScript's Date parser does NOT
+// understand that format → `new Date(...)` returned Invalid Date → Drizzle's
+// `mapToDriverValue` then threw `RangeError: Invalid time value` on every
+// webhook insert, which silently 500'd the bot. Vercel's Node 24 ICU data
+// was strict enough to expose this; older Node versions were more lenient.
+//
+// IST display formatting is handled separately by display-layer helpers —
+// see lib/utils:getISTDate / display components — so changing this to ISO
+// has no UI effect.
 export function getISTTimestamp(): string {
-  return new Date().toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
+  return new Date().toISOString();
 }
 
 export function getISTDate(): string {

@@ -4,9 +4,9 @@
 
 import { redirect } from 'next/navigation';
 import { requireClientWithBots } from '@/lib/auth';
-import { listTables } from '@/lib/db/restaurant-dine-in';
+import { listTables, upsertTable } from '@/lib/db/restaurant-dine-in';
 import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
-import { buildWaUrlForTable, generateQrDataUrl } from '@/lib/restaurant-qr';
+import { buildWaUrlForTable, generateQrDataUrl, generateQrToken } from '@/lib/restaurant-qr';
 import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
 import { QrCodesClient } from './qr-codes-client';
 
@@ -15,8 +15,37 @@ export default async function RestaurantQrCodesPage() {
   if (!user.activeBot || user.activeBot.type !== 'restaurant') redirect('/client/dashboard');
 
   const dineInUnlocked = await isDineInEnabledForClient(user.activeBot.client_id);
-  const tables = await listTables(user.activeBot.client_id).catch(() => []);
+  let tables = await listTables(user.activeBot.client_id).catch(() => []);
   const botPhone = user.activeBot.whatsapp_number || '';
+
+  // Auto-seed tables on first visit. If the owner declared a table count
+  // during onboarding (`numberOfTables` in knowledge_base_json) and no
+  // tables exist yet for this client, create them now with fresh QR
+  // tokens. Only runs once — subsequent visits hit the early-return.
+  // Skipped if dine-in is locked (not on Growth+ plan) so we don't
+  // surprise the customer with a feature they haven't paid for.
+  if (tables.length === 0 && dineInUnlocked) {
+    let declaredCount = 0;
+    try {
+      const kb = user.activeBot.knowledge_base_json
+        ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>)
+        : {};
+      const raw = typeof kb.numberOfTables === 'number' ? kb.numberOfTables : 0;
+      // Clamp to a sane range so a typo'd 9999 doesn't spam 9999 rows.
+      declaredCount = Math.max(0, Math.min(100, Math.floor(raw)));
+    } catch { /* ignore parse failure */ }
+    if (declaredCount > 0) {
+      for (let i = 1; i <= declaredCount; i++) {
+        await upsertTable({
+          client_id: user.activeBot.client_id,
+          table_number: String(i),
+          qr_token: generateQrToken(),
+          seats: 0,
+        }).catch(() => undefined);
+      }
+      tables = await listTables(user.activeBot.client_id).catch(() => []);
+    }
+  }
 
   const previews = await Promise.all(
     tables.map(async (t) => {
@@ -28,6 +57,20 @@ export default async function RestaurantQrCodesPage() {
   );
 
   const phoneConfigured = !!botPhone;
+
+  // Surface the current auto-rotate setting so the client component can
+  // render the toggle with the right initial state.
+  let qrAutoRotateEnabled = false;
+  let qrAutoRotateIntervalHours = 24;
+  try {
+    const kb = user.activeBot.knowledge_base_json
+      ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>)
+      : {};
+    qrAutoRotateEnabled = kb.qrAutoRotateEnabled === true;
+    if (typeof kb.qrAutoRotateIntervalHours === 'number' && kb.qrAutoRotateIntervalHours > 0) {
+      qrAutoRotateIntervalHours = Math.max(6, Math.min(168, kb.qrAutoRotateIntervalHours));
+    }
+  } catch { /* ignore */ }
 
   return (
     <>
@@ -83,6 +126,8 @@ export default async function RestaurantQrCodesPage() {
             qrDataUrl: p.qrDataUrl,
           }))}
           botPhone={botPhone}
+          initialAutoRotateEnabled={qrAutoRotateEnabled}
+          initialAutoRotateIntervalHours={qrAutoRotateIntervalHours}
         />
       </div>
     </>

@@ -10,6 +10,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function RestaurantOverviewPage() {
   const user = await requireClientWithBots();
@@ -29,8 +30,9 @@ export default async function RestaurantOverviewPage() {
   // Parse menuCategories out of the bot's knowledge_base_json (the same field
   // the menu editor + onboarding form write to). Tolerate malformed JSON.
   let menuCategories: Array<{ items?: unknown[] }> = [];
+  let kb: Record<string, unknown> = {};
   try {
-    const kb = user.activeBot.knowledge_base_json
+    kb = user.activeBot.knowledge_base_json
       ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>)
       : {};
     if (Array.isArray(kb.menuCategories)) {
@@ -68,6 +70,7 @@ export default async function RestaurantOverviewPage() {
           }
           sub="Today's bookings, menu changes, and order activity at a glance."
         />
+        <SubTypesChips kb={kb} />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi

@@ -10,6 +10,7 @@ import { getGroceryStats } from '@/lib/db/grocery-stats';
 import { listOrders } from '@/lib/db/grocery-orders';
 import { todayIsoIST } from '@/lib/grocery/date-utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function GroceryOverviewPage() {
   const user = await requireClientWithBots();
@@ -28,6 +29,15 @@ export default async function GroceryOverviewPage() {
   const catalogReady = stats.inStockToday > 0;
   const noProducts = stats.productsTotal === 0;
 
+  // Parse kb for sub-type chips (grocery sub-types include kirana, dairy,
+  // mandi, bakery, etc. — surfacing them helps owner confirm config).
+  let kb: Record<string, unknown> = {};
+  try {
+    kb = user.activeBot.knowledge_base_json
+      ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>)
+      : {};
+  } catch { /* ignore */ }
+
   return (
     <>
       <PageTopbar
@@ -39,6 +49,7 @@ export default async function GroceryOverviewPage() {
           title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>}
           sub={`Today's orders, catalog, and delivery activity at a glance — ${today}`}
         />
+        <SubTypesChips kb={kb} />
 
         {/* Setup gates — these are the blocking states for a new grocery
             client. Surfacing them here so the owner sees them on day 1. */}

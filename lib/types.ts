@@ -156,6 +156,19 @@ export interface RestaurantFields extends CommonFields {
   tableAdvanceBookingDays?: number;
   tableDepositRequired?: string;
 
+  // ─── Dine-in QR codes (auto setup) ───
+  /** How many physical tables the restaurant has. On first visit to the
+   *  QR codes page, if no tables exist yet, the server auto-generates
+   *  this many tables (numbered 1..N) with fresh QR tokens — owner
+   *  doesn't have to click "Add tables 1-N" manually. */
+  numberOfTables?: number;
+  /** When true, a daily cron rotates every table's qr_token so old
+   *  printed QRs / screenshots stop working after rotation. Owner gets
+   *  notified to reprint. Default: false (manual rotation only). */
+  qrAutoRotateEnabled?: boolean;
+  /** Rotation cadence in hours when qrAutoRotateEnabled. Default 24h. */
+  qrAutoRotateIntervalHours?: number;
+
   // ─── Delivery partners ───
   deliveryPartners?: ('own_rider' | 'zomato' | 'swiggy' | 'dunzo' | 'shadowfax' | 'borzo' | 'porter' | 'rapido' | 'wefast' | 'pidge')[];
   packagingChargesPerOrder?: string;

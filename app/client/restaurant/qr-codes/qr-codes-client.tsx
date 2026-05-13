@@ -11,6 +11,7 @@ import { Panel } from '@/components/app/primitives';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 interface TableCard {
   id: string;
@@ -26,9 +27,16 @@ interface TableCard {
 interface Props {
   initialTables: TableCard[];
   botPhone: string;
+  initialAutoRotateEnabled?: boolean;
+  initialAutoRotateIntervalHours?: number;
 }
 
-export function QrCodesClient({ initialTables, botPhone }: Props) {
+export function QrCodesClient({
+  initialTables,
+  botPhone,
+  initialAutoRotateEnabled = false,
+  initialAutoRotateIntervalHours = 24,
+}: Props) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [rotating, setRotating] = useState(false);
@@ -36,6 +44,37 @@ export function QrCodesClient({ initialTables, botPhone }: Props) {
   const [newSeats, setNewSeats] = useState('');
   const [bulkCount, setBulkCount] = useState('');
   const [bulking, setBulking] = useState(false);
+  const [autoRotateEnabled, setAutoRotateEnabled] = useState(initialAutoRotateEnabled);
+  const [autoRotateInterval, setAutoRotateInterval] = useState(String(initialAutoRotateIntervalHours));
+  const [savingAutoRotate, setSavingAutoRotate] = useState(false);
+
+  // Persist the auto-rotate toggle / interval into knowledge_base_json
+  // via /api/client/settings. The settings endpoint expects bulk: { kb }
+  // so we fetch current kb first, patch the two keys, and write back —
+  // overwriting the whole blob keeps other restaurant config intact.
+  async function saveAutoRotate(enabled: boolean, intervalHoursStr: string) {
+    setSavingAutoRotate(true);
+    try {
+      const intervalNum = Math.max(6, Math.min(168, Number(intervalHoursStr) || 24));
+      const cur = await fetch('/api/client/settings');
+      const curData = (await cur.json().catch(() => ({}))) as { knowledgeBase?: string };
+      const kb = curData.knowledgeBase ? JSON.parse(curData.knowledgeBase) : {};
+      kb.qrAutoRotateEnabled = enabled;
+      kb.qrAutoRotateIntervalHours = intervalNum;
+      const res = await fetch('/api/client/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulk: { knowledge_base_json: JSON.stringify(kb) } }),
+      });
+      if (!res.ok) throw new Error(`save failed (${res.status})`);
+      toast.success(enabled ? `Auto-rotate ON · every ${intervalNum}h` : 'Auto-rotate OFF');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+      setAutoRotateEnabled(!enabled); // revert
+    } finally {
+      setSavingAutoRotate(false);
+    }
+  }
 
   async function addTable() {
     const tableNumber = newTable.trim();
@@ -133,6 +172,40 @@ export function QrCodesClient({ initialTables, botPhone }: Props) {
           <Button type="button" variant="outline" onClick={bulkAddTables} disabled={bulking || !botPhone}>
             {bulking ? 'Adding…' : 'Add tables 1–N'}
           </Button>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Auto-rotate tokens"
+        sub="Daily cron rotates every QR token. Old printed/screenshot QRs stop working — reprint the sheet each morning. Run at 09:00 IST as part of the morning bucket."
+      >
+        <div className="flex flex-col md:flex-row gap-3 md:items-end">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={autoRotateEnabled}
+              disabled={savingAutoRotate}
+              onCheckedChange={(v) => {
+                setAutoRotateEnabled(!!v);
+                saveAutoRotate(!!v, autoRotateInterval);
+              }}
+            />
+            <Label className="text-xs">Enable auto-rotation</Label>
+          </div>
+          <div style={{ width: 160 }}>
+            <Label className="text-xs">Interval (hours)</Label>
+            <Input
+              type="number"
+              min={6}
+              max={168}
+              placeholder="24"
+              value={autoRotateInterval}
+              disabled={!autoRotateEnabled || savingAutoRotate}
+              onChange={(e) => setAutoRotateInterval(e.target.value)}
+              onBlur={() => {
+                if (autoRotateEnabled) saveAutoRotate(true, autoRotateInterval);
+              }}
+            />
+          </div>
         </div>
       </Panel>
 

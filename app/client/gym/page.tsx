@@ -3,6 +3,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function GymOverviewPage() {
   const user = await requireClientWithBots();
@@ -13,8 +14,9 @@ export default async function GymOverviewPage() {
     getBookingsByClient(user.activeBot.client_id, 'pending_approval').catch(() => []),
   ]);
   let plans: Array<Record<string, unknown>> = [];
+  let kb: Record<string, unknown> = {};
   try {
-    const kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
+    kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
     if (Array.isArray(kb.membershipPlans)) plans = kb.membershipPlans as Array<Record<string, unknown>>;
   } catch { /* ignore */ }
 
@@ -26,6 +28,7 @@ export default async function GymOverviewPage() {
       />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>} sub="Members, classes, trainers, and renewals at a glance." />
+        <SubTypesChips kb={kb} />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi label="Membership plans" value={plans.length} trend={plans.length === 0 ? 'Bulk import to start' : undefined} />
           <Kpi label="Classes today" value={todayClasses.length} />

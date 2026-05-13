@@ -3,6 +3,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function TiffinOverviewPage() {
   const user = await requireClientWithBots();
@@ -13,8 +14,9 @@ export default async function TiffinOverviewPage() {
     getBookingsByClient(user.activeBot.client_id, 'pending_approval').catch(() => []),
   ]);
   let plans: Array<Record<string, unknown>> = [];
+  let kb: Record<string, unknown> = {};
   try {
-    const kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
+    kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
     if (Array.isArray(kb.plans)) plans = kb.plans as Array<Record<string, unknown>>;
   } catch { /* ignore */ }
 
@@ -23,6 +25,7 @@ export default async function TiffinOverviewPage() {
       <PageTopbar crumbs={<>Tiffin / <b className="text-foreground">Overview</b></>} actions={<Pill variant="ink" href="/client/tiffin/plans">Manage plans</Pill>} />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>} sub="Active subscribers, today's delivery route, and weekly menu." />
+        <SubTypesChips kb={kb} />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi label="Subscription plans" value={plans.length} trend={plans.length === 0 ? 'Bulk import to start' : undefined} />
           <Kpi label="Deliveries today" value={todayDeliveries.length} />

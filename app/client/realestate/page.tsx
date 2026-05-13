@@ -3,6 +3,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function RealEstateOverviewPage() {
   const user = await requireClientWithBots();
@@ -15,8 +16,9 @@ export default async function RealEstateOverviewPage() {
   let listings: Array<Record<string, unknown>> = [];
   let builderProjects: Array<Record<string, unknown>> = [];
   let blockSendIfReraMissing = true;
+  let kb: Record<string, unknown> = {};
   try {
-    const kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
+    kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
     if (Array.isArray(kb.currentListings)) listings = kb.currentListings as Array<Record<string, unknown>>;
     if (Array.isArray(kb.builderProjects)) builderProjects = kb.builderProjects as Array<Record<string, unknown>>;
     if (typeof kb.blockSendIfReraMissing === 'boolean') blockSendIfReraMissing = kb.blockSendIfReraMissing;
@@ -42,6 +44,7 @@ export default async function RealEstateOverviewPage() {
       />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>} sub="Listings, site visits, and active leads at a glance." />
+        <SubTypesChips kb={kb} />
 
         {/* RERA compliance gate — surfaces silent send-blocks that would
             otherwise only appear as the bot refusing to answer customers. */}

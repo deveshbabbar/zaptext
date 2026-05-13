@@ -3,6 +3,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function SalonOverviewPage() {
   const user = await requireClientWithBots();
@@ -13,8 +14,9 @@ export default async function SalonOverviewPage() {
     getBookingsByClient(user.activeBot.client_id, 'pending_approval').catch(() => []),
   ]);
   let services: Array<{ category?: string; items?: unknown[] }> = [];
+  let kb: Record<string, unknown> = {};
   try {
-    const kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
+    kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
     if (Array.isArray(kb.services)) services = kb.services as Array<{ category?: string; items?: unknown[] }>;
   } catch { /* ignore */ }
   const totalServices = services.reduce((n, c) => n + (Array.isArray(c.items) ? c.items.length : 0), 0);
@@ -27,6 +29,7 @@ export default async function SalonOverviewPage() {
       />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>} sub="Today's appointments, services, and team activity." />
+        <SubTypesChips kb={kb} />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi label="Services" value={totalServices} trend={totalServices === 0 ? 'Start with Bulk import' : `${services.length} section${services.length === 1 ? '' : 's'}`} />
           <Kpi label="Appointments today" value={todayAppts.length} />

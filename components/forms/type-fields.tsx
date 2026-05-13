@@ -324,6 +324,50 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
               </>
             )}
           </div>
+
+          {/* Dine-in QR auto setup — drives auto-creation of tables + QRs
+              on first visit to /client/restaurant/qr-codes, and the daily
+              auto-rotation cron. Each table gets its own QR encoding a
+              wa.me link → customer scan opens WhatsApp directly. */}
+          <h3 className="text-lg font-semibold border-b border-border pb-2">Dine-in QR codes (auto setup)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs">Number of tables (auto-generates QRs)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                placeholder="10"
+                value={(data.numberOfTables as number | undefined) ?? ''}
+                onChange={(e) => onChange('numberOfTables', e.target.value === '' ? undefined : Number(e.target.value))}
+              />
+              <p className="text-[10.5px] text-muted-foreground mt-1 m-0">
+                Bot will create tables 1, 2, 3... with unique QR each. You can add more later.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-5">
+              <Switch
+                checked={(data.qrAutoRotateEnabled as boolean) ?? false}
+                onCheckedChange={(v) => onChange('qrAutoRotateEnabled', v)}
+              />
+              <Label className="text-xs">Auto-rotate QR tokens daily</Label>
+            </div>
+            <div>
+              <Label className="text-xs">Rotation interval (hours)</Label>
+              <Input
+                type="number"
+                min={6}
+                max={168}
+                placeholder="24"
+                value={(data.qrAutoRotateIntervalHours as number | undefined) ?? ''}
+                onChange={(e) => onChange('qrAutoRotateIntervalHours', e.target.value === '' ? undefined : Number(e.target.value))}
+                disabled={!(data.qrAutoRotateEnabled as boolean)}
+              />
+              <p className="text-[10.5px] text-muted-foreground mt-1 m-0">
+                Old printed QRs stop working after rotation — you&apos;ll be notified to reprint.
+              </p>
+            </div>
+          </div>
         </>
       )}
 

@@ -5,6 +5,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function CoachingOverviewPage() {
   const user = await requireClientWithBots();
@@ -85,6 +86,7 @@ export default async function CoachingOverviewPage() {
           title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>}
           sub="Today's classes, fees due, and student inquiries at a glance."
         />
+        <SubTypesChips kb={kb} />
 
         {/* Compliance gates — DPDPA §9, Rajasthan Coaching Bill. These flags
             change bot behaviour silently; surfacing them so the owner sees

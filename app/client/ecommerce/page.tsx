@@ -3,6 +3,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { getClientConversations } from '@/lib/db/conversations';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel } from '@/components/app/primitives';
+import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function EcommerceOverviewPage() {
   const user = await requireClientWithBots();
@@ -13,8 +14,9 @@ export default async function EcommerceOverviewPage() {
   const uniqueCustomers = new Set(todays.map((c) => c.customer_phone));
 
   let products: Array<Record<string, unknown>> = [];
+  let kb: Record<string, unknown> = {};
   try {
-    const kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
+    kb = user.activeBot.knowledge_base_json ? (JSON.parse(user.activeBot.knowledge_base_json) as Record<string, unknown>) : {};
     if (Array.isArray(kb.products)) products = kb.products as Array<Record<string, unknown>>;
   } catch { /* ignore */ }
 
@@ -24,6 +26,7 @@ export default async function EcommerceOverviewPage() {
       <PageTopbar crumbs={<>Ecommerce / <b className="text-foreground">Overview</b></>} actions={<Pill variant="ink" href="/client/ecommerce/products">Manage products</Pill>} />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead title={<>{user.activeBot.business_name} <span className="zt-serif">workspace.</span></>} sub="Products, orders, returns, and courier activity." />
+        <SubTypesChips kb={kb} />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi label="Products" value={products.length} trend={products.length === 0 ? 'Start with Bulk import' : undefined} />
           <Kpi label="Customers today" value={uniqueCustomers.size} />

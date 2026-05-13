@@ -27,6 +27,7 @@ interface TableCard {
 interface Props {
   initialTables: TableCard[];
   botPhone: string;
+  dineInUnlocked?: boolean;
   initialAutoRotateEnabled?: boolean;
   initialAutoRotateIntervalHours?: number;
 }
@@ -34,6 +35,7 @@ interface Props {
 export function QrCodesClient({
   initialTables,
   botPhone,
+  dineInUnlocked = true,
   initialAutoRotateEnabled = false,
   initialAutoRotateIntervalHours = 24,
 }: Props) {
@@ -93,14 +95,19 @@ export function QrCodesClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableNumber, seats: Number(newSeats) || 0 }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) throw new Error(data.error || `Add failed (${res.status})`);
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string; upgradeTo?: string };
+      if (!res.ok || !data.ok) {
+        // Surface server's human-readable `message` first (e.g. plan-gate
+        // explanation) so the user sees WHY it failed instead of an opaque
+        // `PLAN_LIMIT` code.
+        throw new Error(data.message || data.error || `Add failed (${res.status})`);
+      }
       setNewTable('');
       setNewSeats('');
       toast.success(`Table ${tableNumber} added`);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Add failed');
+      toast.error(err instanceof Error ? err.message : 'Add failed', { duration: 8000 });
     } finally {
       setAdding(false);
     }
@@ -133,13 +140,15 @@ export function QrCodesClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; created?: number; skipped?: number; error?: string };
-      if (!res.ok || !data.ok) throw new Error(data.error || `Bulk add failed (${res.status})`);
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; created?: number; skipped?: number; error?: string; message?: string; upgradeTo?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || data.error || `Bulk add failed (${res.status})`);
+      }
       toast.success(`Added ${data.created || 0} tables${data.skipped ? `, skipped ${data.skipped} duplicate${data.skipped === 1 ? '' : 's'}` : ''}`);
       setBulkCount('');
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Bulk add failed');
+      toast.error(err instanceof Error ? err.message : 'Bulk add failed', { duration: 8000 });
     } finally {
       setBulking(false);
     }
@@ -161,51 +170,70 @@ export function QrCodesClient({
     }
   }
 
+  // Action buttons are disabled when either: (a) bot phone is missing
+  // (QRs would encode an empty wa.me link), or (b) dine-in is plan-locked
+  // (server-side gate will 403 anyway — surface that here so the click
+  // doesn't appear to silently fail).
+  const actionsDisabled = !botPhone || !dineInUnlocked;
+  const disabledReason = !botPhone
+    ? 'Add a WhatsApp number in Settings first.'
+    : !dineInUnlocked
+      ? 'Dine-in is a Growth-plan feature. Upgrade to add tables.'
+      : '';
+
   return (
     <div className="space-y-4">
+      {/* Plan-gate banner — only when dine-in is locked. Replaces silent
+          "Dine-in is a Growth feature" panel from the server page with a
+          prominent CTA so the owner immediately knows why their clicks
+          aren't doing anything. */}
+      {!dineInUnlocked && (
+        <div
+          className="rounded-[12px] border"
+          style={{ padding: '14px 16px', borderColor: '#f59e0b', background: '#f59e0b10' }}
+        >
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] font-semibold mb-1">⚠ Dine-in is on the Growth plan</div>
+              <div className="text-[12.5px] text-[var(--mute)]">
+                Adding tables, generating QRs, and accepting QR-scan orders all unlock at ₹1,499/mo.
+                You can preview the layout below — the buttons stay locked until you upgrade.
+              </div>
+            </div>
+            <a
+              href="/client/subscription#upgrade"
+              className="rounded-[8px] text-[12.5px] font-semibold"
+              style={{ padding: '8px 14px', background: '#f59e0b', color: '#fff' }}
+            >
+              Upgrade to Growth →
+            </a>
+          </div>
+        </div>
+      )}
+
       <Panel title="Quick setup" sub="Numbered tables 1, 2, 3... Skips numbers you already have.">
         <div className="flex flex-col md:flex-row gap-2 md:items-end">
           <div style={{ width: 160 }}>
             <Label className="text-xs">How many tables?</Label>
-            <Input type="number" placeholder="10" value={bulkCount} onChange={(e) => setBulkCount(e.target.value)} />
-          </div>
-          <Button type="button" variant="outline" onClick={bulkAddTables} disabled={bulking || !botPhone}>
-            {bulking ? 'Adding…' : 'Add tables 1–N'}
-          </Button>
-        </div>
-      </Panel>
-
-      <Panel
-        title="Auto-rotate tokens"
-        sub="Daily cron rotates every QR token. Old printed/screenshot QRs stop working — reprint the sheet each morning. Run at 09:00 IST as part of the morning bucket."
-      >
-        <div className="flex flex-col md:flex-row gap-3 md:items-end">
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={autoRotateEnabled}
-              disabled={savingAutoRotate}
-              onCheckedChange={(v) => {
-                setAutoRotateEnabled(!!v);
-                saveAutoRotate(!!v, autoRotateInterval);
-              }}
-            />
-            <Label className="text-xs">Enable auto-rotation</Label>
-          </div>
-          <div style={{ width: 160 }}>
-            <Label className="text-xs">Interval (hours)</Label>
             <Input
               type="number"
-              min={6}
-              max={168}
-              placeholder="24"
-              value={autoRotateInterval}
-              disabled={!autoRotateEnabled || savingAutoRotate}
-              onChange={(e) => setAutoRotateInterval(e.target.value)}
-              onBlur={() => {
-                if (autoRotateEnabled) saveAutoRotate(true, autoRotateInterval);
-              }}
+              placeholder="10"
+              value={bulkCount}
+              onChange={(e) => setBulkCount(e.target.value)}
+              disabled={actionsDisabled}
             />
           </div>
+          <Button
+            type="button"
+            onClick={bulkAddTables}
+            disabled={bulking || actionsDisabled}
+            title={actionsDisabled ? disabledReason : undefined}
+          >
+            {bulking ? 'Adding…' : 'Add tables 1–N'}
+          </Button>
+          {actionsDisabled && (
+            <span className="text-[11.5px] text-[var(--mute)]">{disabledReason}</span>
+          )}
         </div>
       </Panel>
 
@@ -213,13 +241,29 @@ export function QrCodesClient({
         <div className="flex flex-col md:flex-row gap-2 md:items-end">
           <div className="flex-1">
             <Label className="text-xs">Table number / label</Label>
-            <Input placeholder="e.g. 9" value={newTable} onChange={(e) => setNewTable(e.target.value)} />
+            <Input
+              placeholder="e.g. 9"
+              value={newTable}
+              onChange={(e) => setNewTable(e.target.value)}
+              disabled={actionsDisabled}
+            />
           </div>
           <div style={{ width: 120 }}>
             <Label className="text-xs">Seats (optional)</Label>
-            <Input type="number" placeholder="4" value={newSeats} onChange={(e) => setNewSeats(e.target.value)} />
+            <Input
+              type="number"
+              placeholder="4"
+              value={newSeats}
+              onChange={(e) => setNewSeats(e.target.value)}
+              disabled={actionsDisabled}
+            />
           </div>
-          <Button type="button" onClick={addTable} disabled={adding || !botPhone}>
+          <Button
+            type="button"
+            onClick={addTable}
+            disabled={adding || actionsDisabled}
+            title={actionsDisabled ? disabledReason : undefined}
+          >
             {adding ? 'Adding…' : 'Add table'}
           </Button>
         </div>
@@ -266,6 +310,46 @@ export function QrCodesClient({
                 </div>
               </div>
             ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Auto-rotate sits at the bottom — it's an optional security feature
+          (rotating tokens invalidates printed QRs). Off by default so it
+          doesn't surprise the owner. Only show when dine-in is unlocked
+          (no point offering this when the rest of the page is locked). */}
+      {dineInUnlocked && (
+        <Panel
+          title="Auto-rotate tokens (optional)"
+          sub="Off by default. Turn ON only if you want stale photos / screenshots of QRs to stop working — bot will then auto-rotate every table's token on schedule (default 24h). You'll have to reprint the QR sheet each rotation."
+        >
+          <div className="flex flex-col md:flex-row gap-3 md:items-end">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={autoRotateEnabled}
+                disabled={savingAutoRotate}
+                onCheckedChange={(v) => {
+                  setAutoRotateEnabled(!!v);
+                  saveAutoRotate(!!v, autoRotateInterval);
+                }}
+              />
+              <Label className="text-xs">Enable auto-rotation</Label>
+            </div>
+            <div style={{ width: 160 }}>
+              <Label className="text-xs">Interval (hours)</Label>
+              <Input
+                type="number"
+                min={6}
+                max={168}
+                placeholder="24"
+                value={autoRotateInterval}
+                disabled={!autoRotateEnabled || savingAutoRotate}
+                onChange={(e) => setAutoRotateInterval(e.target.value)}
+                onBlur={() => {
+                  if (autoRotateEnabled) saveAutoRotate(true, autoRotateInterval);
+                }}
+              />
+            </div>
           </div>
         </Panel>
       )}

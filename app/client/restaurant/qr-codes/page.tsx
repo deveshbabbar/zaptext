@@ -94,18 +94,9 @@ export default async function RestaurantQrCodesPage() {
           sub="Each table gets its own QR. Customers scan, tap Send on WhatsApp, and the bot opens their menu. Rotate tokens once per shift to keep stale photos / screenshots from working."
         />
 
-        {!dineInUnlocked && (
-          <Panel
-            title="Dine-in is a Growth feature"
-            sub="Unlock QR-table ordering by upgrading to Growth (₹1,499/mo) or higher."
-            action={<a href="/client/subscription#upgrade" className="text-xs font-semibold underline">Upgrade →</a>}
-          >
-            <p className="text-sm text-muted-foreground">
-              You can preview the setup below, but customer-side ordering won&apos;t fire until you upgrade. Free / Starter customers will be told to ask staff at the counter when they scan.
-            </p>
-          </Panel>
-        )}
-
+        {/* The client component now renders a richer plan-gate banner
+            (with CTA + visible disabled-state explanation) so we don't
+            need a second server-rendered panel here. */}
         {!phoneConfigured && (
           <Panel title="WhatsApp number not configured">
             <p className="text-sm text-muted-foreground">
@@ -126,6 +117,7 @@ export default async function RestaurantQrCodesPage() {
             qrDataUrl: p.qrDataUrl,
           }))}
           botPhone={botPhone}
+          dineInUnlocked={dineInUnlocked}
           initialAutoRotateEnabled={qrAutoRotateEnabled}
           initialAutoRotateIntervalHours={qrAutoRotateIntervalHours}
         />

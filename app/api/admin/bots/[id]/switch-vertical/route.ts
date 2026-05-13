@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { getClientById, updateClientFields } from '@/lib/google-sheets';
 import { getBotsByOwner } from '@/lib/owner-clients';
+import { deleteConversationsForClient } from '@/lib/db/conversations';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { DEMO_BUNDLES } from '@/lib/demo-data';
 import type { BusinessType, ClientConfig } from '@/lib/types';
@@ -85,10 +86,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Always regenerate the system prompt from the chosen KB so it reflects
   // the latest prompt-generator logic (compliance gates, sub-types, etc.)
   // even if the seeded bot's saved prompt is older.
+  //
+  // CRITICAL: inject `businessName` into the prompt config. The KB JSON
+  // doesn't carry it (it's a top-level client row column). Without this
+  // the generator emits "Welcome to undefined" in the system prompt
+  // because ${config.businessName} is undefined.
   let nextPrompt = sourcePrompt;
   try {
     const parsedKb = sourceKbJson ? (JSON.parse(sourceKbJson) as Record<string, unknown>) : {};
-    const promptConfig = { ...parsedKb, type: vertical } as unknown as ClientConfig;
+    const promptConfig = {
+      ...parsedKb,
+      type: vertical,
+      businessName: sourceBusinessName,
+      welcomeMessage: (parsedKb.welcomeMessage as string | undefined)
+        || `Welcome to ${sourceBusinessName}! How can I help you today?`,
+    } as unknown as ClientConfig;
     const regenerated = generateSystemPrompt(promptConfig);
     if (regenerated) nextPrompt = regenerated;
   } catch (err) {
@@ -102,11 +114,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     system_prompt: nextPrompt || client.system_prompt,
   });
 
+  // Nuke the prior vertical's conversation history for this bot. Without
+  // this, the AI sees old "menu / table 5 / paneer tikka" context from
+  // when the bot was a Restaurant and bleeds it into the new vertical's
+  // replies. Admin demo only — the bot is being repurposed end-to-end.
+  let conversationsCleared = 0;
+  try {
+    conversationsCleared = await deleteConversationsForClient(botId);
+  } catch (err) {
+    console.error('[switch-vertical] conversation wipe failed', err);
+  }
+
   return NextResponse.json({
     ok: true,
     vertical,
     business_name: sourceBusinessName,
     source: sourceLabel,
     promptRegenerated: !!nextPrompt,
+    conversationsCleared,
   });
 }

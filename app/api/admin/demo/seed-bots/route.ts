@@ -118,7 +118,17 @@ export async function POST(request: NextRequest) {
 
     let systemPrompt = '';
     try {
-      const promptConfig = { ...bundle.knowledge_base, type: vertical } as unknown as ClientConfig;
+      // Must inject businessName + a welcomeMessage explicitly — KB shape
+      // doesn't carry them, but the prompt generator references both. Without
+      // this the seeded bots' system_prompt says "Welcome to undefined".
+      const kb = bundle.knowledge_base as Record<string, unknown>;
+      const promptConfig = {
+        ...kb,
+        type: vertical,
+        businessName: bundle.business_name,
+        welcomeMessage: (kb.welcomeMessage as string | undefined)
+          || `Welcome to ${bundle.business_name}! How can I help you today?`,
+      } as unknown as ClientConfig;
       systemPrompt = generateSystemPrompt(promptConfig);
     } catch (err) {
       console.error('[seed-bots] prompt gen failed', { vertical, err });

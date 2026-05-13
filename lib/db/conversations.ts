@@ -151,3 +151,18 @@ export async function getClientConversations(clientId: string): Promise<Conversa
     .orderBy(asc(conversationsTable.timestamp));
   return rows.map(dbRowToConvo);
 }
+
+// Wipes ALL conversation history for one client. Used by the admin demo-mode
+// switch-vertical flow: when a bot is repurposed from Restaurant → Coaching,
+// the old chat context (menu items, table bookings, etc.) would otherwise
+// bleed into the new vertical's AI prompt and confuse the customer-facing
+// reply ("welcome to IIT Academy, here's our paneer tikka..."). Destructive
+// by design — admin demo only.
+export async function deleteConversationsForClient(clientId: string): Promise<number> {
+  const result = await db
+    .delete(conversationsTable)
+    .where(eq(conversationsTable.client_id, clientId));
+  // drizzle-orm's neon-http returns { rowCount } on Postgres deletes.
+  const r = result as unknown as { rowCount?: number };
+  return r.rowCount ?? 0;
+}

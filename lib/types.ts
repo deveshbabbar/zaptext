@@ -1615,6 +1615,32 @@ export interface StaffAvailability {
   sunday: StaffAvailabilityBlock[];
 }
 
+// Vertical-specific staff fields stored as a JSON blob in staff.extra_json.
+// Each vertical only writes/reads the keys relevant to it; other keys are
+// ignored. Adding a new key here doesn't require a DB migration.
+export interface StaffExtra {
+  // Common
+  gender?: 'M' | 'F' | 'NB';
+  experienceYears?: number;
+  // Salon
+  role?: string;                       // e.g. 'senior_stylist', 'mehendi_artist'
+  photo?: string;                      // URL — off by default for women-only parlours
+  perServiceUpcharge?: number;
+  specialties?: string[];              // bridal, color, mehendi-design
+  // Gym
+  certifications?: string[];           // ACE, NASM, K11, RYT200
+  specialisations?: string[];          // weight-loss, prenatal, sports-specific
+  packageSessions?: number;            // 12-session package
+  packagePriceRupees?: string;
+  femaleOnly?: boolean;                // trainer accepts only female clients
+  noShowFeeRupees?: string;
+  cancelWindowHours?: number;
+  // Real Estate
+  agentReraNumber?: string;
+  agentReraState?: string;
+  agentReraExpiry?: string;
+}
+
 export interface StaffMember {
   staff_id: string;
   client_id: string;
@@ -1625,6 +1651,9 @@ export interface StaffMember {
   bio: string;
   is_active: boolean;
   availability: StaffAvailability;
+  /** Vertical-specific fields (StaffExtra). Always defined; empty object
+   *  for legacy rows pre-0002 migration. */
+  extra: StaffExtra;
   created_at: string;
 }
 

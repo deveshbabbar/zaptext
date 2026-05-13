@@ -15,13 +15,23 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from './index';
 import { staff as staffTable } from './schema';
-import type { StaffMember, StaffAvailability, StaffAvailabilityBlock } from '../types';
+import type { StaffMember, StaffAvailability, StaffAvailabilityBlock, StaffExtra } from '../types';
 import { generateId } from '../utils';
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
 
 function emptyAvailability(): StaffAvailability {
   return { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [] };
+}
+
+function parseExtra(raw: string | null | undefined): StaffExtra {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as StaffExtra) : {};
+  } catch {
+    return {};
+  }
 }
 
 function parseAvailability(raw: string | null | undefined): StaffAvailability {
@@ -56,6 +66,7 @@ function dbRowToMember(row: DbStaffRow): StaffMember {
     bio: row.bio ?? '',
     is_active: row.is_active,
     availability: parseAvailability(row.availability),
+    extra: parseExtra(row.extra_json),
     created_at: row.created_at ? row.created_at.toISOString() : '',
   };
 }
@@ -101,6 +112,14 @@ export async function upsertStaff(
 ): Promise<StaffMember> {
   const existing = input.staff_id ? await getStaffById(input.staff_id) : null;
 
+  // Merge incoming extra over existing — lets a partial update (e.g. just
+  // certifications) preserve role/photo set in a prior save. Pass an empty
+  // object explicitly to wipe.
+  const mergedExtra: StaffExtra =
+    input.extra !== undefined
+      ? { ...(existing?.extra || {}), ...input.extra }
+      : existing?.extra || {};
+
   const member: StaffMember = {
     staff_id: existing?.staff_id || input.staff_id || generateId(),
     client_id: input.client_id,
@@ -114,6 +133,7 @@ export async function upsertStaff(
     bio: typeof input.bio === 'string' ? input.bio.trim() : existing?.bio || '',
     is_active: typeof input.is_active === 'boolean' ? input.is_active : existing?.is_active ?? true,
     availability: input.availability || existing?.availability || emptyAvailability(),
+    extra: mergedExtra,
     created_at: existing?.created_at || new Date().toISOString(),
   };
 
@@ -129,6 +149,7 @@ export async function upsertStaff(
       bio: member.bio,
       is_active: member.is_active,
       availability: JSON.stringify(member.availability),
+      extra_json: JSON.stringify(member.extra),
       created_at: new Date(member.created_at),
     })
     .onConflictDoUpdate({
@@ -142,6 +163,7 @@ export async function upsertStaff(
         bio: member.bio,
         is_active: member.is_active,
         availability: JSON.stringify(member.availability),
+        extra_json: JSON.stringify(member.extra),
       },
     });
 

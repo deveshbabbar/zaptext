@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
 import { getStaff, upsertStaff, deleteStaff, updateStaffAvailability, getStaffById } from '@/lib/staff';
-import { StaffAvailability } from '@/lib/types';
+import { StaffAvailability, StaffExtra } from '@/lib/types';
 
 export async function GET() {
   const user = await getUserRole();
@@ -69,6 +69,9 @@ export async function POST(req: NextRequest) {
       bio: typeof body.bio === 'string' ? body.bio : undefined,
       is_active: typeof body.is_active === 'boolean' ? body.is_active : undefined,
       availability: body.availability as StaffAvailability | undefined,
+      extra: body.extra && typeof body.extra === 'object' && !Array.isArray(body.extra)
+        ? (body.extra as StaffExtra)
+        : undefined,
     });
     return NextResponse.json({ ok: true, member });
   } catch (err) {

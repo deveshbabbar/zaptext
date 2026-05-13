@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
-import { STAFF_ROLE_LABELS, DEFAULT_STAFF_LABEL } from '@/lib/types';
+import { STAFF_ROLE_LABELS, DEFAULT_STAFF_LABEL, type StaffExtra } from '@/lib/types';
 
 type AvailBlock = { start: string; end: string };
 type Availability = Record<string, AvailBlock[]>;
@@ -17,7 +17,30 @@ interface StaffMember {
   bio: string;
   is_active: boolean;
   availability: Availability;
+  extra?: StaffExtra;
 }
+
+// Vertical-specific role/cert option lists. Salon role values match the
+// SalonStaffMember.role enum in lib/types.ts so the prompt-generator can
+// read them. Gym certifications match GymCertification enum.
+const SALON_ROLES: Array<{ value: string; label: string }> = [
+  { value: 'creative_director', label: 'Creative director' },
+  { value: 'senior_stylist',    label: 'Senior stylist' },
+  { value: 'junior_stylist',    label: 'Junior stylist' },
+  { value: 'apprentice',        label: 'Apprentice' },
+  { value: 'specialist',        label: 'Specialist' },
+  { value: 'mehendi_artist',    label: 'Mehendi artist' },
+  { value: 'makeup_artist',     label: 'Makeup artist' },
+  { value: 'tattoo_artist',     label: 'Tattoo artist' },
+  { value: 'therapist',         label: 'Therapist (spa)' },
+];
+const GYM_CERTIFICATIONS = [
+  'ACE', 'NASM', 'REPS_India', 'K11',
+  'CrossFit_L1', 'CrossFit_L2',
+  'Yoga_Alliance_RYT200', 'Yoga_Alliance_RYT500',
+  'Stott_Pilates', 'Polestar_Pilates',
+  'Zumba_ZIN', 'NSDC_SFSSC', 'ISSA', 'AAP',
+];
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
 const DEFAULT_BLOCK: AvailBlock = { start: '09:00', end: '18:00' };
@@ -79,7 +102,16 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ staff_id: '', name: '', specialty: '', price: '', whatsapp_phone: '', bio: '', availability: emptyAvail() });
+  const [form, setForm] = useState<{
+    staff_id: string;
+    name: string;
+    specialty: string;
+    price: string;
+    whatsapp_phone: string;
+    bio: string;
+    availability: Availability;
+    extra: StaffExtra;
+  }>({ staff_id: '', name: '', specialty: '', price: '', whatsapp_phone: '', bio: '', availability: emptyAvail(), extra: {} });
 
   const labels = STAFF_ROLE_LABELS[botType] || DEFAULT_STAFF_LABEL;
 
@@ -96,15 +128,28 @@ export default function StaffPage() {
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
-    setForm({ staff_id: '', name: '', specialty: '', price: '', whatsapp_phone: '', bio: '', availability: emptyAvail() });
+    setForm({ staff_id: '', name: '', specialty: '', price: '', whatsapp_phone: '', bio: '', availability: emptyAvail(), extra: {} });
     setEditingId(null);
   };
 
   const startEdit = (m: StaffMember) => {
     setForm({ staff_id: m.staff_id, name: m.name, specialty: m.specialty, price: m.price.toString(),
-      whatsapp_phone: m.whatsapp_phone, bio: m.bio, availability: { ...emptyAvail(), ...m.availability } });
+      whatsapp_phone: m.whatsapp_phone, bio: m.bio, availability: { ...emptyAvail(), ...m.availability },
+      extra: m.extra || {} });
     setEditingId(m.staff_id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Helpers to bind a single key inside form.extra without retyping the spread
+  const setExtra = <K extends keyof StaffExtra>(key: K, value: StaffExtra[K]) => {
+    setForm((p) => ({ ...p, extra: { ...p.extra, [key]: value } }));
+  };
+  const toggleArrayExtra = (key: 'certifications' | 'specialties' | 'specialisations', value: string) => {
+    setForm((p) => {
+      const cur = (p.extra[key] as string[] | undefined) || [];
+      const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+      return { ...p, extra: { ...p.extra, [key]: next } };
+    });
   };
 
   const saveMember = async () => {
@@ -115,7 +160,7 @@ export default function StaffPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staff_id: form.staff_id || undefined, name: form.name, specialty: form.specialty,
           price: form.price ? parseFloat(form.price) : 0, whatsapp_phone: form.whatsapp_phone.replace(/\D/g, ''),
-          bio: form.bio, availability: form.availability, is_active: true }),
+          bio: form.bio, availability: form.availability, is_active: true, extra: form.extra }),
       });
       if (res.ok) { toast.success(editingId ? `${labels.singular} updated!` : `${labels.singular} added!`); resetForm(); await load(); }
       else toast.error('Failed to save');
@@ -209,6 +254,159 @@ export default function StaffPage() {
             </div>
           </div>
 
+          {/* Vertical-specific fields. Only shown for verticals where the
+              prompt-generator actually consumes these — otherwise the
+              field is invisible (still in DB if previously set). */}
+          {(botType === 'salon' || botType === 'gym' || botType === 'realestate') && (
+            <div className="mt-4 border-t border-[var(--line)] pt-4">
+              <div className="text-[12.5px] font-semibold mb-2 uppercase tracking-[.06em] text-[var(--mute)]">
+                {botType === 'salon' && 'Stylist details'}
+                {botType === 'gym' && 'Trainer credentials'}
+                {botType === 'realestate' && 'Agent registration'}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* Common: gender + experience */}
+                {(botType === 'salon' || botType === 'gym') && (
+                  <>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Gender</div>
+                      <select className={fieldCls} style={fStyle}
+                        value={form.extra.gender || ''}
+                        onChange={(e) => setExtra('gender', (e.target.value || undefined) as 'M' | 'F' | 'NB' | undefined)}>
+                        <option value="">Prefer not to say</option>
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                        <option value="NB">Non-binary</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Experience (years)</div>
+                      <input type="number" min={0} className={fieldCls} style={fStyle}
+                        value={form.extra.experienceYears ?? ''}
+                        onChange={(e) => setExtra('experienceYears', e.target.value === '' ? undefined : Number(e.target.value))}
+                        placeholder="5" />
+                    </div>
+                  </>
+                )}
+
+                {botType === 'salon' && (
+                  <>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Role / tier</div>
+                      <select className={fieldCls} style={fStyle}
+                        value={form.extra.role || ''}
+                        onChange={(e) => setExtra('role', e.target.value || undefined)}>
+                        <option value="">— select —</option>
+                        {SALON_ROLES.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Per-service upcharge ₹ (optional)</div>
+                      <input type="number" min={0} className={fieldCls} style={fStyle}
+                        value={form.extra.perServiceUpcharge ?? ''}
+                        onChange={(e) => setExtra('perServiceUpcharge', e.target.value === '' ? undefined : Number(e.target.value))}
+                        placeholder="300" />
+                      <p className="text-[11.5px] text-[var(--mute)] mt-1 m-0">Added on top of base service price.</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-[12.5px] font-semibold mb-1.5">Specialties (comma-separated)</div>
+                      <input className={fieldCls} style={fStyle}
+                        value={(form.extra.specialties || []).join(', ')}
+                        onChange={(e) => setExtra('specialties', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+                        placeholder="bridal, color-correction, mehendi-design, prenatal" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-[12.5px] font-semibold mb-1.5">Photo URL (optional)</div>
+                      <input className={fieldCls} style={fStyle}
+                        value={form.extra.photo || ''}
+                        onChange={(e) => setExtra('photo', e.target.value || undefined)}
+                        placeholder="https://... — leave blank for women-only parlours (privacy)" />
+                    </div>
+                  </>
+                )}
+
+                {botType === 'gym' && (
+                  <>
+                    <div className="md:col-span-2">
+                      <div className="text-[12.5px] font-semibold mb-1.5">Certifications</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {GYM_CERTIFICATIONS.map((c) => {
+                          const on = (form.extra.certifications || []).includes(c);
+                          return (
+                            <button type="button" key={c}
+                              onClick={() => toggleArrayExtra('certifications', c)}
+                              className="rounded-full border text-[12px] font-medium"
+                              style={{
+                                padding: '5px 11px',
+                                borderColor: on ? 'var(--ink)' : 'var(--line)',
+                                background: on ? 'var(--ink)' : 'transparent',
+                                color: on ? 'var(--card)' : 'var(--ink)',
+                              }}>
+                              {c.replace(/_/g, ' ')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-[12.5px] font-semibold mb-1.5">Specialisations (comma-separated)</div>
+                      <input className={fieldCls} style={fStyle}
+                        value={(form.extra.specialisations || []).join(', ')}
+                        onChange={(e) => setExtra('specialisations', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+                        placeholder="weight-loss, strength, prenatal, sports-specific" />
+                    </div>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Package sessions</div>
+                      <input type="number" min={0} className={fieldCls} style={fStyle}
+                        value={form.extra.packageSessions ?? ''}
+                        onChange={(e) => setExtra('packageSessions', e.target.value === '' ? undefined : Number(e.target.value))}
+                        placeholder="12" />
+                    </div>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Package price ₹</div>
+                      <input className={fieldCls} style={fStyle}
+                        value={form.extra.packagePriceRupees || ''}
+                        onChange={(e) => setExtra('packagePriceRupees', e.target.value || undefined)}
+                        placeholder="15000" />
+                    </div>
+                    <div className="md:col-span-2 flex items-center gap-2 mt-1">
+                      <input type="checkbox" id="femaleOnlyToggle"
+                        checked={!!form.extra.femaleOnly}
+                        onChange={(e) => setExtra('femaleOnly', e.target.checked)} />
+                      <label htmlFor="femaleOnlyToggle" className="text-[13px]">Accepts only female clients</label>
+                    </div>
+                  </>
+                )}
+
+                {botType === 'realestate' && (
+                  <>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">Agent RERA number *</div>
+                      <input className={fieldCls} style={fStyle}
+                        value={form.extra.agentReraNumber || ''}
+                        onChange={(e) => setExtra('agentReraNumber', e.target.value || undefined)}
+                        placeholder="A510..." />
+                      <p className="text-[11.5px] text-[var(--mute)] mt-1 m-0">Each broker needs their own RERA registration.</p>
+                    </div>
+                    <div>
+                      <div className="text-[12.5px] font-semibold mb-1.5">RERA state</div>
+                      <input className={fieldCls} style={fStyle}
+                        value={form.extra.agentReraState || ''}
+                        onChange={(e) => setExtra('agentReraState', e.target.value || undefined)}
+                        placeholder="Karnataka" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-[12.5px] font-semibold mb-1.5">RERA expiry date</div>
+                      <input type="date" className={fieldCls} style={fStyle}
+                        value={form.extra.agentReraExpiry || ''}
+                        onChange={(e) => setExtra('agentReraExpiry', e.target.value || undefined)} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-4">
             <div className="text-[12.5px] font-semibold mb-1">Availability</div>
             <p className="text-[11.5px] text-[var(--mute)] m-0 mb-2">{labels.singular} can also update this via WhatsApp commands.</p>
@@ -240,6 +438,48 @@ export default function StaffPage() {
                           <div className="text-[12.5px] text-[var(--mute)] mt-0.5">{m.specialty}{m.price > 0 ? ` · ₹${m.price}` : ''}</div>
                           {m.whatsapp_phone && <div className="zt-mono text-[12px] text-[var(--ink-2)] mt-1 truncate">📱 +{m.whatsapp_phone}</div>}
                           <div className="text-[12px] text-[var(--mute)] mt-1">🗓 {formatAvail(m)}</div>
+                          {/* Vertical-specific summary chips so the owner sees that
+                              the rich fields actually persisted (the original bug
+                              was that they were silently dropped). */}
+                          {m.extra && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {m.extra.role && (
+                                <span className="text-[11px] rounded-full border border-[var(--line)]" style={{ padding: '2px 8px' }}>
+                                  {m.extra.role.replace(/_/g, ' ')}
+                                </span>
+                              )}
+                              {m.extra.gender && (
+                                <span className="text-[11px] rounded-full border border-[var(--line)]" style={{ padding: '2px 8px' }}>
+                                  {m.extra.gender}
+                                </span>
+                              )}
+                              {typeof m.extra.experienceYears === 'number' && (
+                                <span className="text-[11px] rounded-full border border-[var(--line)]" style={{ padding: '2px 8px' }}>
+                                  {m.extra.experienceYears}y exp
+                                </span>
+                              )}
+                              {(m.extra.certifications || []).map((c) => (
+                                <span key={c} className="text-[11px] rounded-full border border-[var(--line)]" style={{ padding: '2px 8px' }}>
+                                  {c.replace(/_/g, ' ')}
+                                </span>
+                              ))}
+                              {(m.extra.specialties || m.extra.specialisations || []).slice(0, 4).map((s, i) => (
+                                <span key={`sp-${i}`} className="text-[11px] rounded-full border border-[var(--line)]" style={{ padding: '2px 8px' }}>
+                                  {s}
+                                </span>
+                              ))}
+                              {m.extra.femaleOnly && (
+                                <span className="text-[11px] rounded-full border" style={{ padding: '2px 8px', borderColor: '#ec4899', color: '#ec4899' }}>
+                                  female-only
+                                </span>
+                              )}
+                              {m.extra.agentReraNumber && (
+                                <span className="text-[11px] rounded-full border" style={{ padding: '2px 8px', borderColor: '#16a34a', color: '#16a34a' }}>
+                                  RERA: {m.extra.agentReraNumber}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {m.bio && <div className="text-[12px] text-[var(--ink-2)] mt-1">{m.bio}</div>}
                         </div>
                         <div className="flex gap-1.5 flex-shrink-0">

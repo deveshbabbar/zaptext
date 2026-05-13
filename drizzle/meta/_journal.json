@@ -15,6 +15,13 @@
       "when": 1778572346206,
       "tag": "0001_gray_saracen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778697600000,
+      "tag": "0002_staff_extra_json",
+      "breakpoints": true
     }
   ]
 }

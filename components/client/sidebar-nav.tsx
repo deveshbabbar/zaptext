@@ -113,6 +113,15 @@ const VERTICAL_ITEMS: Record<string, NavItem[]> = {
     { href: '/client/ecommerce/products', icon: '📦', label: 'Products' },
     { href: '/client/ecommerce/orders', icon: '🧾', label: 'Orders' },
   ],
+  grocery: [
+    { href: '/client/grocery', icon: '🛍️', label: 'Grocery overview' },
+    { href: '/client/grocery/catalog', icon: '🥬', label: "Today's catalog" },
+    { href: '/client/grocery/products', icon: '📦', label: 'Products' },
+    { href: '/client/grocery/zones', icon: '📍', label: 'Delivery zones' },
+    { href: '/client/grocery/slots', icon: '⏰', label: 'Delivery slots' },
+    { href: '/client/grocery/orders', icon: '🧾', label: 'Orders' },
+    { href: '/client/grocery/recurring', icon: '🔁', label: 'Recurring orders' },
+  ],
 };
 
 function buildSections(activeBotType?: string): NavSection[] {

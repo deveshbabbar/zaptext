@@ -220,6 +220,14 @@ export const staff = pgTable(
     // form is simpler, the cell is small enough to never approach Postgres
     // text limits, and no query needs to filter by inner block times.)
     availability: text('availability').default('{}'),
+    // Vertical-specific fields stored as a JSON blob so we can extend the
+    // staff schema without a migration per vertical. Examples:
+    //   salon  → { role, gender, photo, perServiceUpcharge, specialties[], experienceYears }
+    //   gym    → { gender, certifications[], specialisations[], packageSessions, packagePriceRupees, femaleOnly, experienceYears }
+    //   realestate → { agentReraNumber, agentReraState, agentReraExpiry, role }
+    // Empty '{}' for legacy rows. UI strips unknown keys per vertical so
+    // owner edits don't pollute the blob with cross-vertical fields.
+    extra_json: text('extra_json').notNull().default('{}'),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

@@ -426,10 +426,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <div className="rounded-[10px] border border-dashed border-[var(--line)] p-3 mt-4 space-y-2">
                 <p className="text-xs font-semibold m-0">⚡ Demo mode — load preset</p>
                 <p className="text-[11px] text-muted-foreground m-0">
-                  Picks a canned business identity for the chosen vertical and overwrites
-                  business_name + type + knowledge_base + system_prompt in one shot.
-                  Same phone number now behaves like that vertical. Customer-facing data
-                  (subscription, phone_number_id, owner) untouched.
+                  Switches this bot to the chosen vertical end-to-end. Copies
+                  data from the owner&apos;s SEEDED demo bot of that vertical
+                  if one exists (preserves any edits made in the demo workspace);
+                  falls back to a static preset otherwise. Overwrites
+                  business_name + type + knowledge_base + system_prompt.
+                  Customer-facing data (subscription, phone_number_id, owner) untouched.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {BUSINESS_TYPES.filter((bt) => !bt.hidden).map((bt) => (
@@ -447,9 +449,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ vertical: bt.type }),
                           });
-                          const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+                          const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; source?: 'seeded_demo_bot' | 'static_demo_bundles'; business_name?: string };
                           if (!res.ok || !d.ok) throw new Error(d.error || `Switch failed (${res.status})`);
-                          toast.success(`Switched to ${bt.label} demo`);
+                          // Surface the data source so admin knows whether seeded bot
+                          // data was used (preferred) or static fallback.
+                          const sourceNote = d.source === 'seeded_demo_bot'
+                            ? `seeded demo bot${d.business_name ? ` (${d.business_name})` : ''}`
+                            : 'static preset (no seeded bot found for this vertical)';
+                          toast.success(`Switched to ${bt.label} · from ${sourceNote}`);
                           window.location.reload();
                         } catch (err) {
                           toast.error(err instanceof Error ? err.message : 'Switch failed');

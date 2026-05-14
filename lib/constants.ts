@@ -10,6 +10,12 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     bgColor: 'bg-orange-500/10',
     borderColor: 'border-orange-500/30',
   },
+  // TEMPORARILY HIDDEN 2026-05-14: focusing the product on the restaurant
+  // vertical end-to-end before re-enabling the rest. Hiding via
+  // `hidden: true` (rather than deleting) keeps existing non-restaurant
+  // bots functional in dashboards — getBusinessTypeMeta() does not filter
+  // on `hidden`, so labels/icons still render for legacy clients. Flip
+  // these back to enable each vertical again.
   {
     type: 'coaching',
     label: 'Coaching Center / Tutor',
@@ -18,6 +24,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-purple-400',
     bgColor: 'bg-purple-500/10',
     borderColor: 'border-purple-500/30',
+    hidden: true,
   },
   {
     type: 'realestate',
@@ -27,6 +34,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-green-400',
     bgColor: 'bg-green-500/10',
     borderColor: 'border-green-500/30',
+    hidden: true,
   },
   {
     type: 'salon',
@@ -36,6 +44,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-pink-400',
     bgColor: 'bg-pink-500/10',
     borderColor: 'border-pink-500/30',
+    hidden: true,
   },
   {
     // Deprecated 2026-05-10: merged into the broader `ecommerce` vertical.
@@ -58,6 +67,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-cyan-400',
     bgColor: 'bg-cyan-500/10',
     borderColor: 'border-cyan-500/30',
+    hidden: true,
   },
   {
     type: 'gym',
@@ -67,6 +77,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-red-400',
     bgColor: 'bg-red-500/10',
     borderColor: 'border-red-500/30',
+    hidden: true,
   },
   {
     type: 'tiffin',
@@ -76,6 +87,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-amber-400',
     bgColor: 'bg-amber-500/10',
     borderColor: 'border-amber-500/30',
+    hidden: true,
   },
   {
     type: 'grocery',
@@ -85,6 +97,7 @@ export const BUSINESS_TYPES: BusinessTypeMeta[] = [
     color: 'text-emerald-400',
     bgColor: 'bg-emerald-500/10',
     borderColor: 'border-emerald-500/30',
+    hidden: true,
   },
 ];
 

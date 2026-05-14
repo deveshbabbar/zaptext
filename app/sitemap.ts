@@ -6,15 +6,14 @@ const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://zaptext.shop';
 // (e.g. "tiffin service WhatsApp bot"). Keep this in sync with
 // VERTICAL_CONTENT in lib/vertical-content.ts. `d2c` is intentionally
 // excluded — that slug 301-redirects to /ecommerce after the merge.
+//
+// TEMPORARILY 2026-05-14: sitemap only advertises the restaurant
+// landing page while the product is focused on the restaurant vertical.
+// Other /[vertical] routes still resolve (so any inbound links keep
+// working) but we stop pointing crawlers at them. Re-add slugs here as
+// each vertical re-opens for new signups.
 const VERTICAL_SLUGS = [
   'restaurant',
-  'tiffin',
-  'salon',
-  'gym',
-  'coaching',
-  'realestate',
-  'ecommerce',
-  'grocery',
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

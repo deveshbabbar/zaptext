@@ -156,6 +156,13 @@ export function MenuPublicClient({
   const [prefillCount, setPrefillCount] = useState(0);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone);
+  // Customer location state — initialised from the URL (when the bot
+  // forwarded a WhatsApp location share via /m?lat=&lng=). The Use
+  // current location button below overrides this with live device GPS.
+  const [customerLat, setCustomerLat] = useState<number | null>(prefillLat ?? null);
+  const [customerLng, setCustomerLng] = useState<number | null>(prefillLng ?? null);
+  const [gpsPending, setGpsPending] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
 
   // One-shot voice/text-order pre-fill. When the bot forwarded the
   // customer's words via ?q=, scan the query for item-name matches
@@ -303,12 +310,14 @@ export function MenuPublicClient({
           notes: notes.trim(),
           items: cartLines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit })),
           marketingOptIn,
-          // Phase 3K — when the customer reached /m via a WhatsApp
-          // location share, the bot pre-filled lat/lng in the URL.
-          // The server uses these to assign the right outlet + saves
-          // them on the order for analytics.
-          deliveryLat: typeof prefillLat === 'number' ? prefillLat : undefined,
-          deliveryLng: typeof prefillLng === 'number' ? prefillLng : undefined,
+          // Phase 3K/3L — customer location for outlet routing.
+          // Pre-filled from the URL (when reached via WhatsApp
+          // location share) AND overridable by the in-page "Use my
+          // current location" button (browser GPS) or "Pick on
+          // Google Maps" flow. The server uses these to assign the
+          // right outlet + saves them on the order for analytics.
+          deliveryLat: typeof customerLat === 'number' ? customerLat : undefined,
+          deliveryLng: typeof customerLng === 'number' ? customerLng : undefined,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; orderId?: string; total?: number; error?: string };
@@ -623,13 +632,141 @@ export function MenuPublicClient({
                 style={inputStyle}
               />
               {mode === 'delivery' && (
-                <textarea
-                  placeholder="Delivery address with landmark / Address with landmark"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  rows={2}
-                  style={{ ...inputStyle, resize: 'vertical' }}
-                />
+                <>
+                  <textarea
+                    placeholder="Delivery address with landmark / Address with landmark"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    rows={2}
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                  />
+                  {/*
+                    Phase 3L — Location pin UX. Three paths in priority order:
+                      1. Bot forwarded WhatsApp location share (URL ?lat=&lng=)
+                         → already loaded into customerLat/Lng on mount, shows
+                         "Location received from WhatsApp ✓".
+                      2. "Use my current location" — navigator.geolocation
+                         live GPS prompt. Works on any modern mobile browser.
+                      3. "Pick on Google Maps" — fallback for customers who
+                         don't want to share GPS or are using a stale link.
+                         Opens Google Maps in a new tab; user copies the URL,
+                         pastes back into a manual lat/lng field (planned for
+                         a follow-up commit when we install mapcn).
+                    Empty state shows zero location. Submit endpoint still
+                    accepts the order — it just falls back to "manual route"
+                    for multi-outlet kitchens (admin can re-route).
+                  */}
+                  <div
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #ddd',
+                      borderRadius: 8,
+                      padding: 10,
+                      marginBottom: 8,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      📍 Your delivery location
+                    </div>
+                    {customerLat !== null && customerLng !== null ? (
+                      <div style={{ color: '#1a5e1a', marginBottom: 6 }}>
+                        ✓ Pinned at {customerLat.toFixed(5)}, {customerLng.toFixed(5)}
+                      </div>
+                    ) : (
+                      <div style={{ color: '#666', marginBottom: 6 }}>
+                        No location set. Sharing helps us pick the nearest outlet
+                        and estimate ETA accurately.
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof navigator === 'undefined' || !navigator.geolocation) {
+                            setGpsError('Your browser does not support location sharing.');
+                            return;
+                          }
+                          setGpsPending(true);
+                          setGpsError(null);
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              setCustomerLat(pos.coords.latitude);
+                              setCustomerLng(pos.coords.longitude);
+                              setGpsPending(false);
+                            },
+                            (err) => {
+                              setGpsPending(false);
+                              setGpsError(
+                                err.code === err.PERMISSION_DENIED
+                                  ? 'Permission denied. Enable location in browser settings.'
+                                  : 'Could not get your location. Try the map button instead.'
+                              );
+                            },
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                          );
+                        }}
+                        disabled={gpsPending}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 99,
+                          border: '1px solid #111',
+                          background: '#fff',
+                          fontWeight: 600,
+                          fontSize: 12,
+                          cursor: gpsPending ? 'wait' : 'pointer',
+                        }}
+                      >
+                        {gpsPending ? 'Getting GPS…' : '📡 Use my current location'}
+                      </button>
+                      <a
+                        href={
+                          customerLat !== null && customerLng !== null
+                            ? `https://www.google.com/maps?q=${customerLat},${customerLng}`
+                            : `https://www.google.com/maps`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 99,
+                          border: '1px solid #ddd',
+                          background: '#fafafa',
+                          color: '#222',
+                          fontWeight: 600,
+                          fontSize: 12,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                        }}
+                      >
+                        🗺️ Open Google Maps
+                      </a>
+                      {(customerLat !== null || customerLng !== null) && (
+                        <button
+                          type="button"
+                          onClick={() => { setCustomerLat(null); setCustomerLng(null); setGpsError(null); }}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 99,
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#888',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Clear pin
+                        </button>
+                      )}
+                    </div>
+                    {gpsError && (
+                      <div style={{ color: '#900', fontSize: 11, marginTop: 6 }}>
+                        {gpsError}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
               {mode === 'dine_in' && (
                 <input

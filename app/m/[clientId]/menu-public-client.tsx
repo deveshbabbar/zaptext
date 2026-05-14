@@ -205,6 +205,10 @@ export function MenuPublicClient({
   const [mode, setMode] = useState<OrderMode>(initialMode);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [tableNumber, setTableNumber] = useState('');
+  // Explicit marketing opt-in toggle. Defaults to OFF — DPDPA §6
+  // requires consent be "free, specific, informed, unconditional and
+  // unambiguous"; a pre-ticked checkbox is the opposite of "free".
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ orderId: string; total: number; mode: OrderMode } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -290,6 +294,7 @@ export function MenuPublicClient({
           tableNumber: tableNumber.trim(),
           notes: notes.trim(),
           items: cartLines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit })),
+          marketingOptIn,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; orderId?: string; total?: number; error?: string };
@@ -626,8 +631,40 @@ export function MenuPublicClient({
                 placeholder="Special notes (less spicy, no onion…) / Special notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                style={{ ...inputStyle, marginBottom: 0 }}
+                style={{ ...inputStyle, marginBottom: 8 }}
               />
+              {/*
+                DPDPA §6 explicit marketing opt-in. Always off by default
+                (pre-ticked = invalid consent). Storing the granted
+                permission is the kitchen's ticket to ever send a
+                Marketing template to this customer later.
+              */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  fontSize: 12,
+                  color: '#444',
+                  cursor: 'pointer',
+                  padding: '6px 4px',
+                  lineHeight: 1.4,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={marketingOptIn}
+                  onChange={(e) => setMarketingOptIn(e.target.checked)}
+                  style={{ marginTop: 2, flexShrink: 0 }}
+                />
+                <span>
+                  I&apos;d like updates from <b>{businessName}</b> about offers, festive menus, and weekly specials on WhatsApp.
+                  <br />
+                  <span style={{ fontSize: 11, color: '#888' }}>
+                    Optional. You can reply STOP anytime to unsubscribe. Order confirmations are sent regardless.
+                  </span>
+                </span>
+              </label>
             </div>
           </section>
         )}

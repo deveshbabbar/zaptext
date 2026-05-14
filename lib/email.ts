@@ -288,21 +288,26 @@ export function tplNewOrder(p: {
     ? `••• ${phoneDigits.slice(-4)}`
     : '•••';
 
+  // infoBox runs esc() on every value, so we pass PLAIN TEXT here.
+  // Pre-escaping (e.g. ${esc(...)}) would double-escape; HTML wrappers
+  // do not survive — they render as visible markup in the inbox
+  // (caught a literal "<span style=...>" appearing in a customer
+  // demo email after the Phase-0 PII-minimisation work).
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Mode', value: modeLabel },
-    { label: 'Customer', value: `${esc(p.customerName || 'Unknown')} (${esc(maskedPhone)})` },
+    { label: 'Customer', value: `${p.customerName || 'Unknown'} (${maskedPhone})` },
   ];
   if (p.mode === 'home_delivery' && p.deliveryAddress) {
     detailRows.push({
       label: 'Delivery to',
-      value: '<span style="color:#666;">Address available in dashboard →</span>',
+      value: 'Address available in dashboard →',
     });
   }
   if (p.notes) {
-    detailRows.push({ label: 'Notes', value: esc(p.notes) });
+    detailRows.push({ label: 'Notes', value: p.notes });
   }
   detailRows.push({ label: 'Source', value: sourceLabel });
-  detailRows.push({ label: 'Order ID', value: `<code style="font-size:12px;color:#666;">${esc(p.orderId)}</code>` });
+  detailRows.push({ label: 'Order ID', value: p.orderId });
 
   const body = `
     <p>Hi <strong>${esc(p.ownerName)}</strong>,</p>

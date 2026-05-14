@@ -30,6 +30,10 @@ interface SubmitBody {
   tableNumber?: string;
   notes?: string;
   items?: Array<{ name?: string; qty?: number; price?: number }>;
+  /** DPDPA §6 explicit marketing opt-in. When true we log a separate
+   *  `marketing_opt_in` consent event so future Marketing templates
+   *  have valid evidence-of-consent under Meta's opt-in policy. */
+  marketingOptIn?: boolean;
 }
 
 const MAX_ITEMS_PER_ORDER = 40;
@@ -163,6 +167,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'No valid items in order' }, { status: 400 });
   }
 
+  // Minimum-order enforcement — applies to DELIVERY mode only. The /m
+  // page pricing-transparency banner advertises the minimum; if the
+  // submit endpoint then silently accepts an order below it (caught
+  // 2026-05-14 with a ₹89 order against a ₹200 advertised minimum),
+  // we're violating both the CCPA Dark Patterns disclosure promise
+  // and the customer's reasonable expectation. Dine-in / takeaway
+  // are unaffected — restaurants traditionally apply minimums only
+  // to delivery.
+  if (mode === 'delivery') {
+    let minOrderText = '';
+    try {
+      if (client.knowledge_base_json) {
+        const kbObj = JSON.parse(client.knowledge_base_json) as Record<string, unknown>;
+        if (typeof kbObj.minimumOrder === 'string') minOrderText = kbObj.minimumOrder;
+      }
+    } catch { /* ignore — no enforcement if KB unreadable */ }
+    // Strip currency symbols / commas / spaces and pull the first
+    // numeric run. Accepts "Rs.200", "₹200", "200", "Rs 200/-" etc.
+    const minMatch = minOrderText.replace(/,/g, '').match(/(\d+(?:\.\d+)?)/);
+    const minOrder = minMatch ? parseFloat(minMatch[1]) : 0;
+    if (minOrder > 0) {
+      const subtotal = cleanItems.reduce((s, it) => s + it.qty * it.price, 0);
+      if (subtotal < minOrder) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              `Minimum delivery order is ₹${minOrder.toFixed(0)}. ` +
+              `Your cart is ₹${subtotal.toFixed(0)} — please add ₹${(minOrder - subtotal).toFixed(0)} more, ` +
+              `or switch to takeaway / dine-in.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   const orderType: DineInOrderType =
     mode === 'delivery' ? 'home_delivery' : mode === 'dine_in' ? 'dine_in' : 'parcel_takeaway';
 
@@ -227,6 +268,7 @@ export async function POST(request: NextRequest) {
   // specific, informed" consent to retain order details + send a WA
   // confirmation. Log it fire-and-forget so a DB hiccup never fails
   // the order.
+  const ua = request.headers.get('user-agent') || '';
   void recordConsentEvent({
     client_id: clientId,
     customer_phone: customerPhone,
@@ -234,8 +276,26 @@ export async function POST(request: NextRequest) {
     source: `/m/${clientId}`,
     business_name_shown: client.business_name,
     categories: ['transactional'],
-    user_agent: request.headers.get('user-agent') || '',
+    user_agent: ua,
   });
+
+  // Separately log marketing opt-in when the customer explicitly
+  // ticked the box — this is the ticket Meta requires before any
+  // Marketing template can be sent to this number (Business Messaging
+  // Policy: "opt-in permission confirming that they wish to receive
+  // subsequent messages"). Default-off in the UI; tick is the entire
+  // signal we need.
+  if (body.marketingOptIn === true) {
+    void recordConsentEvent({
+      client_id: clientId,
+      customer_phone: customerPhone,
+      event_type: 'marketing_opt_in',
+      source: `/m/${clientId}`,
+      business_name_shown: client.business_name,
+      categories: ['marketing', 'transactional'],
+      user_agent: ua,
+    });
+  }
 
   return NextResponse.json({ ok: true, orderId: order.id, total: order.total });
 }

@@ -522,6 +522,40 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       message_type: 'text',
     });
 
+    // ─── Marketing opt-out keyword detector ───────────────────────────
+    // DPDPA §6 + Meta opt-out: every business message recipient must be
+    // able to unsubscribe with a simple keyword. Fires before any AI
+    // step so the customer is never charged for an opt-out reply via
+    // wasted Groq calls — and we log the consent_log row for evidence.
+    if (msg.type === 'text' && msg.text) {
+      const stopMatch = /^\s*(stop|unsubscribe|ruko|बंद|बंद\s*करो|stop\s*karo|band\s*karo)\s*$/i.test(msg.text.trim());
+      if (stopMatch) {
+        void recordConsentEvent({
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          event_type: 'marketing_opt_out',
+          source: 'webhook-keyword',
+          business_name_shown: client.business_name,
+          categories: [],
+        });
+        const ack =
+          `Got it — you won't receive offers or specials from ${client.business_name}. ` +
+          `You can still message us for orders, and we'll always reply.\n\n` +
+          `Theek hai — aapko ${client.business_name} se offers / specials nahi aayenge. ` +
+          `Order ke liye message kar sakte hain, hum reply zaroor karenge.`;
+        await sendWhatsAppMessage(phoneNumberId, customerPhone, ack);
+        await addConversationMessage({
+          timestamp: getISTTimestamp(),
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'outgoing',
+          message: ack,
+          message_type: 'text',
+        });
+        continue;
+      }
+    }
+
     // ─── Restaurant: welcome-menu "See the menu" tap short-circuit ───
     // When a customer taps a list-reply row with id 'menu' / 'services' /
     // 'order' we know exactly what to send — the public menu link — so

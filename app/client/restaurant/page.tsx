@@ -104,6 +104,53 @@ export default async function RestaurantOverviewPage() {
         />
         <SubTypesChips kb={kb} />
 
+        {/*
+          First-run "Getting started" guide. Renders ONLY for fresh
+          owner accounts (zero menu items + no orders this week + role
+          is owner). Auto-hides once the owner ticks any of the steps,
+          so it never clutters a working dashboard. Outlet managers
+          never see this — their setup path is different.
+        */}
+        {viewer.role === 'owner' && totalMenuItems === 0 && stats.todayOrderCount === 0 && stats.last7DaysRevenue.every((d) => d.revenue === 0) && (
+          <Panel
+            title="Welcome — let's get your bot ready (3 quick steps)"
+            sub="Each step takes 1-2 minutes. Once done, your WhatsApp customers can start ordering."
+          >
+            <ol className="list-decimal pl-5 space-y-2.5 text-[14px]">
+              <li>
+                <a href="/client/restaurant/menu" className="font-semibold underline hover:no-underline">
+                  Add your menu
+                </a>{' '}
+                — paste a list, snap a photo of your printed menu, or add items manually. The bot can only take orders for what's on the menu.
+              </li>
+              <li>
+                <a href="/client/restaurant/qr-codes" className="font-semibold underline hover:no-underline">
+                  Set up your tables (optional)
+                </a>{' '}
+                — only needed if you want QR-scan dine-in. Skip for delivery / takeaway-only kitchens.
+              </li>
+              <li>
+                <a href="/client/welcome-menu" className="font-semibold underline hover:no-underline">
+                  Polish the welcome message
+                </a>{' '}
+                — first thing customers see when they message you. Default is fine; customise to match your brand.
+              </li>
+            </ol>
+            <div className="mt-4 pt-3 border-t border-[var(--line)] text-[12.5px] text-[var(--mute)] space-y-1">
+              <p>
+                <b>Test it:</b> send a message to your WhatsApp number from your personal phone. Type &quot;Hi&quot; — the bot should greet you and offer the menu.
+              </p>
+              <p>
+                <b>Need to invite an outlet manager?</b> Add an outlet first in{' '}
+                <a href="/client/restaurant/outlets" className="underline">Outlets</a>{', '}
+                then invite from{' '}
+                <a href="/client/restaurant/team" className="underline">Team Members</a>.
+                (Only relevant if you run multiple branches.)
+              </p>
+            </div>
+          </Panel>
+        )}
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi
             label="Revenue today"

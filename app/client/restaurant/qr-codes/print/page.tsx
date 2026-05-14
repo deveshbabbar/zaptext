@@ -3,21 +3,38 @@
 // We render server-side with embedded SVG QR codes so it's pixel-perfect
 // at any paper size and doesn't need any client-side JS.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { listTables } from '@/lib/db/restaurant-dine-in';
 import { buildWaUrlForTable, generateQrSvg } from '@/lib/restaurant-qr';
+import { getOutletsForClient, isMultiOutletEnabled } from '@/lib/db/outlets';
 
 export default async function RestaurantQrPrintPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') redirect('/client/dashboard');
-  const activeBot = user.activeBot;
-  const tables = (await listTables(activeBot.client_id).catch(() => [])).filter((t) => t.is_active);
+  // Phase 3I v2 — outlet manager prints only their outlet's tables.
+  // Owner prints chain-wide. Multi-outlet kitchens embed the outlet
+  // slug in each QR so a scan auto-routes to the right outlet.
+  const viewer = await requireRestaurantViewer();
+  const activeBot = viewer.activeBot;
+  const tables = (await listTables(
+    activeBot.client_id,
+    viewer.restrictedOutletId || undefined,
+  ).catch(() => [])).filter((t) => t.is_active);
   const botPhone = activeBot.whatsapp_number || '';
+
+  const [multiEnabled, outletsList] = await Promise.all([
+    isMultiOutletEnabled(activeBot.client_id),
+    getOutletsForClient(activeBot.client_id),
+  ]);
+  const outletSlugById = new Map(outletsList.map((o) => [o.id, o.slug]));
 
   const cards = await Promise.all(
     tables.map(async (t) => {
-      const waUrl = buildWaUrlForTable({ botPhone, tableNumber: t.table_number, qrToken: t.qr_token });
+      const outletSlug = multiEnabled ? (outletSlugById.get(t.outlet_id) || '') : '';
+      const waUrl = buildWaUrlForTable({
+        botPhone,
+        tableNumber: t.table_number,
+        qrToken: t.qr_token,
+        outletSlug: outletSlug || undefined,
+      });
       const svg = await generateQrSvg(waUrl);
       return { tableNumber: t.table_number, svg };
     })

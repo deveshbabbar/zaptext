@@ -4,19 +4,21 @@
 // bookings store — restaurant tables ARE bookings in this schema — and
 // renders them grouped by date with today first, then upcoming.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Panel, StatusPill } from '@/components/app/primitives';
 
 export default async function RestaurantTablesPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') {
-    redirect('/client/dashboard');
-  }
+  // Phase 3I v2 — viewer-context allows outlet managers to see
+  // reservations. NB: bookings table doesn't yet carry outlet_id
+  // (added in dine_in_orders + restaurant_tables in 3D, but not
+  // bookings); managers see chain-wide reservations until a
+  // follow-up migration ships. Acceptable for v1 — most chains
+  // don't yet have heavy reservation volumes.
+  const viewer = await requireRestaurantViewer();
   const today = getISTDate();
-  const all = await getBookingsByClient(user.activeBot.client_id).catch(() => []);
+  const all = await getBookingsByClient(viewer.activeBot.client_id).catch(() => []);
 
   // Filter to today + future, sort ascending. Past bookings are noise here.
   const upcoming = all

@@ -2,8 +2,7 @@
 // Server-renders the current list of tables with a live preview of each
 // QR. Add/remove tables and rotate all tokens via the client component.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { listTables, upsertTable } from '@/lib/db/restaurant-dine-in';
 import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
 import { buildWaUrlForTable, generateQrDataUrl, generateQrToken } from '@/lib/restaurant-qr';
@@ -12,12 +11,20 @@ import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
 import { QrCodesClient } from './qr-codes-client';
 
 export default async function RestaurantQrCodesPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') redirect('/client/dashboard');
+  // Phase 3I v2 — viewer-context. Outlet managers see + print only
+  // their outlet's table QRs. Add-table / bulk-create still works
+  // for them (server-side API validates outletId belongs to their
+  // chain).
+  const viewer = await requireRestaurantViewer();
+  // Synthesise the user shape downstream code expects.
+  const user = { activeBot: viewer.activeBot };
 
-  const dineInUnlocked = await isDineInEnabledForClient(user.activeBot.client_id);
-  let tables = await listTables(user.activeBot.client_id).catch(() => []);
-  const botPhone = user.activeBot.whatsapp_number || '';
+  const dineInUnlocked = await isDineInEnabledForClient(viewer.activeBot.client_id);
+  let tables = await listTables(
+    viewer.activeBot.client_id,
+    viewer.restrictedOutletId || undefined,
+  ).catch(() => []);
+  const botPhone = viewer.activeBot.whatsapp_number || '';
 
   // Auto-seed tables on first visit. If the owner declared a table count
   // during onboarding (`numberOfTables` in knowledge_base_json) and no
@@ -25,7 +32,11 @@ export default async function RestaurantQrCodesPage() {
   // tokens. Only runs once — subsequent visits hit the early-return.
   // Skipped if dine-in is locked (not on Growth+ plan) so we don't
   // surprise the customer with a feature they haven't paid for.
-  if (tables.length === 0 && dineInUnlocked) {
+  // Auto-seed runs only for OWNERS on first visit. Outlet managers
+  // never trigger this — bulk creation of all-numbered tables would
+  // dump them into the synthetic 'main' outlet, which isn't the
+  // manager's. Owners can re-create from the form per outlet.
+  if (tables.length === 0 && dineInUnlocked && viewer.role === 'owner') {
     let declaredCount = 0;
     try {
       const kb = user.activeBot.knowledge_base_json
@@ -44,7 +55,7 @@ export default async function RestaurantQrCodesPage() {
           seats: 0,
         }).catch(() => undefined);
       }
-      tables = await listTables(user.activeBot.client_id).catch(() => []);
+      tables = await listTables(viewer.activeBot.client_id).catch(() => []);
     }
   }
 

@@ -6,13 +6,17 @@
 // the bot quotes the offer when customers ask "kuch offer hai aaj?".
 
 import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { SpecialsEditor } from './specials-editor';
 
 export default async function RestaurantSpecialsPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') {
-    redirect('/client/dashboard');
+  // Phase 3I v2 — Specials are chain-wide today (per-outlet specials
+  // is a future migration). Owner-only edits; outlet managers bounce
+  // to overview rather than seeing an editor that they can't save
+  // (avoids the confusing "I edited but nothing happened" trap).
+  const viewer = await requireRestaurantViewer();
+  if (viewer.role !== 'owner') {
+    redirect('/client/restaurant');
   }
-  return <SpecialsEditor businessName={user.activeBot.business_name} />;
+  return <SpecialsEditor businessName={viewer.activeBot.business_name} />;
 }

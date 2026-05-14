@@ -6,20 +6,17 @@
 // active (or any restaurant bot in their account) and otherwise bounce
 // them back to the generic dashboard.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 
 export default async function RestaurantWorkspaceLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireClientWithBots();
-  // Only bounce if the owner doesn't have ANY restaurant bot. The
-  // previous "wrong active bot → redirect to /client/bots" check has
-  // been removed — the sidebar now only shows the restaurant items
-  // when the active bot IS restaurant, so users hitting these URLs
-  // are already on the right context.
-  if (!user.allBots.some((b) => b.type === 'restaurant')) redirect('/client/dashboard');
+  // Phase 3I v2 — works for BOTH owners (they have a restaurant bot)
+  // AND outlet managers (they have an active team_members membership
+  // for a restaurant bot, but no owned bot of their own). Anyone
+  // else gets redirected by the viewer-context's own fallback.
+  await requireRestaurantViewer();
   return <>{children}</>;
 }

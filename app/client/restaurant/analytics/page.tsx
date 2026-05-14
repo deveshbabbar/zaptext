@@ -2,8 +2,7 @@
 // peak hours, top-selling items. All derived from dine_in_orders for the
 // current IST day; no separate analytics rollup table needed yet.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { listOrdersForToday } from '@/lib/db/restaurant-dine-in';
 import { PageTopbar, PageHead, Kpi, Panel } from '@/components/app/primitives';
 
@@ -12,10 +11,15 @@ function fmtINR(n: number): string {
 }
 
 export default async function RestaurantAnalyticsPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') redirect('/client/dashboard');
+  // Phase 3I v2 — viewer-context. Outlet managers see only their
+  // outlet's orders; owners see chain-wide.
+  const viewer = await requireRestaurantViewer();
 
-  const orders = await listOrdersForToday(user.activeBot.client_id).catch(() => []);
+  const orders = await listOrdersForToday(
+    viewer.activeBot.client_id,
+    undefined,
+    viewer.restrictedOutletId || undefined,
+  ).catch(() => []);
   const placed = orders.filter((o) => o.status !== 'cancelled');
 
   const revenue = placed.reduce((s, o) => s + o.total, 0);

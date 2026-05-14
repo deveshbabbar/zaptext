@@ -2,17 +2,19 @@
 // Lists currently OPEN sessions for the active restaurant bot, with each
 // session's items, time elapsed, and a "Close session" button.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { listOpenSessions, getOrdersBySession, type DineInOrder } from '@/lib/db/restaurant-dine-in';
 import { PageTopbar, PageHead, Panel } from '@/components/app/primitives';
 import { LiveTablesClient } from './live-tables-client';
 
 export default async function RestaurantTablesLivePage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') redirect('/client/dashboard');
+  // Phase 3I v2 — viewer-context scopes sessions by outlet for managers.
+  const viewer = await requireRestaurantViewer();
 
-  const sessions = await listOpenSessions(user.activeBot.client_id).catch(() => []);
+  const sessions = await listOpenSessions(
+    viewer.activeBot.client_id,
+    viewer.restrictedOutletId || undefined,
+  ).catch(() => []);
 
   const ordersBySession = new Map<string, DineInOrder[]>();
   await Promise.all(

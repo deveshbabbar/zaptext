@@ -6,13 +6,16 @@
 // from the session), so this page doesn't fetch anything server-side.
 
 import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { MenuEditor } from './menu-editor';
 
 export default async function RestaurantMenuPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') {
-    redirect('/client/dashboard');
+  // Phase 3I v2 — Menu is chain-wide; outlet-specific menu variants
+  // are a future feature. Owner-only edits; outlet managers bounce
+  // to overview rather than seeing an editor they can't save.
+  const viewer = await requireRestaurantViewer();
+  if (viewer.role !== 'owner') {
+    redirect('/client/restaurant');
   }
-  return <MenuEditor businessName={user.activeBot.business_name} />;
+  return <MenuEditor businessName={viewer.activeBot.business_name} />;
 }

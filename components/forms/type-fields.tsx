@@ -173,6 +173,74 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
         </div>
       </div>
 
+      {/*
+        Outlet structure toggle (Phase 3C). Single-location kitchens
+        get the simple onboarding — multi-outlet UI stays hidden.
+        Chains opt in here and finish per-outlet setup in
+        Settings → Outlets after signup. We store both:
+          - multiOutletEnabled (boolean) — UI gate everywhere
+          - outletCount (number)         — for analytics / billing tiers
+      */}
+      <div>
+        <Label>How many outlets / branches do you operate?</Label>
+        <div className="flex gap-2 mt-1 flex-wrap">
+          {[
+            { v: 'single', l: 'Just one location' },
+            { v: 'multi', l: 'Multiple outlets / branches' },
+          ].map((o) => {
+            const active =
+              o.v === 'multi' ? (data.multiOutletEnabled as boolean) === true
+              : (data.multiOutletEnabled as boolean) !== true;
+            return (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => {
+                  const isMulti = o.v === 'multi';
+                  onChange('multiOutletEnabled', isMulti);
+                  if (isMulti) {
+                    const current = Number(data.outletCount) || 2;
+                    onChange('outletCount', current < 2 ? 2 : current);
+                  } else {
+                    onChange('outletCount', 1);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                  active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary border-border'
+                }`}
+              >
+                {o.l}
+              </button>
+            );
+          })}
+        </div>
+        {(data.multiOutletEnabled as boolean) === true && (
+          <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
+            <div>
+              <Label className="text-xs">Roughly how many outlets right now?</Label>
+              <Input
+                type="number"
+                min={2}
+                max={50}
+                value={(data.outletCount as number) || 2}
+                onChange={(e) => {
+                  const n = Math.max(2, Math.min(50, parseInt(e.target.value, 10) || 2));
+                  onChange('outletCount', n);
+                }}
+                className="mt-1 w-24"
+              />
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              After signup, you&apos;ll see <b>Settings → Outlets</b> in your
+              dashboard. Add each outlet (name, address, FSSAI, manager
+              email, delivery radius). One WhatsApp number serves all
+              outlets — the bot auto-routes orders by QR scan, customer
+              location, or a quick branch picker.
+            </p>
+          </div>
+        )}
+      </div>
+
       <div>
         <Label>Cuisine Type *</Label>
         <Input placeholder="North Indian, Chinese, Mughlai" value={(data.cuisineType as string) || ''} onChange={(e) => onChange('cuisineType', e.target.value)} />

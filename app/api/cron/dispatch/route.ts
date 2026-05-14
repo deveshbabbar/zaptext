@@ -27,6 +27,7 @@ const TASK_PIPELINES: Record<string, string[]> = {
     '/api/cron/grocery-recurring',
     '/api/cron/restaurant-sessions/close-stale',
     '/api/cron/qr-auto-rotate',
+    '/api/cron/low-stock-alerts',
   ],
   evening: [
     '/api/cron/evening-summary',

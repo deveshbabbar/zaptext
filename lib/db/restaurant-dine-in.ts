@@ -469,6 +469,12 @@ export interface RestaurantStats {
   todayOrderCount: number;
   last7DaysRevenue: Array<{ date: string; revenue: number; orderCount: number }>;
   topItemsThisMonth: Array<{ name: string; qty: number; revenue: number }>;
+  /** Order count per IST hour-of-day (0-23) bucketed across the last 7
+   *  days. Lets the owner spot peak ordering windows for staff scheduling. */
+  peakHoursLast7d: number[];
+  /** Customer retention this month: total unique customers, how many
+   *  ordered ≥2 times, repeat percentage. */
+  customerRetention: { totalCustomers: number; repeatCustomers: number; repeatPct: number };
 }
 
 export async function getRestaurantStats(clientId: string): Promise<RestaurantStats> {
@@ -546,10 +552,40 @@ export async function getRestaurantStats(clientId: string): Promise<RestaurantSt
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 10);
 
+  // Peak hours: bucket weekRows by IST hour-of-day (0-23). Cancelled
+  // orders excluded so the heatmap reflects real demand, not abandoned
+  // attempts.
+  const peakHoursLast7d = new Array(24).fill(0) as number[];
+  for (const r of weekRows) {
+    if (r.status === 'cancelled') continue;
+    const d = new Date(r.created_at);
+    // Get IST hour via toLocaleString trick.
+    const istHourStr = d.toLocaleString('en-GB', {
+      timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false,
+    });
+    const hr = parseInt(istHourStr, 10);
+    if (hr >= 0 && hr <= 23) peakHoursLast7d[hr] += 1;
+  }
+
+  // Customer retention: how many distinct customer phones ordered
+  // ≥2 times this month vs total. Simple, useful for marketing.
+  const orderCountByPhone = new Map<string, number>();
+  for (const r of monthRows) {
+    if (r.status === 'cancelled') continue;
+    const phone = (r.customer_phone || '').trim();
+    if (!phone) continue;
+    orderCountByPhone.set(phone, (orderCountByPhone.get(phone) || 0) + 1);
+  }
+  const totalCustomers = orderCountByPhone.size;
+  const repeatCustomers = [...orderCountByPhone.values()].filter((n) => n >= 2).length;
+  const repeatPct = totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0;
+
   return {
     todayRevenue,
     todayOrderCount,
     last7DaysRevenue: [...byDate.entries()].map(([date, v]) => ({ date, revenue: v.revenue, orderCount: v.orderCount })),
     topItemsThisMonth,
+    peakHoursLast7d,
+    customerRetention: { totalCustomers, repeatCustomers, repeatPct },
   };
 }

@@ -27,9 +27,12 @@ export default async function RestaurantOverviewPage() {
     getRestaurantStats(clientId).catch(() => ({
       todayRevenue: 0, todayOrderCount: 0,
       last7DaysRevenue: [], topItemsThisMonth: [],
+      peakHoursLast7d: new Array(24).fill(0),
+      customerRetention: { totalCustomers: 0, repeatCustomers: 0, repeatPct: 0 },
     })),
   ]);
   const peakRev = Math.max(1, ...stats.last7DaysRevenue.map((d) => d.revenue));
+  const peakHourMax = Math.max(1, ...stats.peakHoursLast7d);
 
   const confirmedToday = todayBookings.filter((b) => b.status === 'confirmed').length;
   const cancelledToday = todayBookings.filter((b) => b.status === 'cancelled').length;
@@ -164,6 +167,84 @@ export default async function RestaurantOverviewPage() {
                     </li>
                   ))}
                 </ol>
+              )}
+            </Panel>
+          </div>
+        )}
+
+        {/* Peak-hours heatmap + customer retention. Heatmap is 24 vertical
+            columns (one per IST hour) — colour intensity scales with order
+            count over the last 7 days. Helps owner schedule kitchen + delivery
+            staff for actual demand windows, not guessed ones. */}
+        {(stats.peakHoursLast7d.some((n) => n > 0) || stats.customerRetention.totalCustomers > 0) && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            <Panel
+              title="Peak hours — last 7 days"
+              sub={`Total ${stats.peakHoursLast7d.reduce((s, n) => s + n, 0)} orders · darker = busier window`}
+              className="lg:col-span-2"
+            >
+              {stats.peakHoursLast7d.every((n) => n === 0) ? (
+                <p className="text-[13px] text-[var(--mute)] py-2">Once orders start flowing, your busiest hours will plot here — useful for scheduling kitchen + delivery staff at the right times.</p>
+              ) : (
+                <>
+                  <div className="flex items-end gap-[3px]" style={{ height: 110 }}>
+                    {stats.peakHoursLast7d.map((count, hr) => {
+                      const intensity = peakHourMax > 0 ? count / peakHourMax : 0;
+                      const heightPct = Math.max(2, intensity * 100);
+                      // Hour band labels for the under-axis
+                      const showLabel = hr % 3 === 0;
+                      return (
+                        <div key={hr} className="flex-1 flex flex-col items-center gap-1" title={`${hr}:00 – ${hr + 1}:00 IST · ${count} orders`}>
+                          <div
+                            style={{
+                              width: '100%',
+                              height: `${heightPct}%`,
+                              background: `color-mix(in oklab, var(--ink) ${Math.round(intensity * 100)}%, transparent)`,
+                              minHeight: count > 0 ? 4 : 2,
+                              borderRadius: '3px 3px 0 0',
+                              border: count === 0 ? '1px dashed var(--line)' : 'none',
+                            }}
+                          />
+                          {showLabel && (
+                            <div className="text-[9.5px] text-[var(--mute)] zt-mono">{hr.toString().padStart(2, '0')}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[10.5px] text-[var(--mute)] mt-2 text-center">Hour-of-day (IST, 0–23)</div>
+                </>
+              )}
+            </Panel>
+
+            <Panel
+              title="Customer retention"
+              sub="This month, who came back?"
+            >
+              {stats.customerRetention.totalCustomers === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] py-2">No customers yet this month. Once the first 5-10 orders land, you&apos;ll see how many came back.</p>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[.06em] text-[var(--mute)] font-semibold mb-1">Repeat customer rate</div>
+                    <div className="text-[34px] font-bold leading-none">{stats.customerRetention.repeatPct}<span className="text-[18px] text-[var(--mute)]">%</span></div>
+                  </div>
+                  <div className="flex justify-between text-[12.5px] pt-2 border-t border-[var(--line)]">
+                    <div>
+                      <div className="font-bold text-[15px]">{stats.customerRetention.repeatCustomers}</div>
+                      <div className="text-[10.5px] text-[var(--mute)] uppercase tracking-[.06em]">2+ orders</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-[15px]">{stats.customerRetention.totalCustomers}</div>
+                      <div className="text-[10.5px] text-[var(--mute)] uppercase tracking-[.06em]">total this month</div>
+                    </div>
+                  </div>
+                  {stats.customerRetention.repeatPct < 20 && stats.customerRetention.totalCustomers >= 10 && (
+                    <p className="text-[11.5px] text-[var(--mute)] pt-2 border-t border-[var(--line)]">
+                      Tip: try a loyalty offer or follow-up message — under 20% retention is a marketing opportunity.
+                    </p>
+                  )}
+                </div>
               )}
             </Panel>
           </div>

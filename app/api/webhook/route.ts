@@ -522,6 +522,60 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     });
 
     // ─── Restaurant dine-in intercept ─────────────────────────────────
+    // ─── Reorder shortcut ────────────────────────────────────────────
+    // Customer types "reorder" / "phir wahi" / "same as last time" /
+    // "repeat order" → fetch their most-recent non-cancelled order from
+    // dine_in_orders and send it back with the menu link to confirm.
+    // Saves them re-typing or re-tapping items. Fires before the AI so
+    // we don't burn a Groq call on a deterministic reply.
+    if (client.type === 'restaurant' && msg.type === 'text' && msg.text) {
+      const lower = msg.text.trim().toLowerCase();
+      const REORDER_PATTERNS = [
+        /^reorder$/, /^re-order$/,
+        /^repeat( my)? (last )?order$/,
+        /^same as last( time| order)?$/,
+        /^phir wahi$/, /^wahi order$/, /^pichla order$/,
+        /^last order$/,
+      ];
+      if (REORDER_PATTERNS.some((re) => re.test(lower))) {
+        try {
+          const { getLastOrderForCustomer } = await import('@/lib/db/restaurant-dine-in');
+          const last = await getLastOrderForCustomer(client.client_id, customerPhone);
+          if (last) {
+            const itemsLine = last.items.map((it) => `• ${it.qty}× ${it.name}`).join('\n');
+            const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
+            const menuUrl = `${origin}/m/${client.client_id}?p=${customerPhone}`;
+            const reply = [
+              `Last time you ordered:`,
+              itemsLine,
+              `Total: ₹${Math.round(last.total).toLocaleString('en-IN')}`,
+              ``,
+              `Tap here to repeat or change anything 👇`,
+              menuUrl,
+              ``,
+              `Pichli baar yeh order tha:`,
+              itemsLine,
+              `Total: ₹${Math.round(last.total).toLocaleString('en-IN')}`,
+              `Wahi dohrana hai ya kuch change? Tap karo 👆`,
+            ].join('\n');
+            await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
+            await addConversationMessage({
+              timestamp, client_id: client.client_id, customer_phone: customerPhone,
+              direction: 'incoming', message: msg.text, message_type: msg.type,
+            });
+            await addConversationMessage({
+              timestamp: getISTTimestamp(), client_id: client.client_id, customer_phone: customerPhone,
+              direction: 'outgoing', message: reply, message_type: 'text',
+            });
+            continue;
+          }
+          // No prior order → fall through to normal flow (AI will offer menu link).
+        } catch (err) {
+          console.error('[reorder] lookup failed — falling through', err);
+        }
+      }
+    }
+
     // QR-scan greeting, session open/refresh, CLOSE / home-delivery
     // confirmation gate. Fires only for restaurant bots; returns
     // handled=true with a bilingual reply when it owns the message.

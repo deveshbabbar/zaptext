@@ -8,6 +8,7 @@
 import { redirect } from 'next/navigation';
 import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
+import { getRestaurantStats } from '@/lib/db/restaurant-dine-in';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
 import { SubTypesChips } from '@/components/client/sub-types-chips';
@@ -20,10 +21,15 @@ export default async function RestaurantOverviewPage() {
   const clientId = user.activeBot.client_id;
   const today = getISTDate();
 
-  const [todayBookings, pending] = await Promise.all([
+  const [todayBookings, pending, stats] = await Promise.all([
     getBookingsForDate(clientId, today).catch(() => []),
     getBookingsByClient(clientId, 'pending_approval').catch(() => []),
+    getRestaurantStats(clientId).catch(() => ({
+      todayRevenue: 0, todayOrderCount: 0,
+      last7DaysRevenue: [], topItemsThisMonth: [],
+    })),
   ]);
+  const peakRev = Math.max(1, ...stats.last7DaysRevenue.map((d) => d.revenue));
 
   const confirmedToday = todayBookings.filter((b) => b.status === 'confirmed').length;
   const cancelledToday = todayBookings.filter((b) => b.status === 'cancelled').length;
@@ -74,6 +80,11 @@ export default async function RestaurantOverviewPage() {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Kpi
+            label="Revenue today"
+            value={`₹${Math.round(stats.todayRevenue).toLocaleString('en-IN')}`}
+            trend={stats.todayOrderCount > 0 ? `${stats.todayOrderCount} order${stats.todayOrderCount === 1 ? '' : 's'}` : undefined}
+          />
+          <Kpi
             label="Today's bookings"
             value={todayBookings.length}
             trend={
@@ -81,7 +92,6 @@ export default async function RestaurantOverviewPage() {
             }
           />
           <Kpi label="Confirmed today" value={confirmedToday} />
-          <Kpi label="Cancelled today" value={cancelledToday} />
           <Kpi
             label="Menu items"
             value={totalMenuItems}
@@ -92,6 +102,72 @@ export default async function RestaurantOverviewPage() {
             }
           />
         </div>
+
+        {/* Revenue + best-sellers analytics row. Lightweight bar-chart
+            rendered with CSS — no chart library dep. Only shows when
+            there's at least one order in the last 7 days. */}
+        {(stats.last7DaysRevenue.some((d) => d.revenue > 0) || stats.topItemsThisMonth.length > 0) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <Panel
+              title="Revenue — last 7 days"
+              sub={`₹${Math.round(stats.last7DaysRevenue.reduce((s, d) => s + d.revenue, 0)).toLocaleString('en-IN')} total`}
+            >
+              {stats.last7DaysRevenue.every((d) => d.revenue === 0) ? (
+                <p className="text-[13px] text-[var(--mute)] py-2">No orders yet this week. Once customers start ordering, daily revenue + count will plot here.</p>
+              ) : (
+                <div className="flex items-end gap-1.5" style={{ height: 140 }}>
+                  {stats.last7DaysRevenue.map((d) => {
+                    const heightPct = peakRev > 0 ? Math.max(2, (d.revenue / peakRev) * 100) : 2;
+                    const dayLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+                    return (
+                      <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
+                        <div className="text-[10.5px] font-semibold text-[var(--ink)] zt-mono">
+                          {d.revenue > 0 ? `₹${Math.round(d.revenue).toLocaleString('en-IN')}` : '—'}
+                        </div>
+                        <div
+                          style={{
+                            width: '100%',
+                            height: `${heightPct}%`,
+                            background: 'var(--ink)',
+                            borderRadius: '4px 4px 0 0',
+                            minHeight: 2,
+                          }}
+                          title={`${d.date}: ₹${Math.round(d.revenue).toLocaleString('en-IN')} · ${d.orderCount} orders`}
+                        />
+                        <div className="text-[10.5px] text-[var(--mute)]">{dayLabel}</div>
+                        <div className="text-[10px] text-[var(--mute)] zt-mono">{d.orderCount}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            <Panel
+              title="Best-sellers this month"
+              sub={stats.topItemsThisMonth.length === 0 ? 'No completed orders this month yet' : `Top ${stats.topItemsThisMonth.length} of all items`}
+            >
+              {stats.topItemsThisMonth.length === 0 ? (
+                <p className="text-[13px] text-[var(--mute)] py-2">As orders flow in, your kitchen&apos;s top sellers will rank here — useful for menu pricing + planning.</p>
+              ) : (
+                <ol className="flex flex-col" style={{ counterReset: 'best 0' }}>
+                  {stats.topItemsThisMonth.map((it, i) => (
+                    <li key={it.name} className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--line)] last:border-b-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="zt-mono text-[11px] text-[var(--mute)] w-5 text-right">#{i + 1}</span>
+                        <span className="text-[13.5px] font-semibold truncate">{it.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-[11.5px] text-[var(--mute)] zt-mono">{it.qty} sold</span>
+                        <span className="text-[12.5px] font-bold zt-mono">₹{Math.round(it.revenue).toLocaleString('en-IN')}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Panel>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <Panel

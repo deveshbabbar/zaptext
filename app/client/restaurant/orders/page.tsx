@@ -1,14 +1,19 @@
 // app/client/restaurant/orders/page.tsx
 //
-// Today's WhatsApp order feed. There's no separate food-orders table yet —
-// orders arrive as plain WhatsApp messages and are handled inline by the
-// bot. For now this page surfaces the recent conversation log filtered to
-// today; once order parsing ships we'll switch to a dedicated orders table.
+// Today's restaurant orders board. Shows every order written into
+// dine_in_orders today (from QR-scan dine-in, web-menu link, OR the
+// AI's [ORDER:] tag) with per-order-type status flow buttons:
+//   dine_in:         placed → preparing → ready → served
+//   home_delivery:   placed → preparing → ready → out_for_delivery → delivered
+//   parcel_takeaway: placed → preparing → ready → picked_up
+// Each click POSTs /api/client/restaurant/orders/<id>/status which auto-
+// pings the customer on WhatsApp with the new status.
 
 import { redirect } from 'next/navigation';
 import { requireClientWithBots } from '@/lib/auth';
-import { getClientConversations } from '@/lib/db/conversations';
-import { PageTopbar, PageHead, Panel, StatusPill } from '@/components/app/primitives';
+import { listOrdersForToday } from '@/lib/db/restaurant-dine-in';
+import { PageTopbar, PageHead, Panel } from '@/components/app/primitives';
+import { OrdersBoard } from './orders-board';
 
 export default async function RestaurantOrdersPage() {
   const user = await requireClientWithBots();
@@ -16,23 +21,7 @@ export default async function RestaurantOrdersPage() {
     redirect('/client/dashboard');
   }
 
-  const all = await getClientConversations(user.activeBot.client_id).catch(() => []);
-  const todayStart = (() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  })();
-  const todays = all
-    .filter((c) => new Date(c.timestamp).getTime() >= todayStart)
-    .slice(-50)
-    .reverse();
-
-  const byCustomer = new Map<string, typeof todays>();
-  for (const c of todays) {
-    const list = byCustomer.get(c.customer_phone) || [];
-    list.push(c);
-    byCustomer.set(c.customer_phone, list);
-  }
+  const orders = await listOrdersForToday(user.activeBot.client_id).catch(() => []);
 
   return (
     <>
@@ -40,65 +29,39 @@ export default async function RestaurantOrdersPage() {
         crumbs={
           <>
             Restaurant /{' '}
-            <a href="/client/restaurant" className="hover:underline">
-              Overview
-            </a>{' '}
+            <a href="/client/restaurant" className="hover:underline">Overview</a>{' '}
             / <b className="text-foreground">Today&apos;s orders</b>
           </>
         }
       />
       <div style={{ padding: '28px 32px 60px' }}>
         <PageHead
-          title={
-            <>
-              Today&apos;s <span className="zt-serif">order feed.</span>
-            </>
-          }
-          sub={`${byCustomer.size} customer${byCustomer.size === 1 ? '' : 's'} have messaged today. Structured order parsing rolls out soon; for now scan the latest threads here.`}
+          title={<>Today&apos;s <span className="zt-serif">orders.</span></>}
+          sub={`${orders.length} order${orders.length === 1 ? '' : 's'} today across dine-in, delivery and takeaway. Click a status button — customer gets a WhatsApp update automatically.`}
         />
 
-        {byCustomer.size === 0 ? (
-          <Panel title="No activity today">
+        {orders.length === 0 ? (
+          <Panel title="No orders yet today">
             <p className="text-sm text-muted-foreground">
-              No customer messages yet today. The bot is live — orders will appear here as customers chat.
+              Orders placed via the menu link, QR scan, or chat will appear here in real time. Customers also auto-receive WhatsApp updates as you move them through the flow.
             </p>
           </Panel>
         ) : (
-          <div className="space-y-3">
-            {[...byCustomer.entries()].map(([phone, msgs]) => {
-              const lastIncoming = [...msgs].reverse().find((m) => m.direction === 'incoming');
-              return (
-                <Panel
-                  key={phone}
-                  title={phone}
-                  sub={`${msgs.length} message${msgs.length === 1 ? '' : 's'} today`}
-                  action={
-                    <StatusPill variant={lastIncoming ? 'pending' : 'ok'}>
-                      {lastIncoming ? 'awaiting reply' : 'closed'}
-                    </StatusPill>
-                  }
-                >
-                  <div className="space-y-1.5 text-[13px] max-h-48 overflow-y-auto">
-                    {msgs.slice(-8).map((m, i) => (
-                      <div
-                        key={`${m.timestamp}-${i}`}
-                        className={
-                          m.direction === 'incoming'
-                            ? 'text-foreground'
-                            : 'text-muted-foreground italic'
-                        }
-                      >
-                        <span className="text-[10.5px] zt-mono uppercase tracking-[.04em] mr-2">
-                          {m.direction === 'incoming' ? 'customer' : 'bot'}
-                        </span>
-                        {m.message}
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              );
-            })}
-          </div>
+          <OrdersBoard
+            initialOrders={orders.map((o) => ({
+              id: o.id,
+              status: o.status,
+              order_type: o.order_type,
+              customer_phone: o.customer_phone,
+              customer_name: o.customer_name,
+              table_number: o.table_number,
+              delivery_address: o.delivery_address,
+              special_notes: o.special_notes,
+              total: o.total,
+              items: o.items,
+              created_at: o.created_at,
+            }))}
+          />
         )}
       </div>
     </>

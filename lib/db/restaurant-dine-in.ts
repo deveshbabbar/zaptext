@@ -37,7 +37,20 @@ export interface TableSession {
 }
 
 export type DineInOrderType = 'dine_in' | 'home_delivery' | 'parcel_takeaway';
-export type DineInOrderStatus = 'placed' | 'preparing' | 'served' | 'cancelled';
+// Status flow varies by order_type (managed in the API layer):
+//   dine_in:         placed → preparing → ready → served       (or cancelled at any step)
+//   home_delivery:   placed → preparing → ready → out_for_delivery → delivered
+//   parcel_takeaway: placed → preparing → ready → picked_up
+// 'served' is kept for backward compat with rows written before the flow expanded.
+export type DineInOrderStatus =
+  | 'placed'
+  | 'preparing'
+  | 'ready'
+  | 'served'
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'picked_up'
+  | 'cancelled';
 
 export interface DineInOrderItem {
   name: string;
@@ -394,6 +407,28 @@ export async function getOrdersBySession(sessionId: string): Promise<DineInOrder
   return rows.map(dbRowToOrder);
 }
 
+// Returns the most recent NON-cancelled order for a (client, customer)
+// pair. Used by the webhook's "reorder" / "phir wahi" keyword path so
+// returning customers can repeat their last meal in one tap.
+export async function getLastOrderForCustomer(
+  clientId: string,
+  customerPhone: string
+): Promise<DineInOrder | null> {
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(and(
+      eq(ordersTable.client_id, clientId),
+      eq(ordersTable.customer_phone, customerPhone),
+    ))
+    .orderBy(desc(ordersTable.created_at))
+    .limit(10);
+  for (const r of rows) {
+    if (r.status !== 'cancelled') return dbRowToOrder(r);
+  }
+  return null;
+}
+
 export async function listOrdersForToday(
   clientId: string,
   orderType?: DineInOrderType
@@ -412,8 +447,109 @@ export async function listOrdersForToday(
 }
 
 export async function updateOrderStatus(orderId: string, status: DineInOrderStatus): Promise<void> {
+  // served_at marks the moment the kitchen completed the order. Set it
+  // for any "completed" status (served / delivered / picked_up), not just
+  // dine_in's served — so analytics can compute prep-to-completion times
+  // uniformly across order types.
+  const completed = status === 'served' || status === 'delivered' || status === 'picked_up';
   await db
     .update(ordersTable)
-    .set({ status, served_at: status === 'served' ? new Date() : undefined })
+    .set({ status, served_at: completed ? new Date() : undefined })
     .where(eq(ordersTable.id, orderId));
+}
+
+// ─── Analytics helpers ───
+//
+// Owner-side dashboard queries. Kept here so the table joins live next
+// to the schema instead of leaking drizzle-orm details into the page
+// component. All filters are scoped per client_id.
+
+export interface RestaurantStats {
+  todayRevenue: number;
+  todayOrderCount: number;
+  last7DaysRevenue: Array<{ date: string; revenue: number; orderCount: number }>;
+  topItemsThisMonth: Array<{ name: string; qty: number; revenue: number }>;
+}
+
+export async function getRestaurantStats(clientId: string): Promise<RestaurantStats> {
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+  const monthStart = new Date(now);
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  // Last 7 days of orders + this month's orders. Two single-table reads —
+  // no joins needed, all aggregation happens in JS since volumes are
+  // small (a busy restaurant ≈ 50-200 orders/day).
+  const weekRows = await db
+    .select()
+    .from(ordersTable)
+    .where(and(eq(ordersTable.client_id, clientId), gte(ordersTable.created_at, weekStart)))
+    .orderBy(asc(ordersTable.created_at));
+  const monthRows = await db
+    .select()
+    .from(ordersTable)
+    .where(and(eq(ordersTable.client_id, clientId), gte(ordersTable.created_at, monthStart)));
+
+  // Bucket weekRows by IST date (YYYY-MM-DD), excluding cancelled orders.
+  const byDate = new Map<string, { revenue: number; orderCount: number }>();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const key = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    byDate.set(key, { revenue: 0, orderCount: 0 });
+  }
+  let todayRevenue = 0;
+  let todayOrderCount = 0;
+  for (const r of weekRows) {
+    if (r.status === 'cancelled') continue;
+    const d = new Date(r.created_at);
+    const key = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const total = parseFloat(r.total ?? '0') || 0;
+    const bucket = byDate.get(key);
+    if (bucket) {
+      bucket.revenue += total;
+      bucket.orderCount += 1;
+    }
+    if (d.getTime() >= todayStart.getTime()) {
+      todayRevenue += total;
+      todayOrderCount += 1;
+    }
+  }
+
+  // Top items this month — flatten items JSON, sum qty + revenue per name.
+  const byName = new Map<string, { qty: number; revenue: number }>();
+  for (const r of monthRows) {
+    if (r.status === 'cancelled') continue;
+    let items: Array<{ name?: string; qty?: number; price?: number }> = [];
+    try {
+      const parsed = JSON.parse(r.items || '[]');
+      if (Array.isArray(parsed)) items = parsed;
+    } catch { /* skip malformed */ }
+    for (const it of items) {
+      const name = String(it.name || '').trim();
+      if (!name) continue;
+      const qty = Math.max(1, Math.floor(Number(it.qty) || 1));
+      const price = Math.max(0, Number(it.price) || 0);
+      const cur = byName.get(name) || { qty: 0, revenue: 0 };
+      cur.qty += qty;
+      cur.revenue += qty * price;
+      byName.set(name, cur);
+    }
+  }
+  const topItemsThisMonth = [...byName.entries()]
+    .map(([name, v]) => ({ name, qty: v.qty, revenue: v.revenue }))
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, 10);
+
+  return {
+    todayRevenue,
+    todayOrderCount,
+    last7DaysRevenue: [...byDate.entries()].map(([date, v]) => ({ date, revenue: v.revenue, orderCount: v.orderCount })),
+    topItemsThisMonth,
+  };
 }

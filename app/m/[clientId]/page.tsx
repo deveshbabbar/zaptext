@@ -13,6 +13,7 @@
 
 import { notFound } from 'next/navigation';
 import { getClientById } from '@/lib/db/clients';
+import { getOutletsForClient } from '@/lib/db/outlets';
 import { MenuPublicClient } from './menu-public-client';
 
 interface MenuItem {
@@ -244,6 +245,16 @@ export default async function PublicMenuPage({
         minimumOrder,
         deliveryRadius,
       }}
+      outletMarkers={(await getOutletsForClient(clientId).catch(() => []))
+        .filter((o) => o.isActive && typeof o.latitude === 'number' && typeof o.longitude === 'number')
+        .map((o) => ({
+          id: o.id,
+          slug: o.slug,
+          name: o.name,
+          latitude: o.latitude as number,
+          longitude: o.longitude as number,
+          deliveryRadiusKm: o.deliveryRadiusKm,
+        }))}
     />
   );
 }

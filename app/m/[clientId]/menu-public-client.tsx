@@ -8,6 +8,40 @@
 // customer's phone.
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+
+// MapLibre lives inside MapPicker — touches `window`, so we lazy-load
+// client-side only. SSR returns nothing for this slot; the loading
+// state is the "📍 Your delivery location" panel below.
+const MapPicker = dynamic(() => import('./map-picker').then((m) => m.MapPicker), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        height: 240,
+        borderRadius: 10,
+        border: '1px solid #ddd',
+        background: '#f7f7f7',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 12,
+        color: '#888',
+      }}
+    >
+      Loading map…
+    </div>
+  ),
+});
+
+interface OutletMarker {
+  id: string;
+  slug: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  deliveryRadiusKm?: number;
+}
 
 interface FlatItem {
   id: string;
@@ -82,6 +116,10 @@ interface Props {
    *  in Phase 3L. */
   prefillLat?: number | null;
   prefillLng?: number | null;
+  /** Outlets with valid lat/lng — rendered as markers + zone circles
+   *  on the embedded map. Empty for single-outlet kitchens without
+   *  coords; the map still works as a generic pin picker. */
+  outletMarkers?: OutletMarker[];
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -150,6 +188,7 @@ export function MenuPublicClient({
   prefillQuery = '',
   prefillLat = null,
   prefillLng = null,
+  outletMarkers = [],
 }: Props) {
   const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -669,14 +708,30 @@ export function MenuPublicClient({
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>
                       📍 Your delivery location
                     </div>
+                    {/*
+                      Phase 3L v2 — embedded MapLibre map. Drag pin or
+                      tap-to-set updates customerLat/Lng directly, which
+                      flows back into the map via the prop-driven flyTo
+                      effect inside MapPicker. Outlet markers + zone
+                      circles render in the same canvas so the customer
+                      sees who serves their area.
+                    */}
+                    <div style={{ marginBottom: 8 }}>
+                      <MapPicker
+                        lat={customerLat}
+                        lng={customerLng}
+                        onChange={(la, ln) => { setCustomerLat(la); setCustomerLng(ln); }}
+                        outlets={outletMarkers}
+                        heightPx={220}
+                      />
+                    </div>
                     {customerLat !== null && customerLng !== null ? (
                       <div style={{ color: '#1a5e1a', marginBottom: 6 }}>
                         ✓ Pinned at {customerLat.toFixed(5)}, {customerLng.toFixed(5)}
                       </div>
                     ) : (
                       <div style={{ color: '#666', marginBottom: 6 }}>
-                        No location set. Sharing helps us pick the nearest outlet
-                        and estimate ETA accurately.
+                        Drag the pin on the map or use the buttons below.
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

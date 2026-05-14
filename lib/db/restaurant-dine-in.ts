@@ -395,6 +395,14 @@ export async function createOrder(input: {
   items: DineInOrderItem[];
   delivery_address?: string;
   special_notes?: string;
+  /** Multi-outlet binding (Phase 3D/3K). Defaults to 'main' so single-
+   *  outlet callers keep working unchanged. */
+  outlet_id?: string;
+  /** Customer delivery lat/lng from WhatsApp location share or
+   *  map-pin (Phase 3K). NULL when not provided — table-orders and
+   *  takeaway typically have none. */
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
 }): Promise<DineInOrder> {
   const subtotal = input.items.reduce((s, it) => s + it.price * it.qty, 0);
   // Total currently equals subtotal — taxes/delivery fee can be added later
@@ -414,6 +422,9 @@ export async function createOrder(input: {
     total: total.toFixed(2),
     delivery_address: input.delivery_address ?? '',
     special_notes: input.special_notes ?? '',
+    outlet_id: input.outlet_id || 'main',
+    delivery_lat: input.delivery_lat != null ? input.delivery_lat.toFixed(7) : null,
+    delivery_lng: input.delivery_lng != null ? input.delivery_lng.toFixed(7) : null,
   });
   const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).limit(1);
   return dbRowToOrder(rows[0]);

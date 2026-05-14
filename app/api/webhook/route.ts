@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; audioId?: string; audioMimeType?: string; interactiveButtonId?: string; interactiveButtonTitle?: string; interactiveListId?: string; interactiveListTitle?: string }>) {
+async function processMessages(phoneNumberId: string, messages: Array<{ id: string; from: string; text?: string; type: string; imageId?: string; caption?: string; audioId?: string; audioMimeType?: string; interactiveButtonId?: string; interactiveButtonTitle?: string; interactiveListId?: string; interactiveListTitle?: string; locationLat?: number; locationLng?: number; locationName?: string; locationAddress?: string }>) {
   // Look up which client this message belongs to
   const client = await getClientByPhoneNumberId(phoneNumberId);
   if (!client) {
@@ -554,6 +554,70 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         });
         continue;
       }
+    }
+
+    // ─── Restaurant: inbound location share → menu link with lat/lng ──
+    // Customer tapped 📎 → Location in WhatsApp and shared their pin.
+    // We pre-route to the right outlet (haversine zone math) and send
+    // the menu URL carrying ?lat=&lng= so the page can pre-fill the
+    // form + show the assigned outlet's map marker. Bypasses the AI
+    // entirely — this is a deterministic flow with no language risk.
+    if (
+      client.type === 'restaurant'
+      && msg.type === 'location'
+      && typeof msg.locationLat === 'number'
+      && typeof msg.locationLng === 'number'
+    ) {
+      const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
+      const phoneDigits = (msg.from || '').replace(/\D/g, '');
+      const params = new URLSearchParams();
+      if (phoneDigits) params.set('p', phoneDigits);
+      params.set('lat', String(msg.locationLat));
+      params.set('lng', String(msg.locationLng));
+      const menuUrl = `${origin}/m/${client.client_id}?${params.toString()}`;
+
+      // Try to compute the assigned outlet so the customer sees an
+      // immediate "Your order will be prepared at <outlet>" line.
+      // Failure here is non-fatal — the link itself still works.
+      let outletLine = '';
+      try {
+        const { getOutletsForClient, assignOutletByLocation } = await import('@/lib/db/outlets');
+        const outlets = await getOutletsForClient(client.client_id);
+        if (outlets.length > 1) {
+          const assigned = assignOutletByLocation(outlets, msg.locationLat, msg.locationLng);
+          if (assigned) {
+            if (assigned.inZone) {
+              outletLine = `\nYour order will be prepared at our ${assigned.outlet.name} outlet (${assigned.distanceKm.toFixed(1)} km away).`;
+            } else {
+              outletLine = `\nNearest outlet (${assigned.outlet.name}) is ${assigned.distanceKm.toFixed(1)} km away — outside our delivery zones. Takeaway from there is still an option.`;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[location] outlet assignment failed (non-fatal)', err);
+      }
+
+      const reply =
+        `Got it 📍${outletLine}\n\nTap below to view the menu and place your order:\n${menuUrl}\n\n` +
+        `Tap items → pick delivery / takeaway / dine-in → place order. Confirmation comes back on WhatsApp.`;
+      await addConversationMessage({
+        timestamp,
+        client_id: client.client_id,
+        customer_phone: customerPhone,
+        direction: 'incoming',
+        message: `📍 ${msg.locationLat.toFixed(5)}, ${msg.locationLng.toFixed(5)}${msg.locationAddress ? ` — ${msg.locationAddress}` : ''}`,
+        message_type: 'location',
+      });
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
+      await addConversationMessage({
+        timestamp: getISTTimestamp(),
+        client_id: client.client_id,
+        customer_phone: customerPhone,
+        direction: 'outgoing',
+        message: reply,
+        message_type: 'text',
+      });
+      continue;
     }
 
     // ─── Restaurant: welcome-menu "See the menu" tap short-circuit ───

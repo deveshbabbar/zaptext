@@ -59,10 +59,17 @@ export default async function PublicMenuPage({
   searchParams,
 }: {
   params: Promise<{ clientId: string }>;
-  searchParams: Promise<{ p?: string; q?: string }>;
+  searchParams: Promise<{ p?: string; q?: string; lat?: string; lng?: string }>;
 }) {
   const { clientId } = await params;
-  const { p: prefillPhone = '', q: prefillQuery = '' } = await searchParams;
+  const { p: prefillPhone = '', q: prefillQuery = '', lat: latRaw = '', lng: lngRaw = '' } = await searchParams;
+  // Parse + validate location once at the server boundary. Invalid
+  // values (non-numeric, out-of-range) are silently dropped so a
+  // malformed link never crashes the page.
+  const latNum = parseFloat(latRaw);
+  const lngNum = parseFloat(lngRaw);
+  const prefillLat = Number.isFinite(latNum) && Math.abs(latNum) <= 90 ? latNum : null;
+  const prefillLng = Number.isFinite(lngNum) && Math.abs(lngNum) <= 180 ? lngNum : null;
 
   const client = await getClientById(clientId).catch(() => null);
   if (!client || client.type !== 'restaurant') notFound();
@@ -211,6 +218,8 @@ export default async function PublicMenuPage({
       tagline={tagline}
       prefillPhone={prefillPhone}
       prefillQuery={prefillQuery}
+      prefillLat={prefillLat}
+      prefillLng={prefillLng}
       deliveryAvailable={deliveryAvailable}
       dineInEnabled={dineInEnabled}
       takeawayEnabled={takeawayEnabled}

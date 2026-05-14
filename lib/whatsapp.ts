@@ -459,6 +459,17 @@ export interface WhatsAppMessage {
   // Webhook routes welcome-menu taps via this id.
   interactiveListId?: string;
   interactiveListTitle?: string;
+  // Set when the inbound message is type:'location' — customer shared
+  // their phone GPS / pinned location via WhatsApp's native attach →
+  // Location flow. Used by the restaurant vertical to auto-route the
+  // order to the nearest in-zone outlet (Phase 3K) and pre-fill the
+  // /m page map (Phase 3L). `name` / `address` are optional metadata
+  // Meta surfaces when the user picked a saved place rather than a
+  // pinned coordinate.
+  locationLat?: number;
+  locationLng?: number;
+  locationName?: string;
+  locationAddress?: string;
 }
 
 export interface WhatsAppWebhookPayload {
@@ -566,6 +577,25 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
         const listReply = (interactive?.list_reply as Record<string, string> | undefined);
         const interactiveListId = listReply?.id;
         const interactiveListTitle = listReply?.title;
+        // Location block — type:'location' messages. Meta surfaces
+        // m.location = { latitude, longitude, name?, address? }.
+        const locationRaw = m.location as Record<string, unknown> | undefined;
+        const locationLat =
+          typeof locationRaw?.latitude === 'number'
+            ? locationRaw.latitude
+            : typeof locationRaw?.latitude === 'string'
+              ? parseFloat(locationRaw.latitude)
+              : undefined;
+        const locationLng =
+          typeof locationRaw?.longitude === 'number'
+            ? locationRaw.longitude
+            : typeof locationRaw?.longitude === 'string'
+              ? parseFloat(locationRaw.longitude)
+              : undefined;
+        const locationName =
+          typeof locationRaw?.name === 'string' ? locationRaw.name : undefined;
+        const locationAddress =
+          typeof locationRaw?.address === 'string' ? locationRaw.address : undefined;
         return {
           id: (m.id as string) || '',
           from: (m.from as string) || '',
@@ -583,6 +613,10 @@ export function parseWebhookPayload(body: Record<string, unknown>): WhatsAppWebh
           interactiveButtonTitle,
           interactiveListId,
           interactiveListTitle,
+          locationLat: Number.isFinite(locationLat) ? locationLat : undefined,
+          locationLng: Number.isFinite(locationLng) ? locationLng : undefined,
+          locationName,
+          locationAddress,
         };
       }),
     };

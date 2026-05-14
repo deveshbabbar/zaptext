@@ -34,6 +34,12 @@ interface SubmitBody {
    *  `marketing_opt_in` consent event so future Marketing templates
    *  have valid evidence-of-consent under Meta's opt-in policy. */
   marketingOptIn?: boolean;
+  /** Customer delivery lat/lng (Phase 3K). Forwarded from /m page
+   *  when the customer reached us via a WhatsApp location share OR
+   *  dropped a map pin. Used to assign the right multi-outlet and
+   *  saved on the order. */
+  deliveryLat?: number;
+  deliveryLng?: number;
 }
 
 const MAX_ITEMS_PER_ORDER = 40;
@@ -215,6 +221,58 @@ export async function POST(request: NextRequest) {
   const orderType: DineInOrderType =
     mode === 'delivery' ? 'home_delivery' : mode === 'dine_in' ? 'dine_in' : 'parcel_takeaway';
 
+  // Resolve the right outlet for this order (Phase 3K).
+  //
+  // Single-outlet kitchens: outlet_id stays 'main' (the synthetic
+  // outlet from lib/db/outlets.ts). No lat/lng-based work happens.
+  //
+  // Multi-outlet kitchens with lat/lng provided: run zone math. If
+  // the customer is inside an outlet's deliveryRadiusKm, assign that
+  // outlet. If they're outside every zone for a DELIVERY order, the
+  // submit is rejected with a clear "out of zone" message (the /m
+  // page can re-prompt them to switch to takeaway). Dine-in /
+  // takeaway never reject on zone — those are at-the-restaurant.
+  let resolvedOutletId = 'main';
+  const deliveryLat = typeof body.deliveryLat === 'number' && Number.isFinite(body.deliveryLat) && Math.abs(body.deliveryLat) <= 90
+    ? body.deliveryLat
+    : null;
+  const deliveryLng = typeof body.deliveryLng === 'number' && Number.isFinite(body.deliveryLng) && Math.abs(body.deliveryLng) <= 180
+    ? body.deliveryLng
+    : null;
+  try {
+    const { getOutletsForClient, assignOutletByLocation } = await import('@/lib/db/outlets');
+    const outlets = await getOutletsForClient(clientId);
+    const isMulti = outlets.length > 1 || (outlets.length === 1 && outlets[0].id !== 'main');
+    if (isMulti && deliveryLat !== null && deliveryLng !== null) {
+      const assigned = assignOutletByLocation(outlets, deliveryLat, deliveryLng);
+      if (assigned) {
+        if (!assigned.inZone && mode === 'delivery') {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                `We don't deliver to your location yet. ` +
+                `Nearest outlet (${assigned.outlet.name}) is ${assigned.distanceKm.toFixed(1)} km away — ` +
+                `outside our delivery zones. Try takeaway from ${assigned.outlet.name} instead, or message the kitchen to confirm.`,
+            },
+            { status: 400 }
+          );
+        }
+        resolvedOutletId = assigned.outlet.id;
+      }
+    } else if (isMulti && mode === 'delivery') {
+      // Multi-outlet delivery without a location pin — we can't
+      // route correctly. Accept the order but flag for owner triage.
+      // (Customer service window stays open; manager can route.)
+      console.warn('[menu-submit] multi-outlet delivery with no location — manual routing required', { clientId, customerPhone });
+    }
+  } catch (err) {
+    // Fail open — never block an order because of outlet-resolution
+    // hiccups. Falls back to 'main' which is a safe single-outlet
+    // default the dashboard can re-route from.
+    console.error('[menu-submit] outlet resolution failed (fallback to main)', err);
+  }
+
   const order = await createOrder({
     client_id: clientId,
     session_id: null,
@@ -225,6 +283,9 @@ export async function POST(request: NextRequest) {
     items: cleanItems,
     delivery_address: mode === 'delivery' ? deliveryAddress : '',
     special_notes: String(body.notes || '').trim(),
+    outlet_id: resolvedOutletId,
+    delivery_lat: deliveryLat,
+    delivery_lng: deliveryLng,
   });
 
   // Resolve the bot's configured languages + FSSAI licence so the

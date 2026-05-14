@@ -76,6 +76,12 @@ interface Props {
    *  into the cart so a voice-order customer just confirms + pays
    *  instead of re-tapping each dish. */
   prefillQuery?: string;
+  /** Customer's lat/lng forwarded from the WhatsApp location share
+   *  (Phase 3K). Used to set delivery_lat/lng on the order + let the
+   *  server compute the assigned outlet. Map UI to drag-pin comes
+   *  in Phase 3L. */
+  prefillLat?: number | null;
+  prefillLng?: number | null;
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -142,6 +148,8 @@ export function MenuPublicClient({
   compliance,
   pricing,
   prefillQuery = '',
+  prefillLat = null,
+  prefillLng = null,
 }: Props) {
   const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -295,6 +303,12 @@ export function MenuPublicClient({
           notes: notes.trim(),
           items: cartLines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit })),
           marketingOptIn,
+          // Phase 3K — when the customer reached /m via a WhatsApp
+          // location share, the bot pre-filled lat/lng in the URL.
+          // The server uses these to assign the right outlet + saves
+          // them on the order for analytics.
+          deliveryLat: typeof prefillLat === 'number' ? prefillLat : undefined,
+          deliveryLng: typeof prefillLng === 'number' ? prefillLng : undefined,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; orderId?: string; total?: number; error?: string };

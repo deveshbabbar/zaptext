@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { count?: number; seats?: number; startFrom?: number };
+  let body: { count?: number; seats?: number; startFrom?: number; outletId?: string };
   try {
-    body = (await request.json()) as { count?: number; seats?: number; startFrom?: number };
+    body = (await request.json()) as { count?: number; seats?: number; startFrom?: number; outletId?: string };
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
@@ -40,6 +40,19 @@ export async function POST(request: NextRequest) {
       { status: 403 }
     );
   }
+
+  // Validate outletId (when provided) belongs to this client; default
+  // to 'main' for single-outlet kitchens (the synthetic outlet).
+  let outletId = 'main';
+  if (typeof body.outletId === 'string' && body.outletId !== 'main') {
+    const { getOutletsForClient } = await import('@/lib/db/outlets');
+    const outlets = await getOutletsForClient(clientId);
+    if (!outlets.some((o) => o.id === body.outletId)) {
+      return NextResponse.json({ ok: false, error: 'Invalid outletId' }, { status: 400 });
+    }
+    outletId = body.outletId;
+  }
+
   const existing = new Set((await listTables(clientId).catch(() => [])).map((t) => t.table_number));
 
   let created = 0;
@@ -55,6 +68,7 @@ export async function POST(request: NextRequest) {
       table_number: tableNumber,
       qr_token: generateQrToken(),
       seats,
+      outlet_id: outletId,
     });
     created += 1;
   }

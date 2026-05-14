@@ -22,6 +22,19 @@ interface TableCard {
   isActive: boolean;
   waUrl: string;
   qrDataUrl: string;
+  /** Multi-outlet (3D/3G): which outlet this table is bound to.
+   *  'main' for single-outlet kitchens (synthetic — UI doesn't show
+   *  a chip in that case). */
+  outletId: string;
+  /** Human-readable outlet name surfaced from the server only when
+   *  the kitchen has multi-outlet mode on. */
+  outletName?: string;
+}
+
+interface OutletOption {
+  id: string;
+  slug: string;
+  name: string;
 }
 
 interface Props {
@@ -30,6 +43,9 @@ interface Props {
   dineInUnlocked?: boolean;
   initialAutoRotateEnabled?: boolean;
   initialAutoRotateIntervalHours?: number;
+  /** Active outlets, populated only for multi-outlet kitchens.
+   *  When empty, single-outlet mode — outlet picker stays hidden. */
+  outlets?: OutletOption[];
 }
 
 export function QrCodesClient({
@@ -38,14 +54,21 @@ export function QrCodesClient({
   dineInUnlocked = true,
   initialAutoRotateEnabled = false,
   initialAutoRotateIntervalHours = 24,
+  outlets = [],
 }: Props) {
   const router = useRouter();
+  const isMulti = outlets.length > 0;
   const [adding, setAdding] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [newTable, setNewTable] = useState('');
   const [newSeats, setNewSeats] = useState('');
+  // Default the outlet picker to the first available outlet so a
+  // distracted owner doesn't accidentally create tables without a
+  // binding. Single-outlet kitchens never see this picker.
+  const [newOutletId, setNewOutletId] = useState<string>(isMulti ? outlets[0].id : '');
   const [bulkCount, setBulkCount] = useState('');
   const [bulking, setBulking] = useState(false);
+  const [bulkOutletId, setBulkOutletId] = useState<string>(isMulti ? outlets[0].id : '');
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(initialAutoRotateEnabled);
   const [autoRotateInterval, setAutoRotateInterval] = useState(String(initialAutoRotateIntervalHours));
   const [savingAutoRotate, setSavingAutoRotate] = useState(false);
@@ -93,7 +116,14 @@ export function QrCodesClient({
       const res = await fetch('/api/client/restaurant/tables', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tableNumber, seats: Number(newSeats) || 0 }),
+        body: JSON.stringify({
+          tableNumber,
+          seats: Number(newSeats) || 0,
+          // Only forward outletId for multi-outlet kitchens. Server
+          // defaults to 'main' if omitted — keeps single-outlet
+          // request payloads identical to pre-3G.
+          ...(isMulti ? { outletId: newOutletId } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string; upgradeTo?: string };
       if (!res.ok || !data.ok) {
@@ -138,7 +168,10 @@ export function QrCodesClient({
       const res = await fetch('/api/client/restaurant/tables/bulk-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count }),
+        body: JSON.stringify({
+          count,
+          ...(isMulti ? { outletId: bulkOutletId } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; created?: number; skipped?: number; error?: string; message?: string; upgradeTo?: string };
       if (!res.ok || !data.ok) {
@@ -213,6 +246,21 @@ export function QrCodesClient({
 
       <Panel title="Quick setup" sub="Numbered tables 1, 2, 3... Skips numbers you already have.">
         <div className="flex flex-col md:flex-row gap-2 md:items-end">
+          {isMulti && (
+            <div style={{ width: 200 }}>
+              <Label className="text-xs">Outlet</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={bulkOutletId}
+                onChange={(e) => setBulkOutletId(e.target.value)}
+                disabled={actionsDisabled}
+              >
+                {outlets.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name} (@{o.slug})</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div style={{ width: 160 }}>
             <Label className="text-xs">How many tables?</Label>
             <Input
@@ -239,6 +287,21 @@ export function QrCodesClient({
 
       <Panel title="Or add one at a time" sub="Common names: 1, 2, 3 ... or T1, T2 ... or Counter-A, Outdoor-3. Up to 16 characters.">
         <div className="flex flex-col md:flex-row gap-2 md:items-end">
+          {isMulti && (
+            <div style={{ width: 200 }}>
+              <Label className="text-xs">Outlet</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={newOutletId}
+                onChange={(e) => setNewOutletId(e.target.value)}
+                disabled={actionsDisabled}
+              >
+                {outlets.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name} (@{o.slug})</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex-1">
             <Label className="text-xs">Table number / label</Label>
             <Input
@@ -282,7 +345,14 @@ export function QrCodesClient({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {initialTables.map((t) => (
               <div key={t.id} className={`border rounded-lg p-3 flex flex-col items-center ${t.isActive ? '' : 'opacity-50'}`}>
-                <div className="text-sm font-semibold mb-2">Table {t.tableNumber}</div>
+                <div className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                  Table {t.tableNumber}
+                  {isMulti && t.outletName && (
+                    <span className="text-[9.5px] uppercase tracking-[.06em] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                      {t.outletName}
+                    </span>
+                  )}
+                </div>
                 {t.qrDataUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={t.qrDataUrl} alt={`QR for table ${t.tableNumber}`} style={{ width: 180, height: 180 }} />
@@ -292,7 +362,12 @@ export function QrCodesClient({
                   </div>
                 )}
                 <div className="text-[10px] text-muted-foreground mt-2 text-center">
-                  Scan opens: <span className="zt-mono">Order Table {t.tableNumber}</span>
+                  Scan opens: <span className="zt-mono">
+                    Order Table {t.tableNumber}
+                    {isMulti && t.outletName && outlets.find((o) => o.id === t.outletId) && (
+                      <> @{outlets.find((o) => o.id === t.outletId)!.slug}</>
+                    )}
+                  </span>
                 </div>
                 <div className="flex gap-2 mt-3">
                   {t.waUrl && (

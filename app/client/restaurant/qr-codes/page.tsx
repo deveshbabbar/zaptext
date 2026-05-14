@@ -7,6 +7,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import { listTables, upsertTable } from '@/lib/db/restaurant-dine-in';
 import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
 import { buildWaUrlForTable, generateQrDataUrl, generateQrToken } from '@/lib/restaurant-qr';
+import { getOutletsForClient, isMultiOutletEnabled } from '@/lib/db/outlets';
 import { PageTopbar, PageHead, Panel, Pill } from '@/components/app/primitives';
 import { QrCodesClient } from './qr-codes-client';
 
@@ -47,12 +48,32 @@ export default async function RestaurantQrCodesPage() {
     }
   }
 
+  // Multi-outlet support: each table is bound to an outlet (3D
+  // schema). When the kitchen runs multiple outlets, embed the
+  // outlet slug in the QR text so a scan auto-routes to the right
+  // outlet without a picker. Single-outlet kitchens get no slug —
+  // legacy "Order Table N" format, unchanged.
+  const [multiEnabled, outletsList] = await Promise.all([
+    isMultiOutletEnabled(user.activeBot.client_id),
+    getOutletsForClient(user.activeBot.client_id),
+  ]);
+  const outletSlugById = new Map(outletsList.map((o) => [o.id, o.slug]));
+
   const previews = await Promise.all(
     tables.map(async (t) => {
-      if (!botPhone) return { ...t, waUrl: '', qrDataUrl: '' };
-      const waUrl = buildWaUrlForTable({ botPhone, tableNumber: t.table_number, qrToken: t.qr_token });
+      if (!botPhone) return { ...t, waUrl: '', qrDataUrl: '', outletName: '' };
+      const outletSlug = multiEnabled ? (outletSlugById.get(t.outlet_id) || '') : '';
+      const outletName = multiEnabled
+        ? (outletsList.find((o) => o.id === t.outlet_id)?.name || '')
+        : '';
+      const waUrl = buildWaUrlForTable({
+        botPhone,
+        tableNumber: t.table_number,
+        qrToken: t.qr_token,
+        outletSlug: outletSlug || undefined,
+      });
       const qrDataUrl = await generateQrDataUrl(waUrl);
-      return { ...t, waUrl, qrDataUrl };
+      return { ...t, waUrl, qrDataUrl, outletName };
     })
   );
 
@@ -115,11 +136,14 @@ export default async function RestaurantQrCodesPage() {
             isActive: p.is_active,
             waUrl: p.waUrl,
             qrDataUrl: p.qrDataUrl,
+            outletId: p.outlet_id,
+            outletName: p.outletName,
           }))}
           botPhone={botPhone}
           dineInUnlocked={dineInUnlocked}
           initialAutoRotateEnabled={qrAutoRotateEnabled}
           initialAutoRotateIntervalHours={qrAutoRotateIntervalHours}
+          outlets={multiEnabled ? outletsList.filter((o) => o.isActive).map((o) => ({ id: o.id, slug: o.slug, name: o.name })) : []}
         />
       </div>
     </>

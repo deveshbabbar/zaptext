@@ -43,9 +43,9 @@ export async function POST(request: NextRequest) {
   const gate = await requireDineInEnabled(auth.clientId);
   if (gate) return gate;
 
-  let body: { tableNumber?: string; seats?: number };
+  let body: { tableNumber?: string; seats?: number; outletId?: string };
   try {
-    body = (await request.json()) as { tableNumber?: string; seats?: number };
+    body = (await request.json()) as { tableNumber?: string; seats?: number; outletId?: string };
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
@@ -56,6 +56,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Table number must be 1-16 letters / digits / dashes' }, { status: 400 });
   }
 
+  // Validate outletId (when provided) belongs to this client — prevents
+  // a tampered client from binding a table to another chain's outlet id.
+  // Falls back to 'main' silently when omitted (single-outlet kitchens).
+  let outletId = 'main';
+  if (typeof body.outletId === 'string' && body.outletId !== 'main') {
+    const { getOutletsForClient } = await import('@/lib/db/outlets');
+    const outlets = await getOutletsForClient(auth.clientId);
+    if (!outlets.some((o) => o.id === body.outletId)) {
+      return NextResponse.json({ ok: false, error: 'Invalid outletId' }, { status: 400 });
+    }
+    outletId = body.outletId;
+  }
+
   const seats = Math.max(0, Math.floor(Number(body.seats) || 0));
   const token = generateQrToken();
   const table = await upsertTable({
@@ -63,6 +76,7 @@ export async function POST(request: NextRequest) {
     table_number: tableNumber,
     qr_token: token,
     seats,
+    outlet_id: outletId,
   });
   return NextResponse.json({ ok: true, table });
 }

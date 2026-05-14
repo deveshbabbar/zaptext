@@ -1093,6 +1093,19 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
       finalResponse = finalResponse.replace(/\[BOOK:[^\]]+\]/, '').trim();
     }
 
+    // [MENU_LINK] substitution — restaurant prompt teaches the AI to
+    // emit this literal token when the customer asks for the menu, and
+    // we replace it here with a per-customer URL into /m/<clientId>.
+    // The page renders the full catalog, lets the customer build a cart,
+    // pick delivery/takeaway/dine-in, then POSTs to /api/menu/submit
+    // which writes the order and sends a WA confirmation.
+    if (client.type === 'restaurant' && finalResponse.includes('[MENU_LINK]')) {
+      const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
+      const phoneDigits = (msg.from || '').replace(/\D/g, '');
+      const menuUrl = `${origin}/m/${client.client_id}${phoneDigits ? `?p=${phoneDigits}` : ''}`;
+      finalResponse = finalResponse.replace(/\[MENU_LINK\]/g, menuUrl);
+    }
+
     const cancelMatch = aiResponse.match(/\[CANCEL:([^\]]+)\]/);
     if (cancelMatch) {
       const cancelId = cancelMatch[1].trim();

@@ -22,6 +22,11 @@ export interface RestaurantTable {
   qr_token_rotated_at: string;
   seats: number;
   is_active: boolean;
+  /** Outlet binding. 'main' for single-outlet kitchens — the synthetic
+   *  outlet that lib/db/outlets.ts produces. Multi-outlet kitchens
+   *  store the outlet's stable id here. Set at table creation time
+   *  from the outlet picker on /client/restaurant/qr-codes. */
+  outlet_id: string;
 }
 
 export interface TableSession {
@@ -125,6 +130,7 @@ export async function listTables(clientId: string): Promise<RestaurantTable[]> {
     qr_token_rotated_at: toIso(r.qr_token_rotated_at),
     seats: r.seats ?? 0,
     is_active: r.is_active,
+    outlet_id: r.outlet_id || 'main',
   }));
 }
 
@@ -147,6 +153,7 @@ export async function getTable(
     qr_token_rotated_at: toIso(r.qr_token_rotated_at),
     seats: r.seats ?? 0,
     is_active: r.is_active,
+    outlet_id: r.outlet_id || 'main',
   };
 }
 
@@ -155,14 +162,27 @@ export async function upsertTable(input: {
   table_number: string;
   qr_token: string;
   seats?: number;
+  /** Optional outlet binding. Defaults to 'main' so single-outlet
+   *  callers (which currently constitute every caller) continue to
+   *  work unchanged. Multi-outlet kitchens pass the outlet's id. */
+  outlet_id?: string;
 }): Promise<RestaurantTable> {
   const existing = await getTable(input.client_id, input.table_number);
   if (existing) {
     await db
       .update(tablesTable)
-      .set({ seats: input.seats ?? existing.seats, is_active: true })
+      .set({
+        seats: input.seats ?? existing.seats,
+        is_active: true,
+        ...(input.outlet_id ? { outlet_id: input.outlet_id } : {}),
+      })
       .where(eq(tablesTable.id, existing.id));
-    return { ...existing, seats: input.seats ?? existing.seats, is_active: true };
+    return {
+      ...existing,
+      seats: input.seats ?? existing.seats,
+      is_active: true,
+      outlet_id: input.outlet_id || existing.outlet_id,
+    };
   }
   const id = uuid();
   await db.insert(tablesTable).values({
@@ -172,6 +192,7 @@ export async function upsertTable(input: {
     qr_token: input.qr_token,
     seats: input.seats ?? 0,
     is_active: true,
+    outlet_id: input.outlet_id || 'main',
   });
   const created = await getTable(input.client_id, input.table_number);
   if (!created) throw new Error('upsertTable: insert succeeded but row missing');

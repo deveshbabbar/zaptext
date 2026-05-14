@@ -23,9 +23,23 @@
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 
-// Matches "Order Table N" optionally followed by a legacy 8-12 char
-// token (kept so QRs printed before this change still parse).
-const WHATSAPP_TEXT_PATTERN = /^Order\s+Table\s+([\w-]+)(?:\s+([A-Za-z0-9_-]{8,}))?$/i;
+// Matches "Order Table N" plus zero-or-more optional trailing slots:
+//   • outlet slug — written as "@SLUG" (2-12 alphanumeric/underscore)
+//     so the webhook can route the customer to the right outlet
+//     without asking. Skipped entirely for single-outlet kitchens.
+//   • legacy token — 8+ alphanumeric chars (older printed QRs still
+//     emit this; ignored at handler level since 2026-04 but parsed
+//     so the message doesn't fall through to AI).
+//
+// Examples that parse:
+//   "Order Table 9"                     → single-outlet, no token
+//   "Order Table 9 @SAK"                → multi-outlet, no token
+//   "Order Table 9 ABCD1234EFGH"        → legacy single-outlet w/ token
+//   "Order Table 9 @SAK ABCD1234EFGH"   → multi-outlet w/ token
+//   "Order Table 9 ABCD1234EFGH @SAK"   → reversed order also OK
+const WHATSAPP_TEXT_PATTERN = /^Order\s+Table\s+([\w-]+)((?:\s+(?:@[A-Za-z0-9_]{2,12}|[A-Za-z0-9_-]{8,}))*)$/i;
+const OUTLET_SLUG_PATTERN = /@([A-Za-z0-9_]{2,12})/;
+const LEGACY_TOKEN_PATTERN = /\b([A-Za-z0-9_-]{8,})\b/;
 
 export function generateQrToken(): string {
   return crypto.randomBytes(9).toString('base64url').slice(0, 12);
@@ -35,32 +49,52 @@ function waPhone(raw: string): string {
   return (raw || '').replace(/\D/g, '');
 }
 
-export function buildWaTextForTable(tableNumber: string, _qrToken: string): string {
+export function buildWaTextForTable(
+  tableNumber: string,
+  _qrToken: string,
+  outletSlug?: string
+): string {
   // _qrToken is kept in the signature for callers that pass it but is
   // intentionally NOT included in the customer-facing text. The token is
   // still stored DB-side for QR rotation purposes.
-  return `Order Table ${tableNumber}`;
+  const slugPart = outletSlug && outletSlug.trim()
+    ? ` @${outletSlug.trim().toUpperCase()}`
+    : '';
+  return `Order Table ${tableNumber}${slugPart}`;
 }
 
 export function buildWaUrlForTable(input: {
   botPhone: string;
   tableNumber: string;
   qrToken: string;
+  /** Optional outlet code (e.g. 'SAK') — embedded in the QR text so
+   *  the webhook auto-detects the right outlet on scan without asking
+   *  the customer. Omit for single-outlet kitchens. */
+  outletSlug?: string;
 }): string {
   const phone = waPhone(input.botPhone);
   if (!phone) throw new Error('buildWaUrlForTable: bot phone is empty');
-  const text = buildWaTextForTable(input.tableNumber, input.qrToken);
+  const text = buildWaTextForTable(input.tableNumber, input.qrToken, input.outletSlug);
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
 export function parseDineInTrigger(
   message: string
-): { tableNumber: string; token: string } | null {
+): { tableNumber: string; token: string; outletSlug: string } | null {
   const trimmed = (message || '').trim();
   const m = WHATSAPP_TEXT_PATTERN.exec(trimmed);
   if (!m) return null;
-  // Token group is optional now — older QRs still send it, new ones don't.
-  return { tableNumber: m[1], token: m[2] || '' };
+  const trailing = m[2] || '';
+  const outletMatch = OUTLET_SLUG_PATTERN.exec(trailing);
+  // Strip the outlet match out before token detection so a slug like
+  // "ABCDEFGHIJK" (≥8 chars) can't be mistaken for a legacy token.
+  const tokenSearchSpace = outletMatch ? trailing.replace(outletMatch[0], ' ') : trailing;
+  const tokenMatch = LEGACY_TOKEN_PATTERN.exec(tokenSearchSpace);
+  return {
+    tableNumber: m[1],
+    token: tokenMatch ? tokenMatch[1] : '',
+    outletSlug: outletMatch ? outletMatch[1].toUpperCase() : '',
+  };
 }
 
 export async function generateQrDataUrl(url: string): Promise<string> {

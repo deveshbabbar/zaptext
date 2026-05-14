@@ -191,6 +191,34 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
     if (trigger.token && table.qr_token !== trigger.token) {
       return { handled: true, reply: maybeStripHinglish(invalidTokenReply(), input.languages), suppressAi: true };
     }
+    // Multi-outlet outlet-binding cross-check. When the QR text
+    // carries "@SLUG", validate it matches the table's stored
+    // outlet_id (resolved via the slug → id lookup in lib/db/outlets).
+    // Mismatch = the printed QR is stale (the owner re-assigned this
+    // table to a different outlet after print) — refuse and tell the
+    // customer to ask staff for a fresh QR. Single-outlet kitchens
+    // emit no slug, so this entire block is a no-op for them.
+    if (trigger.outletSlug) {
+      try {
+        const { getOutletById } = await import('@/lib/db/outlets');
+        const claimedOutlet = await getOutletById(input.client_id, trigger.outletSlug);
+        // If the slug doesn't resolve OR the resolved outlet's id
+        // doesn't match the table's bound outlet, reject — the QR is
+        // for a different outlet's table.
+        if (!claimedOutlet || claimedOutlet.id !== table.outlet_id) {
+          return {
+            handled: true,
+            reply: maybeStripHinglish(unknownTableReply(trigger.tableNumber), input.languages),
+            suppressAi: true,
+          };
+        }
+      } catch (err) {
+        // Lookup error → fail open (accept the scan). The session
+        // still opens against the table's stored outlet_id, which is
+        // authoritative.
+        console.error('[dine-in] outlet cross-check failed (failing open)', err);
+      }
+    }
     const session = await openOrJoinSession({
       client_id: input.client_id,
       table_number: table.table_number,

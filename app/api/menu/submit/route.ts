@@ -34,6 +34,15 @@ interface SubmitBody {
 const MAX_ITEMS_PER_ORDER = 40;
 const MAX_LINE_QTY = 30;
 
+// Returns a SINGLE-language confirmation. Earlier this concatenated an
+// English block AND a Hinglish block — the resulting WhatsApp message
+// was twice as long as it needed to be and felt like spam. Now we pick
+// one language based on the bot's configured `languages` array:
+//   - ['English'] only       → English
+//   - anything else / none   → Hinglish (universally understood in
+//                              India and the safest default for a bot
+//                              that doesn't yet know the customer's
+//                              language preference at submit time).
 function buildConfirmation(input: {
   businessName: string;
   mode: 'delivery' | 'takeaway' | 'dine_in';
@@ -41,32 +50,47 @@ function buildConfirmation(input: {
   deliveryAddress: string;
   items: DineInOrderItem[];
   total: number;
+  languages?: string[];
 }): string {
   const lines = input.items.map((it) => `• ${it.qty}× ${it.name}`).join('\n');
-  let enTail = '';
-  let hiTail = '';
+  const englishOnly =
+    Array.isArray(input.languages)
+    && input.languages.length === 1
+    && input.languages[0].trim().toLowerCase() === 'english';
+
+  if (englishOnly) {
+    let tail: string;
+    if (input.mode === 'delivery') {
+      tail = `Delivery to: ${input.deliveryAddress}\nThe kitchen has been notified. We'll WhatsApp you when it's out for delivery.`;
+    } else if (input.mode === 'dine_in') {
+      tail = `Table ${input.tableNumber} — kitchen has been notified. We'll bring it to your table.`;
+    } else {
+      tail = `Pickup ready in ~15-20 min. We'll WhatsApp you when it's ready.`;
+    }
+    return [
+      input.businessName,
+      `Order received ✅`,
+      lines,
+      `Total: ₹${input.total.toFixed(0)}`,
+      tail,
+    ].join('\n');
+  }
+
+  // Default: Hinglish only.
+  let tail: string;
   if (input.mode === 'delivery') {
-    enTail = `Delivery to: ${input.deliveryAddress}\nThe kitchen has been notified. We'll WhatsApp you when it's out for delivery.`;
-    hiTail = `Delivery: ${input.deliveryAddress}\nKitchen ko inform kar diya. Out for delivery hone par WhatsApp pe update.`;
+    tail = `Delivery: ${input.deliveryAddress}\nKitchen ko inform kar diya. Out for delivery hone par WhatsApp pe update.`;
   } else if (input.mode === 'dine_in') {
-    enTail = `Table ${input.tableNumber} — kitchen has been notified. We'll bring it to your table.`;
-    hiTail = `Table ${input.tableNumber} — kitchen ko inform kar diya. Aapke table par laayenge jaldi.`;
+    tail = `Table ${input.tableNumber} — kitchen ko inform kar diya. Aapke table par laayenge jaldi.`;
   } else {
-    enTail = `Pickup ready in ~15-20 min. We'll WhatsApp you when it's ready.`;
-    hiTail = `Pickup ~15-20 min mein ready. Ready hone par WhatsApp pe update.`;
+    tail = `Pickup ~15-20 min mein ready. Ready hone par WhatsApp pe update.`;
   }
   return [
-    `${input.businessName}`,
-    `Order received ✅`,
-    lines,
-    `Total: ₹${input.total.toFixed(0)}`,
-    enTail,
-    ``,
-    `${input.businessName}`,
+    input.businessName,
     `Order mil gaya ✅`,
     lines,
     `Total: ₹${input.total.toFixed(0)}`,
-    hiTail,
+    tail,
   ].join('\n');
 }
 
@@ -143,6 +167,19 @@ export async function POST(request: NextRequest) {
     special_notes: String(body.notes || '').trim(),
   });
 
+  // Resolve the bot's configured languages so the confirmation can
+  // pick the right single-language wording. Tolerate malformed KB —
+  // the confirmation falls back to Hinglish (the safe default).
+  let botLanguages: string[] | undefined;
+  try {
+    if (client.knowledge_base_json) {
+      const kbObj = JSON.parse(client.knowledge_base_json) as Record<string, unknown>;
+      if (Array.isArray(kbObj.languages)) {
+        botLanguages = (kbObj.languages as unknown[]).filter((x): x is string => typeof x === 'string');
+      }
+    }
+  } catch { /* ignore — undefined falls back to Hinglish */ }
+
   // Fire WhatsApp confirmation back to the customer. Best-effort —
   // failure here doesn't roll back the order (admin still sees it in
   // the dashboard and can follow up manually).
@@ -154,6 +191,7 @@ export async function POST(request: NextRequest) {
       deliveryAddress,
       items: cleanItems,
       total: order.total,
+      languages: botLanguages,
     });
     try {
       await sendWhatsAppMessage(client.phone_number_id, customerPhone, confirmation);

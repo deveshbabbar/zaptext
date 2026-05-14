@@ -30,6 +30,7 @@ interface Props {
   prefillPhone?: string;
   deliveryAvailable?: boolean;
   dineInEnabled?: boolean;
+  takeawayEnabled?: boolean;
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -49,13 +50,24 @@ export function MenuPublicClient({
   prefillPhone = '',
   deliveryAvailable = true,
   dineInEnabled = true,
+  takeawayEnabled = true,
 }: Props) {
   const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone);
   const [notes, setNotes] = useState('');
-  const initialMode: OrderMode = deliveryAvailable ? 'delivery' : (dineInEnabled ? 'dine_in' : 'takeaway');
+  // Pick the first enabled mode as the initial value. If the owner has
+  // disabled every mode (misconfiguration) we still default to delivery
+  // — the submit endpoint will reject it cleanly and the customer sees
+  // an error rather than a UI that looks "stuck".
+  const initialMode: OrderMode = deliveryAvailable
+    ? 'delivery'
+    : takeawayEnabled
+      ? 'takeaway'
+      : dineInEnabled
+        ? 'dine_in'
+        : 'delivery';
   const [mode, setMode] = useState<OrderMode>(initialMode);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [tableNumber, setTableNumber] = useState('');
@@ -300,6 +312,7 @@ export function MenuPublicClient({
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               {(['delivery', 'takeaway', 'dine_in'] as const).map((m) => {
                 if (m === 'delivery' && !deliveryAvailable) return null;
+                if (m === 'takeaway' && !takeawayEnabled) return null;
                 if (m === 'dine_in' && !dineInEnabled) return null;
                 const on = mode === m;
                 const label = m === 'delivery' ? '🛵 Delivery' : m === 'takeaway' ? '🧋 Takeaway' : '🍽️ Dine-in';

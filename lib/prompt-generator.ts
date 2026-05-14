@@ -175,9 +175,20 @@ function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant
               if (item.isJainCompatible) tags.push('🟡 Jain');
               if (item.spiceLevel === 'spicy' || item.spiceLevel === 'extra-spicy') tags.push('🌶️ ' + item.spiceLevel);
 
-              // Variants — small/medium/large or 250g/500g/1kg
-              const variantLine = item.weightVariants && item.weightVariants.length > 0
-                ? `\n    Variants: ${item.weightVariants.map((v) => `${v.label} ${v.price}`).join(' · ')}`
+              // Variants — small/medium/large or 250g/500g/1kg.
+              // Prefer the new structured `weightVariants` shape, then
+              // fall back to the legacy `sizes` shape that the bulk-import
+              // path + menu editor still write (Half/Full, 250g/500g, etc.)
+              // — without this fallback, the AI never sees per-size prices
+              // and always quotes only the base figure.
+              const legacySizes = (item as unknown as { sizes?: Array<{ label: string; price: number }> | null }).sizes;
+              const variantsForPrompt = item.weightVariants && item.weightVariants.length > 0
+                ? item.weightVariants.map((v) => ({ label: v.label, price: v.price }))
+                : Array.isArray(legacySizes)
+                  ? legacySizes.filter((s) => s && typeof s.label === 'string' && typeof s.price === 'number' && s.price > 0)
+                  : [];
+              const variantLine = variantsForPrompt.length > 0
+                ? `\n    Variants: ${variantsForPrompt.map((v) => `${v.label} ${v.price}`).join(' · ')}`
                 : '';
               // Allergens — FSSAI-style disclosure
               const allergenLine = item.allergens && item.allergens.length > 0

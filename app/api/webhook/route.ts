@@ -521,6 +521,37 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       message_type: 'text',
     });
 
+    // ─── Restaurant: welcome-menu "See the menu" tap short-circuit ───
+    // When a customer taps a list-reply row with id 'menu' / 'services' /
+    // 'order' we know exactly what to send — the public menu link — so
+    // bypass the AI entirely. Previously this leaned on the AI emitting
+    // a literal [MENU_LINK] token; the model occasionally paraphrased it
+    // and the customer got an unhelpful reply with no link.
+    if (
+      client.type === 'restaurant'
+      && isListReplyTap
+      && (msg.interactiveListId === 'menu'
+          || msg.interactiveListId === 'services'
+          || msg.interactiveListId === 'order')
+    ) {
+      const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
+      const phoneDigits = (msg.from || '').replace(/\D/g, '');
+      const menuUrl = `${origin}/m/${client.client_id}${phoneDigits ? `?p=${phoneDigits}` : ''}`;
+      const reply =
+        `Yahaan se menu dekho aur order karo 👇\n${menuUrl}\n\n` +
+        `Tap items → pick delivery / takeaway / dine-in → place order. Confirmation WhatsApp pe aa jayegi.`;
+      await sendWhatsAppMessage(phoneNumberId, customerPhone, reply);
+      await addConversationMessage({
+        timestamp: getISTTimestamp(),
+        client_id: client.client_id,
+        customer_phone: customerPhone,
+        direction: 'outgoing',
+        message: reply,
+        message_type: 'text',
+      });
+      continue;
+    }
+
     // ─── Restaurant dine-in intercept ─────────────────────────────────
     // ─── Reorder shortcut ────────────────────────────────────────────
     // Customer types "reorder" / "phir wahi" / "same as last time" /

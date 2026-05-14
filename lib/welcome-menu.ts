@@ -242,7 +242,12 @@ export async function buildAutoMenu(client: ClientRow): Promise<MenuItem[]> {
   // Embedding the live count (e.g. "3 available") goes stale the moment
   // staff or inventory changes; the customer would still see "3
   // available" after we removed everyone. Generic copy stays accurate.
-  if (staff && staff.length > 0) {
+  //
+  // Restaurant vertical already ships a 'human' row ("Speak to manager")
+  // and a 'menu' row ("See the menu") in its defaults, so the staff +
+  // services pushes here would render visually-identical duplicate rows
+  // in the WhatsApp list. Skip for restaurant.
+  if (staff && staff.length > 0 && vertical !== 'restaurant') {
     const roleLabel = staffRoleLabel(vertical);
     push({
       id: 'talk_to_staff',
@@ -251,8 +256,9 @@ export async function buildAutoMenu(client: ClientRow): Promise<MenuItem[]> {
     });
   }
 
-  // Surface a "services" entry if inventory exists.
-  if (inventory && inventory.length > 0) {
+  // Surface a "services" entry if inventory exists. Skip for restaurant
+  // for the duplicate-label reason above.
+  if (inventory && inventory.length > 0 && vertical !== 'restaurant') {
     push({
       id: 'services',
       label: servicesLabel(vertical),

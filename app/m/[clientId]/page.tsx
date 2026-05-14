@@ -71,6 +71,7 @@ export default async function PublicMenuPage({
   let tagline = '';
   let deliveryAvailable = true;
   let dineInEnabled = true;
+  let takeawayEnabled = true;
   try {
     const kb = client.knowledge_base_json
       ? (JSON.parse(client.knowledge_base_json) as Record<string, unknown>)
@@ -79,11 +80,24 @@ export default async function PublicMenuPage({
     if (typeof kb.brandLogoUrl === 'string') brandLogoUrl = kb.brandLogoUrl;
     if (typeof kb.brandColor === 'string') brandColor = kb.brandColor;
     if (typeof kb.tagline === 'string') tagline = kb.tagline;
-    if (typeof kb.deliveryAvailable === 'boolean') deliveryAvailable = kb.deliveryAvailable;
-    // serviceModes is a sub-config from the restaurant form; if owner
-    // disabled dine_in, hide that option from the picker.
+    // serviceModes is the authoritative on/off list from the restaurant
+    // form. Each mode picker on the page must respect it independently —
+    // earlier this only gated dine_in, so kitchens that disabled
+    // takeaway in the form still saw takeaway as a chooser. The legacy
+    // `deliveryAvailable` boolean is honoured as an additional kill-
+    // switch for delivery (some owners toggle it without touching
+    // serviceModes).
     if (Array.isArray(kb.serviceModes)) {
-      dineInEnabled = (kb.serviceModes as string[]).includes('dine_in');
+      const modes = kb.serviceModes as string[];
+      dineInEnabled = modes.includes('dine_in');
+      takeawayEnabled = modes.includes('takeaway') || modes.includes('parcel_takeaway');
+      // Treat missing in serviceModes as "delivery off" only if the
+      // owner explicitly populated serviceModes (length > 0). An empty
+      // list shouldn't accidentally disable everything.
+      if (modes.length > 0) deliveryAvailable = modes.includes('delivery');
+    }
+    if (typeof kb.deliveryAvailable === 'boolean') {
+      deliveryAvailable = deliveryAvailable && kb.deliveryAvailable;
     }
   } catch { /* ignore */ }
 
@@ -139,6 +153,7 @@ export default async function PublicMenuPage({
       prefillPhone={prefillPhone}
       deliveryAvailable={deliveryAvailable}
       dineInEnabled={dineInEnabled}
+      takeawayEnabled={takeawayEnabled}
     />
   );
 }

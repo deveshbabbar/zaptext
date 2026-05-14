@@ -116,11 +116,17 @@ function toIso(d: Date | string): string {
 
 // ─── Tables ───────────────────────────────────────────────────────────
 
-export async function listTables(clientId: string): Promise<RestaurantTable[]> {
+export async function listTables(
+  clientId: string,
+  outletId?: string
+): Promise<RestaurantTable[]> {
+  const filter = outletId
+    ? and(eq(tablesTable.client_id, clientId), eq(tablesTable.outlet_id, outletId))
+    : eq(tablesTable.client_id, clientId);
   const rows = await db
     .select()
     .from(tablesTable)
-    .where(eq(tablesTable.client_id, clientId))
+    .where(filter)
     .orderBy(asc(tablesTable.table_number));
   return rows.map((r) => ({
     id: r.id,
@@ -354,13 +360,27 @@ export async function closeStaleSessions(): Promise<number> {
   return stale.length;
 }
 
-export async function listOpenSessions(clientId: string): Promise<TableSession[]> {
+export async function listOpenSessions(
+  clientId: string,
+  outletId?: string
+): Promise<TableSession[]> {
+  // table_sessions doesn't carry outlet_id (sessions are short-lived
+  // and tied to a table). For outlet scoping, narrow by joining
+  // through restaurant_tables.outlet_id at the application layer.
   const rows = await db
     .select()
     .from(sessionsTable)
     .where(and(eq(sessionsTable.client_id, clientId), eq(sessionsTable.status, 'open')))
     .orderBy(desc(sessionsTable.last_activity_at));
-  return rows.map(dbRowToSession);
+  const all = rows.map(dbRowToSession);
+  if (!outletId) return all;
+  // Pull this outlet's table numbers + filter.
+  const outletTables = await db
+    .select({ table_number: tablesTable.table_number })
+    .from(tablesTable)
+    .where(and(eq(tablesTable.client_id, clientId), eq(tablesTable.outlet_id, outletId)));
+  const allowed = new Set(outletTables.map((t) => t.table_number));
+  return all.filter((s) => allowed.has(s.table_number));
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────
@@ -463,18 +483,22 @@ export async function getLastOrderForCustomer(
 
 export async function listOrdersForToday(
   clientId: string,
-  orderType?: DineInOrderType
+  orderType?: DineInOrderType,
+  outletId?: string
 ): Promise<DineInOrder[]> {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
-  const where = orderType
-    ? and(
-        eq(ordersTable.client_id, clientId),
-        eq(ordersTable.order_type, orderType),
-        gte(ordersTable.created_at, dayStart)
-      )
-    : and(eq(ordersTable.client_id, clientId), gte(ordersTable.created_at, dayStart));
-  const rows = await db.select().from(ordersTable).where(where).orderBy(desc(ordersTable.created_at));
+  const baseClauses = [
+    eq(ordersTable.client_id, clientId),
+    gte(ordersTable.created_at, dayStart),
+  ];
+  if (orderType) baseClauses.push(eq(ordersTable.order_type, orderType));
+  if (outletId) baseClauses.push(eq(ordersTable.outlet_id, outletId));
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(and(...baseClauses))
+    .orderBy(desc(ordersTable.created_at));
   return rows.map(dbRowToOrder);
 }
 
@@ -509,7 +533,10 @@ export interface RestaurantStats {
   customerRetention: { totalCustomers: number; repeatCustomers: number; repeatPct: number };
 }
 
-export async function getRestaurantStats(clientId: string): Promise<RestaurantStats> {
+export async function getRestaurantStats(
+  clientId: string,
+  outletId?: string
+): Promise<RestaurantStats> {
   const now = new Date();
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
@@ -523,15 +550,27 @@ export async function getRestaurantStats(clientId: string): Promise<RestaurantSt
   // Last 7 days of orders + this month's orders. Two single-table reads —
   // no joins needed, all aggregation happens in JS since volumes are
   // small (a busy restaurant ≈ 50-200 orders/day).
+  const weekClauses = [
+    eq(ordersTable.client_id, clientId),
+    gte(ordersTable.created_at, weekStart),
+  ];
+  const monthClauses = [
+    eq(ordersTable.client_id, clientId),
+    gte(ordersTable.created_at, monthStart),
+  ];
+  if (outletId) {
+    weekClauses.push(eq(ordersTable.outlet_id, outletId));
+    monthClauses.push(eq(ordersTable.outlet_id, outletId));
+  }
   const weekRows = await db
     .select()
     .from(ordersTable)
-    .where(and(eq(ordersTable.client_id, clientId), gte(ordersTable.created_at, weekStart)))
+    .where(and(...weekClauses))
     .orderBy(asc(ordersTable.created_at));
   const monthRows = await db
     .select()
     .from(ordersTable)
-    .where(and(eq(ordersTable.client_id, clientId), gte(ordersTable.created_at, monthStart)));
+    .where(and(...monthClauses));
 
   // Bucket weekRows by IST date (YYYY-MM-DD), excluding cancelled orders.
   const byDate = new Map<string, { revenue: number; orderCount: number }>();

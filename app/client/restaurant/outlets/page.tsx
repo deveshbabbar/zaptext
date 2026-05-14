@@ -6,13 +6,16 @@
 // scoping).
 
 import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { OutletsEditor } from './outlets-editor';
 
 export default async function RestaurantOutletsPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') {
-    redirect('/client/dashboard');
+  const viewer = await requireRestaurantViewer();
+  // Owner-only — outlet managers can't add / edit / archive outlets.
+  // Their dashboard nav already hides this link (3I v2 sidebar gating),
+  // but enforce server-side too so direct URLs are caught.
+  if (viewer.role !== 'owner') {
+    redirect('/client/restaurant');
   }
-  return <OutletsEditor businessName={user.activeBot.business_name} />;
+  return <OutletsEditor businessName={viewer.activeBot.business_name} />;
 }

@@ -6,11 +6,35 @@ import { BotContextCard } from '@/components/client/bot-context-card';
 import { getActiveSubscription } from '@/lib/subscription';
 import { PLANS, TRIAL_MESSAGE_LIMIT, isTrialPlan } from '@/lib/plans';
 import { getOutboundCountForOwner } from '@/lib/db/conversations';
+import { findActiveMembershipForEmail } from '@/lib/db/team-members';
+import { getClientById } from '@/lib/db/clients';
 import Link from 'next/link';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireClientWithBots();
+
+  // Phase 3I v2 — outlet-manager detection. A user with NO owned bots
+  // but an active team_members row for someone else's restaurant
+  // should still see the restaurant nav (read-only-ish, owner-only
+  // pages gated server-side). We synthesise an effective bot type so
+  // VERTICAL_ITEMS lookup works, and pass `isOutletManager` so the
+  // sidebar hides owner-only entries (Outlets, Team Members).
+  let isOutletManager = false;
+  let effectiveBotType: string | undefined = user.activeBot?.type;
+  if (!user.activeBot && user.email) {
+    try {
+      const memberships = await findActiveMembershipForEmail(user.email);
+      for (const m of memberships) {
+        const ownerBot = await getClientById(m.owner_client_id);
+        if (ownerBot && ownerBot.type === 'restaurant') {
+          isOutletManager = true;
+          effectiveBotType = 'restaurant';
+          break;
+        }
+      }
+    } catch { /* fail open — no nav scoping if lookup fails */ }
+  }
 
   let planName: string | null = null;
   let planPrice: number | null = null;
@@ -147,7 +171,7 @@ export default async function ClientLayout({ children }: { children: React.React
           )}
         </div>
 
-        <SidebarNav isTrial={isTrial} activeBotType={user.activeBot?.type} />
+        <SidebarNav isTrial={isTrial} activeBotType={effectiveBotType} isOutletManager={isOutletManager} />
 
         <div className="mt-auto pt-3 border-t border-white/10 flex items-center gap-2.5">
           <div className="w-[34px] h-[34px] rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[13px]">

@@ -9,19 +9,22 @@
 // Each click POSTs /api/client/restaurant/orders/<id>/status which auto-
 // pings the customer on WhatsApp with the new status.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { listOrdersForToday } from '@/lib/db/restaurant-dine-in';
 import { PageTopbar, PageHead, Panel } from '@/components/app/primitives';
 import { OrdersBoard } from './orders-board';
 
 export default async function RestaurantOrdersPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') {
-    redirect('/client/dashboard');
-  }
+  // Phase 3I v2 — viewer-context gates outlet managers to their own
+  // outlet's orders. Owners (restrictedOutletId === null) keep the
+  // chain-wide view.
+  const viewer = await requireRestaurantViewer();
 
-  const orders = await listOrdersForToday(user.activeBot.client_id).catch(() => []);
+  const orders = await listOrdersForToday(
+    viewer.activeBot.client_id,
+    undefined,
+    viewer.restrictedOutletId || undefined
+  ).catch(() => []);
 
   return (
     <>

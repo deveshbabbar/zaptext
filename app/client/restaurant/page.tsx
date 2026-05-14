@@ -5,8 +5,7 @@
 // the structure of /admin/grocery/page.tsx so users moving between bots
 // get a consistent feel.
 
-import { redirect } from 'next/navigation';
-import { requireClientWithBots } from '@/lib/auth';
+import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
 import { getRestaurantStats, getRevenueByOutletThisMonth } from '@/lib/db/restaurant-dine-in';
 import { getOutletsForClient, isMultiOutletEnabled } from '@/lib/db/outlets';
@@ -15,17 +14,18 @@ import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components
 import { SubTypesChips } from '@/components/client/sub-types-chips';
 
 export default async function RestaurantOverviewPage() {
-  const user = await requireClientWithBots();
-  if (!user.activeBot || user.activeBot.type !== 'restaurant') {
-    redirect('/client/dashboard');
-  }
-  const clientId = user.activeBot.client_id;
+  // Phase 3I v2 — viewer-context. Owner sees chain-wide; outlet
+  // manager sees their outlet only. Stats query forwards
+  // restrictedOutletId so the KPIs are scoped automatically.
+  const viewer = await requireRestaurantViewer();
+  const user = { activeBot: viewer.activeBot };
+  const clientId = viewer.activeBot.client_id;
   const today = getISTDate();
 
   const [todayBookings, pending, stats, multiOutlet, outlets, outletRevenue] = await Promise.all([
     getBookingsForDate(clientId, today).catch(() => []),
     getBookingsByClient(clientId, 'pending_approval').catch(() => []),
-    getRestaurantStats(clientId).catch(() => ({
+    getRestaurantStats(clientId, viewer.restrictedOutletId || undefined).catch(() => ({
       todayRevenue: 0, todayOrderCount: 0,
       last7DaysRevenue: [], topItemsThisMonth: [],
       peakHoursLast7d: new Array(24).fill(0),
@@ -37,10 +37,9 @@ export default async function RestaurantOverviewPage() {
   ]);
 
   // Per-outlet breakdown table (Phase 3J). Render only for multi-outlet
-  // kitchens — single-outlet KPIs are already covered by the chain-wide
-  // cards above. Sort by revenue descending so the busiest outlet
-  // surfaces first.
-  const outletBreakdown = multiOutlet
+  // kitchens AND only for OWNERS — outlet managers (3I v2) don't need
+  // a cross-outlet comparison; their KPIs are already scoped above.
+  const outletBreakdown = multiOutlet && viewer.role === 'owner'
     ? outlets
         .filter((o) => o.isActive)
         .map((o) => {

@@ -31,6 +31,11 @@ export async function GET() {
   if (!user || !user.activeBot || user.activeBot.type !== 'restaurant') {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
+  // Team Members is owner-only — outlet managers can't add or revoke
+  // peers. requireClientWithBots already proves the caller owns the
+  // bot (since activeBot is theirs); outlet managers come through
+  // requireRestaurantViewer instead and never have an owned activeBot
+  // of type restaurant for this chain. The check above is sufficient.
   const members = await listTeamMembersForOwner(user.activeBot.client_id);
   return NextResponse.json({ ok: true, members });
 }
@@ -40,6 +45,11 @@ export async function POST(request: NextRequest) {
   if (!user || !user.activeBot || user.activeBot.type !== 'restaurant') {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
+  // Team Members is owner-only — outlet managers can't add or revoke
+  // peers. requireClientWithBots already proves the caller owns the
+  // bot (since activeBot is theirs); outlet managers come through
+  // requireRestaurantViewer instead and never have an owned activeBot
+  // of type restaurant for this chain. The check above is sufficient.
   let body: { email?: string; outletId?: string; role?: string };
   try {
     body = await request.json();
@@ -75,6 +85,11 @@ export async function PATCH(request: NextRequest) {
   if (!user || !user.activeBot || user.activeBot.type !== 'restaurant') {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
+  // Team Members is owner-only — outlet managers can't add or revoke
+  // peers. requireClientWithBots already proves the caller owns the
+  // bot (since activeBot is theirs); outlet managers come through
+  // requireRestaurantViewer instead and never have an owned activeBot
+  // of type restaurant for this chain. The check above is sufficient.
   let body: { outletId?: string; newEmail?: string; role?: string };
   try {
     body = await request.json();
@@ -110,6 +125,11 @@ export async function DELETE(request: NextRequest) {
   if (!user || !user.activeBot || user.activeBot.type !== 'restaurant') {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
+  // Team Members is owner-only — outlet managers can't add or revoke
+  // peers. requireClientWithBots already proves the caller owns the
+  // bot (since activeBot is theirs); outlet managers come through
+  // requireRestaurantViewer instead and never have an owned activeBot
+  // of type restaurant for this chain. The check above is sufficient.
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   if (!id) {

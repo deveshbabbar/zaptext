@@ -67,7 +67,20 @@ function isActive(currentPath: string, href: string): boolean {
 interface SidebarNavProps {
   isTrial?: boolean;
   activeBotType?: string;
+  /** Phase 3I v2 — when true, hide all owner-only nav items
+   *  (Outlets, Team Members) and the owner-scoped common items
+   *  (Dashboard, Conversations, Bot Settings, Welcome menu).
+   *  Outlet managers only see their outlet's working surfaces
+   *  (orders, menu, tables-live, etc.). */
+  isOutletManager?: boolean;
 }
+
+// Restaurant nav items that only the chain OWNER should see. Outlet
+// managers don't manage outlet configs or team membership.
+const OWNER_ONLY_RESTAURANT_HREFS: ReadonlySet<string> = new Set([
+  '/client/restaurant/outlets',
+  '/client/restaurant/team',
+]);
 
 // Vertical-specific workspace links. These are MERGED into the Workspace
 // section based on the active bot's type — no separate "Vertical · X"
@@ -126,8 +139,30 @@ const VERTICAL_ITEMS: Record<string, NavItem[]> = {
   ],
 };
 
-function buildSections(activeBotType?: string): NavSection[] {
-  const verticalItems = activeBotType ? VERTICAL_ITEMS[activeBotType] || [] : [];
+function buildSections(activeBotType?: string, isOutletManager = false): NavSection[] {
+  const rawVerticalItems = activeBotType ? VERTICAL_ITEMS[activeBotType] || [] : [];
+  // Outlet managers don't see Outlets / Team Members links — those
+  // are owner-only (page-level redirects are the real enforcement;
+  // this is the UX layer).
+  const verticalItems = isOutletManager
+    ? rawVerticalItems.filter((it) => !OWNER_ONLY_RESTAURANT_HREFS.has(it.href))
+    : rawVerticalItems;
+
+  if (isOutletManager) {
+    // Outlet managers don't need the chain-wide common items
+    // (Dashboard / Conversations / Bot Settings / Welcome menu —
+    // each of these is owner-scoped at the page level too). They
+    // see ONLY the restaurant working surfaces.
+    return [
+      {
+        title: 'Outlet workspace',
+        items: verticalItems,
+      },
+      // Skip ACCOUNT_SECTION (subscription / all bots / create bot
+      // are owner-only).
+    ];
+  }
+
   // Order: Dashboard → vertical items → common items below
   const dashboardItem = COMMON_WORKSPACE_ITEMS[0];
   const restCommon = COMMON_WORKSPACE_ITEMS.slice(1);
@@ -140,9 +175,9 @@ function buildSections(activeBotType?: string): NavSection[] {
   ];
 }
 
-export function SidebarNav({ isTrial = false, activeBotType }: SidebarNavProps) {
+export function SidebarNav({ isTrial = false, activeBotType, isOutletManager = false }: SidebarNavProps) {
   const pathname = usePathname() || '';
-  const sections = buildSections(activeBotType);
+  const sections = buildSections(activeBotType, isOutletManager);
   return (
     <>
       {sections.map((section) => (

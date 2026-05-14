@@ -25,6 +25,33 @@ interface MenuItem {
 }
 interface MenuCategory { category?: string; items?: MenuItem[] }
 
+// Detect "Half Rs.189 / Full Rs.329" / "Quarter Rs.199 / Half Rs.359 / Full Rs.649"
+// / "Glass Rs.79 / Jug Rs.219" / "2 pcs Rs.89 / 4 pcs Rs.169" patterns in
+// the free-text price string and auto-extract structured size variants.
+//
+// We use this when the menuCategories item didn't ship with a sizes[]
+// array (most legacy + DEMO_BUNDLES rows). Without this, the customer
+// could only order at the FIRST price (e.g. "Half") because parsePrice
+// just grabbed the first number — Full/Jug/larger variants were lost.
+function parseSizesFromPriceString(raw: string): Array<{ label: string; price: number }> {
+  if (!raw) return [];
+  // Split on slash or " / " — covers most observed separators.
+  const segments = raw.split(/\s*\/\s*/);
+  if (segments.length < 2) return [];
+  const out: Array<{ label: string; price: number }> = [];
+  for (const seg of segments) {
+    // Match "Label Rs.123" / "Label ₹123" / "Label 123"; label = leading
+    // text up to the price token. Accepts trailing words too (e.g. "2 pcs").
+    const m = seg.trim().match(/^(.+?)\s*(?:Rs\.?|₹)?\s*(\d{1,5}(?:\.\d{1,2})?)\s*$/i);
+    if (!m) return []; // any segment that doesn't parse → bail, treat as single price
+    const label = m[1].trim().replace(/\s+/g, ' ');
+    const price = parseFloat(m[2]);
+    if (!label || !isFinite(price) || price <= 0) return [];
+    out.push({ label, price });
+  }
+  return out.length >= 2 ? out : [];
+}
+
 export default async function PublicMenuPage({
   params,
   searchParams,
@@ -74,13 +101,20 @@ export default async function PublicMenuPage({
     (cat.items || []).forEach((it, ii) => {
       const name = (it.name || '').trim();
       if (!name) return;
-      const validSizes = Array.isArray(it.sizes)
+      // First trust an explicit sizes[] array on the item (clean schema).
+      // If absent, fall back to parsing the free-text price string for
+      // patterns like "Half Rs.189 / Full Rs.329" so legacy DEMO data
+      // still renders multi-size pickers correctly.
+      let validSizes: Array<{ label: string; price: number }> = Array.isArray(it.sizes)
         ? it.sizes
             .filter((s): s is { label: string; price: number } =>
               !!s && typeof s.label === 'string' && typeof s.price === 'number' && s.price > 0
             )
             .map((s) => ({ label: s.label, price: s.price }))
         : [];
+      if (validSizes.length === 0) {
+        validSizes = parseSizesFromPriceString(it.price || '');
+      }
       flatItems.push({
         id: `${ci}-${ii}`,
         category: (cat.category || 'Menu').trim() || 'Menu',

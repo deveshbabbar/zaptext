@@ -25,6 +25,25 @@ interface MenuItem {
 }
 interface MenuCategory { category?: string; items?: MenuItem[] }
 
+// Auto-extract size variants from free-text prices like "Half Rs.189 /
+// Full Rs.329" — see /m/[clientId]/page.tsx for the same parser. Kept
+// in sync between the two menu entry points (QR-scan dine-in vs link).
+function parseSizesFromPriceString(raw: string): Array<{ label: string; price: number }> {
+  if (!raw) return [];
+  const segments = raw.split(/\s*\/\s*/);
+  if (segments.length < 2) return [];
+  const out: Array<{ label: string; price: number }> = [];
+  for (const seg of segments) {
+    const m = seg.trim().match(/^(.+?)\s*(?:Rs\.?|₹)?\s*(\d{1,5}(?:\.\d{1,2})?)\s*$/i);
+    if (!m) return [];
+    const label = m[1].trim().replace(/\s+/g, ' ');
+    const price = parseFloat(m[2]);
+    if (!label || !isFinite(price) || price <= 0) return [];
+    out.push({ label, price });
+  }
+  return out.length >= 2 ? out : [];
+}
+
 export default async function PublicMenuPage({
   params,
 }: {
@@ -59,13 +78,16 @@ export default async function PublicMenuPage({
     (cat.items || []).forEach((it, ii) => {
       const name = (it.name || '').trim();
       if (!name) return;
-      const validSizes = Array.isArray(it.sizes)
+      let validSizes: Array<{ label: string; price: number }> = Array.isArray(it.sizes)
         ? it.sizes
             .filter((s): s is { label: string; price: number } =>
               !!s && typeof s.label === 'string' && typeof s.price === 'number' && s.price > 0
             )
             .map((s) => ({ label: s.label, price: s.price }))
         : [];
+      if (validSizes.length === 0) {
+        validSizes = parseSizesFromPriceString(it.price || '');
+      }
       flatItems.push({
         id: `${ci}-${ii}`,
         category: (cat.category || 'Menu').trim() || 'Menu',

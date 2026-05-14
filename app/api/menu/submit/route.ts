@@ -18,6 +18,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { getClientById } from '@/lib/db/clients';
 import { createOrder, type DineInOrderItem, type DineInOrderType } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { notifyOwnerOfNewOrder } from '@/lib/restaurant/notify-order';
 
 interface SubmitBody {
   clientId?: string;
@@ -160,6 +161,10 @@ export async function POST(request: NextRequest) {
       console.error('[menu submit] WA confirmation failed', { customerPhone, err });
     }
   }
+
+  // Email the owner so they have a permanent, searchable record + a
+  // one-click CTA into /client/restaurant/orders. Best-effort.
+  await notifyOwnerOfNewOrder(client, order, 'menu_link');
 
   return NextResponse.json({ ok: true, orderId: order.id, total: order.total });
 }

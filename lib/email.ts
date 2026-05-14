@@ -239,6 +239,79 @@ export function tplDailyMorningSummary(p: { ownerName: string; businessName: str
   return { subject: `Today's bookings at ${p.businessName} — ${p.bookings.length} scheduled`, html: wrap("Today's Schedule", body, `${process.env.NEXT_PUBLIC_APP_URL}/client/calendar`, 'View Calendar') };
 }
 
+// Restaurant new-order alert — fired the moment a customer places an
+// order (web menu link, QR-scan dine-in, or AI [ORDER:] tag). Lands in
+// the owner's inbox with full item list, mode (delivery/dine-in/take-
+// away), customer phone + address/table so they can acknowledge from
+// either email or the dashboard.
+export function tplNewOrder(p: {
+  ownerName: string;
+  businessName: string;
+  orderId: string;
+  mode: 'dine_in' | 'home_delivery' | 'parcel_takeaway';
+  customerName: string;
+  customerPhone: string;
+  tableNumber?: string;
+  deliveryAddress?: string;
+  notes?: string;
+  items: Array<{ name: string; qty: number; price: number }>;
+  total: number;
+  source: 'menu_link' | 'qr_dine_in' | 'whatsapp_chat';
+}) {
+  const modeLabel =
+    p.mode === 'dine_in' ? `🍽️ Dine-in${p.tableNumber ? ` · Table ${esc(p.tableNumber)}` : ''}`
+    : p.mode === 'home_delivery' ? '🛵 Delivery'
+    : '🛍️ Takeaway';
+  const sourceLabel =
+    p.source === 'menu_link' ? 'Web menu link'
+    : p.source === 'qr_dine_in' ? 'QR-scan dine-in'
+    : 'WhatsApp chat';
+
+  const itemRows = p.items
+    .map((it) => `
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:8px 4px;">${esc(it.name)}</td>
+        <td style="padding:8px 4px;text-align:right;color:#666;">× ${it.qty}</td>
+        <td style="padding:8px 4px;text-align:right;font-weight:500;">₹${(it.price * it.qty).toFixed(0)}</td>
+      </tr>`)
+    .join('');
+
+  const detailRows: Array<{ label: string; value: string }> = [
+    { label: 'Mode', value: modeLabel },
+    { label: 'Customer', value: `${esc(p.customerName || 'Unknown')} (+${esc(p.customerPhone)})` },
+  ];
+  if (p.mode === 'home_delivery' && p.deliveryAddress) {
+    detailRows.push({ label: 'Delivery to', value: esc(p.deliveryAddress) });
+  }
+  if (p.notes) {
+    detailRows.push({ label: 'Notes', value: esc(p.notes) });
+  }
+  detailRows.push({ label: 'Source', value: sourceLabel });
+  detailRows.push({ label: 'Order ID', value: `<code style="font-size:12px;color:#666;">${esc(p.orderId)}</code>` });
+
+  const body = `
+    <p>Hi <strong>${esc(p.ownerName)}</strong>,</p>
+    <p><strong>New order</strong> at <strong>${esc(p.businessName)}</strong> — ${modeLabel}</p>
+    ${infoBox(detailRows)}
+    <h3 style="margin:20px 0 8px;font-size:15px;color:#1a1a1a;">Items</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <tbody>${itemRows}</tbody>
+      <tfoot>
+        <tr style="border-top:2px solid #ddd;">
+          <td style="padding:10px 4px;font-weight:600;">Total</td>
+          <td></td>
+          <td style="padding:10px 4px;text-align:right;font-weight:700;font-size:16px;">₹${p.total.toFixed(0)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <p style="margin-top:16px;color:#5a6b5d;font-size:13px;">Tap the button below to acknowledge and update status — the customer gets a WhatsApp ping on every status change.</p>
+  `;
+  return {
+    subject: `🆕 New order at ${p.businessName} — ₹${p.total.toFixed(0)} · ${modeLabel}`,
+    html: wrap('New Order', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/restaurant/orders`, 'View Order'),
+  };
+}
+
 // Restaurant low-stock daily digest — fired by /api/cron/low-stock-alerts
 // in the morning bucket. Lists every menu item where stock <=
 // low_stock_threshold so the owner can re-stock before the lunch rush.

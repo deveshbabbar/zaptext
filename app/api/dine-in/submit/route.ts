@@ -11,6 +11,7 @@ import { getClientById } from '@/lib/db/clients';
 import { getSessionById, getTable, createOrder, type DineInOrderItem } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
+import { notifyOwnerOfNewOrder } from '@/lib/restaurant/notify-order';
 
 interface SubmitBody {
   clientId?: string;
@@ -142,6 +143,10 @@ export async function POST(request: NextRequest) {
       }
     }
   }
+
+  // Email the owner so they have a permanent record + a one-click CTA
+  // into /client/restaurant/orders. Best-effort.
+  await notifyOwnerOfNewOrder(client, order, 'qr_dine_in');
 
   return NextResponse.json({ ok: true, orderId: order.id, total: order.total });
 }

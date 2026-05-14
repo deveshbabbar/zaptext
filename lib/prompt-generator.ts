@@ -1309,7 +1309,11 @@ ${trainers.map((t) => {
 }).join('\n')}`
     : '';
 
-  const ptLine = config.personalTraining.available
+  // Optional chain: gym configs created via /admin/create-client (no
+  // detailed personalTraining sub-form) may not have this object at all,
+  // and we used to crash with "Cannot read properties of undefined
+  // (reading 'available')" before even saving the row.
+  const ptLine = config.personalTraining?.available
     ? `Default rate: ${config.personalTraining.pricePerSession}${config.personalTraining.trainerInfo ? ` — ${config.personalTraining.trainerInfo}` : ''}`
     : 'Not available';
 
@@ -1472,7 +1476,7 @@ STRICT RULES FOR GYM BOT:
 TRAINER RULES (CRITICAL):
 - The AVAILABLE TRAINERS section above is AUTHORITATIVE. Use those names + prices when customer asks for a specific person.
 - Only describe trainers EXPLICITLY listed. If the section is empty, NO specific trainers exist for this gym — DO NOT invent names, certifications, experience, or specialties.
-- If customer asks about trainers and the section is empty, communicate (in their language): "For specific trainer details, please contact the owner at ${ownerCallNumber}. Personal training rate: ${config.personalTraining.available ? config.personalTraining.pricePerSession : 'contact owner'}."
+- If customer asks about trainers and the section is empty, communicate (in their language): "For specific trainer details, please contact the owner at ${ownerCallNumber}. Personal training rate: ${config.personalTraining?.available ? config.personalTraining.pricePerSession : 'contact owner'}."
 - Female-only trainers: if a male customer asks for one of these, politely explain the trainer trains female clients only and offer alternates.
 - Owner contact: ${ownerCallNumber}. Never share the WhatsApp bot's own number as the owner's contact.
 

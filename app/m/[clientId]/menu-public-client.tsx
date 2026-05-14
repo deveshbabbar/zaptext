@@ -726,8 +726,14 @@ export function MenuPublicClient({
                       />
                     </div>
                     {customerLat !== null && customerLng !== null ? (
+                      // Never render the raw lat/lng in the customer UI —
+                      // a screenshot or shared screen could leak the
+                      // exact home coordinates. Coordinates still flow
+                      // server-side in the submit body for outlet routing
+                      // + delivery_lat/lng order column; that channel is
+                      // authenticated, this surface is not.
                       <div style={{ color: '#1a5e1a', marginBottom: 6 }}>
-                        ✓ Pinned at {customerLat.toFixed(5)}, {customerLng.toFixed(5)}
+                        ✓ Location set — kitchen will use this for delivery routing
                       </div>
                     ) : (
                       <div style={{ color: '#666', marginBottom: 6 }}>
@@ -774,29 +780,14 @@ export function MenuPublicClient({
                       >
                         {gpsPending ? 'Getting GPS…' : '📡 Use my current location'}
                       </button>
-                      <a
-                        href={
-                          customerLat !== null && customerLng !== null
-                            ? `https://www.google.com/maps?q=${customerLat},${customerLng}`
-                            : `https://www.google.com/maps`
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: 99,
-                          border: '1px solid #ddd',
-                          background: '#fafafa',
-                          color: '#222',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          textDecoration: 'none',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                        }}
-                      >
-                        🗺️ Open Google Maps
-                      </a>
+                      {/*
+                        Privacy: the previous Google Maps fallback link
+                        exposed lat/lng in its href, which could leak via
+                        screenshots / browser-history caches. Removed —
+                        the embedded MapPicker + GPS button now cover
+                        both paths, and the manual address textarea
+                        above handles the no-location case.
+                      */}
                       {(customerLat !== null || customerLng !== null) && (
                         <button
                           type="button"

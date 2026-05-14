@@ -58,13 +58,47 @@ interface Props {
 const DEFAULT_LAT = 21.1458;
 const DEFAULT_LNG = 79.0882;
 
-// Free OpenStreetMap-based style. Replace via NEXT_PUBLIC_MAP_STYLE_URL
-// when stepping up to Stadia / MapTiler / self-hosted tiles.
-function tileStyleUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_MAP_STYLE_URL ||
-    'https://demotiles.maplibre.org/style.json'
-  );
+// Inline MapLibre style spec using OpenStreetMap raster tiles.
+//
+// Previous: `https://demotiles.maplibre.org/style.json` — that's just
+// a country-outline demo without streets, so customers saw a flat
+// yellow rectangle instead of a map. OSM raster tiles render real
+// streets, points of interest, building footprints.
+//
+// Three subdomains (a/b/c) are sharded so a single client doesn't
+// hit one CDN edge for every tile — smoother loading on mobile.
+//
+// To upgrade to Stadia Maps (200k free tiles/mo, smoother style),
+// set NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.stadiamaps.com/styles/osm_bright.json
+// in env. The component honours that override.
+function tileStyleUrl(): string | Record<string, unknown> {
+  const override = process.env.NEXT_PUBLIC_MAP_STYLE_URL;
+  if (override) return override;
+  return {
+    version: 8,
+    sources: {
+      osm: {
+        type: 'raster',
+        tiles: [
+          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        ],
+        tileSize: 256,
+        attribution: '© OpenStreetMap contributors',
+        maxzoom: 19,
+      },
+    },
+    layers: [
+      {
+        id: 'osm',
+        type: 'raster',
+        source: 'osm',
+        minzoom: 0,
+        maxzoom: 22,
+      },
+    ],
+  };
 }
 
 export function MapPicker({ lat, lng, onChange, outlets = [], heightPx = 240 }: Props) {

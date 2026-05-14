@@ -12,27 +12,32 @@ const LANDING_FAQS = [
   {
     question: 'What is ZapText?',
     answer:
-      'ZapText is an AI WhatsApp bot platform for Indian small and medium businesses. It lets clinics, restaurants, coaching institutes, salons, real estate agents, D2C brands, and gyms automate customer conversations on WhatsApp in Hindi, English, and Hinglish.',
+      'ZapText is an AI WhatsApp bot built for Indian restaurants — kitchens, cafes, cloud kitchens, sweet shops, and bakeries. It takes orders, runs dine-in QR ordering, routes multi-outlet chains, sends UPI payment links, and handles every Indian language (Hindi, English, Hinglish, Punjabi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam).',
   },
   {
-    question: 'How long does it take to set up a WhatsApp bot?',
+    question: 'How long does it take to set up the bot for my restaurant?',
     answer:
-      'Most businesses can go live in under 5 minutes. You pick your business type, fill a short form about your products or services, and the bot is trained automatically.',
+      "Onboarding (sub-type, cuisine, menu, FSSAI, GSTIN) takes about 5 minutes. WhatsApp Business API verification of your number typically takes 24-48 hours after that — Meta's side, not ours. Once verified, your bot is live and accepting orders.",
   },
   {
-    question: 'Does the bot understand Hindi and Hinglish?',
+    question: 'Does the bot handle dine-in QR ordering?',
     answer:
-      'Yes. The bot is tuned for how Indian customers actually type on WhatsApp — Hindi, English, Hinglish, emojis, voice notes, and short informal messages.',
+      "Yes. Print one QR per table — customer scans, WhatsApp opens, they tap Send, get a menu link, place the order. Multi-outlet chains: each table's QR encodes its outlet so a Saket scan never lands in CP's KOT.",
   },
   {
-    question: 'Do I need a new WhatsApp number?',
+    question: 'Can the bot handle multiple outlets / branches on one WhatsApp number?',
     answer:
-      'Yes, you need a number that has never been used on WhatsApp before. Once we register it on the WhatsApp Business API, it cannot be used for regular WhatsApp on any phone.',
+      "Yes. One WhatsApp number for the whole chain. The bot routes orders to the right outlet using the QR code, the customer's shared location, or a quick branch picker. Each outlet manager logs in with their own email and sees only their outlet's orders.",
+  },
+  {
+    question: 'Does it understand Hindi voice notes?',
+    answer:
+      'Yes. Voice notes are transcribed via Groq Whisper. A customer saying "do paneer butter masala aur ek naan" lands on the menu page with the cart already populated. Works for Punjabi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam too.',
   },
   {
     question: 'How much does ZapText cost?',
     answer:
-      'ZapText offers multiple plans including a starter tier. See the Subscription page after sign-up for current pricing in INR.',
+      'ZapText has tiered pricing starting at ₹599/month for single-outlet kitchens. Multi-outlet chains go on Growth (₹1,499) or Scale (₹3,999). See the Pricing section for full details and free-trial info.',
   },
 ];
 

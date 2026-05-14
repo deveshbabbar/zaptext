@@ -10,7 +10,11 @@ import { ReferralCapture } from "@/components/landing/referral-capture";
 // ─────────────────────────── DATA ───────────────────────────
 
 type ChatMsg = { who: "in" | "out"; t: string; time?: string; typing?: boolean };
-type BizKey = "restaurant" | "salon" | "coaching" | "realestate" | "d2c" | "gym";
+// Restaurant-only landing for now. Other verticals (salon / coaching /
+// gym / realestate / tiffin / grocery / ecommerce) will be re-added
+// once each vertical is shipped end-to-end. Keeping the type narrowed
+// to a single key keeps every downstream component (PhoneChat) honest.
+type BizKey = "restaurant";
 type Biz = {
   emoji: string;
   label: string;
@@ -68,212 +72,65 @@ const BIZ: Record<BizKey, Biz> = {
       },
     ],
   },
-  salon: {
-    emoji: "💇",
-    label: "Salon",
-    name: "Bliss Salon · Bot",
-    avatar: "B",
-    tagline: "Salons, spas, barbers & wellness",
-    longDesc:
-      "Shares rate lists with photos, books stylists by name, upsells packages, confirms bridal slots, and messages a reminder the morning of.",
-    stats: [
-      { n: "+41%", l: "package upsells" },
-      { n: "2.1×", l: "repeat bookings" },
-      { n: "0", l: "no-shows last month" },
-    ],
-    faqs: [
-      { q: "Rate list dikhao" },
-      { q: "Appointment book karni hai" },
-      { q: "Home service available hai?" },
-      { q: "Bridal package kya hai?" },
-      { q: "Kaunse brands use karte ho?" },
-    ],
-    chat: [
-      { who: "in", t: "Hair spa ka rate kya hai?", time: "3:20 PM" },
-      {
-        who: "out",
-        t: "Hi love 💫 Hair Spa options —<br/><b>• Wella deep cond.</b> ₹1,200<br/><b>• Moroccan oil spa</b> ₹1,800<br/><b>• Olaplex bond repair</b> ₹2,500<br/><br/>Length waist ke niche hai? Top-up ₹400.",
-        time: "3:20 PM",
-        typing: true,
-      },
-      { who: "in", t: "Moroccan walla karwana hai, kal evening?", time: "3:21 PM" },
-      {
-        who: "out",
-        t: "<b>Sat 6:30 PM</b> with Priya available hai. Confirm?",
-        time: "3:21 PM",
-        typing: true,
-      },
-      { who: "in", t: "Yes please", time: "3:21 PM" },
-      {
-        who: "out",
-        t: "Booked ✓ Priya blocked 90 min for you. Bridal trial bhi aane wali hai next month — remind karun?",
-        time: "3:22 PM",
-        typing: true,
-      },
-    ],
-  },
-  coaching: {
-    emoji: "📚",
-    label: "Coaching",
-    name: "Sharma Classes · Bot",
-    avatar: "S",
-    tagline: "Institutes, tutors & test-prep centers",
-    longDesc:
-      "Handles admission queries, shares fees and toppers, books demo classes, and hands warm parents to counselors with full chat context.",
-    stats: [
-      { n: "6.2×", l: "demo bookings" },
-      { n: "₹2.1L", l: "fees collected/wk" },
-      { n: "11 PM", l: "peak query time" },
-    ],
-    faqs: [
-      { q: "Admission kaise hota hai?" },
-      { q: "Fees kitni hai?" },
-      { q: "Demo class milegi?" },
-      { q: "Results kaise hain?" },
-      { q: "Online classes available hain?" },
-    ],
-    chat: [
-      { who: "in", t: "Beta 11th PCM ke liye coaching chahiye", time: "9:12 PM" },
-      {
-        who: "out",
-        t: "Namaste! 11th PCM — 2 batches —<br/><b>• Morning 7–10 AM</b> (₹48k/yr)<br/><b>• Evening 4–7 PM</b> (₹52k/yr)<br/><br/>Demo class free hai. Board CBSE ya ICSE?",
-        time: "9:12 PM",
-        typing: true,
-      },
-      { who: "in", t: "CBSE. Demo kab milegi?", time: "9:13 PM" },
-      {
-        who: "out",
-        t: "Kal Saturday 5 PM demo chalega? Physics by Mr. Verma — last year 6 students 95+.",
-        time: "9:13 PM",
-        typing: true,
-      },
-      { who: "in", t: "Ok book karo", time: "9:13 PM" },
-      {
-        who: "out",
-        t: "Booked ✓ Parent counselor Meena aapko call karengi subah. Fee structure PDF bhej rahi hoon 📎",
-        time: "9:14 PM",
-        typing: true,
-      },
-    ],
-  },
-  realestate: {
-    emoji: "🏠",
-    label: "Real estate",
-    tagline: "Builders, agents & property consultants",
-    longDesc:
-      "Qualifies buyer/renter intent, shares listings with photos and RERA, books site visits, and routes serious buyers to your best closer.",
-    stats: [
-      { n: "4.8×", l: "site visits" },
-      { n: "₹14L", l: "avg deal size" },
-      { n: "72%", l: "verified leads" },
-    ],
-    faqs: [
-      { q: "Kya available hai is area mein?" },
-      { q: "Site visit kaise book karein?" },
-      { q: "Home loan help milegi?" },
-      { q: "RERA number kya hai?" },
-      { q: "Price negotiable hai?" },
-    ],
-    chat: [],
-  },
-  d2c: {
-    emoji: "🛍️",
-    label: "D2C brand",
-    tagline: "Online brands — skincare, fashion, food",
-    longDesc:
-      "Tracks orders without a ticket queue, handles returns, upsells the next SKU, and recovers abandoned carts over WhatsApp.",
-    stats: [
-      { n: "+23%", l: "cart recovery" },
-      { n: "-61%", l: "support tickets" },
-      { n: "3.4×", l: "LTV" },
-    ],
-    faqs: [
-      { q: "Order track karna hai" },
-      { q: "Return kaise karein?" },
-      { q: "COD available hai?" },
-      { q: "Koi offer hai?" },
-      { q: "Delivery kitne din mein hogi?" },
-    ],
-    chat: [],
-  },
-  gym: {
-    emoji: "💪",
-    label: "Gym",
-    tagline: "Gyms, yoga, CrossFit & fitness",
-    longDesc:
-      "Shares membership tiers, books free trials, sends renewal reminders before churn, and pushes class schedules every morning.",
-    stats: [
-      { n: "-34%", l: "churn" },
-      { n: "1,200+", l: "trials booked" },
-      { n: "6 AM", l: "reminder sent" },
-    ],
-    faqs: [
-      { q: "Membership kitne ki hai?" },
-      { q: "Trial available hai?" },
-      { q: "Personal trainer milega?" },
-      { q: "Timings kya hain?" },
-      { q: "Kaunsi classes hain?" },
-    ],
-    chat: [],
-  },
 };
 
 const MARQUEE_ITEMS = [
   "Menu dikhao",
-  "Book karwa do appointment",
-  "Dosa ka price kya hai?",
-  "Kya insurance accept hota hai?",
-  "Home service available hai?",
-  "Trial class milegi?",
-  "Order track karna hai",
-  "RERA number kya hai?",
-  "Kitne ki membership hai?",
+  "Half / Full kya price hai?",
+  "Delivery available hai?",
+  "Minimum order kitna?",
+  "Aaj ka special kya hai?",
+  "Table book karna hai 4 logo ke liye",
+  "Pure-veg hai ya nahi?",
+  "Khaana ready kab tak?",
+  "Cash on delivery chalega?",
+  "QR scan karke order kaise?",
 ];
 
 const FAQS = [
   {
+    q: "Will the bot actually take orders, or just answer questions?",
+    a: "It takes the order. Customer sends a message, voice note, or scans a table QR — bot shares the live menu, lets them pick items + sizes (Half / Full / Family), confirms delivery address or table number, sends a UPI payment link, and notifies your kitchen instantly. You see the full order with status flow (Placed → Preparing → Ready → Delivered/Served) in your dashboard.",
+  },
+  {
     q: "WhatsApp just launched a free in-app AI for businesses — why pay you?",
-    a: "Genuinely good question. The free in-app option is built for FAQs — answer questions from your profile + catalog. ZapText is built for revenue: bookings into a calendar, payment links inside chat, recurring orders, multi-branch / multi-bot for chains, and vertical-grade compliance (FSSAI, RERA, EMS pacemaker safety, Rajasthan Coaching Bill, DPDPA). If you're a 1-person shop just answering 'kya rate hai?', the free option is enough. If you want to actually grow, that's where we come in. See /compare for a full side-by-side.",
+    a: "The free in-app AI answers FAQs from your profile + catalog. ZapText is built for restaurant revenue: order capture with size variants, table QR ordering, multi-outlet routing, UPI payment links inside chat, FSSAI-compliant menu display, surge pricing disclosure, allergen warnings, and a dashboard your kitchen staff can actually use. If you're a tiny one-counter shop just answering 'kya rate hai?', the free option is enough. If you want WhatsApp to drive actual food revenue, that's us.",
   },
   {
     q: "Will my WhatsApp number get flagged for using ZapText?",
-    a: "No. ZapText runs on the official WhatsApp Cloud API as a Business Solution Provider — same legal lane as Meta's own AI. Your number stays verified, green-tick eligible, never at risk of a ban. We layer on extra content filtering so prompt-injection attacks can't make your bot recommend alcohol, supplements, or anything that would trigger a Commerce Policy strike.",
+    a: "No. ZapText runs on the official WhatsApp Cloud API. Your number stays verified, green-tick eligible, and never at risk of a ban. Bot is task-scoped to restaurant operations — won't hallucinate alcohol promotions or anything that triggers Meta's Commerce Policy.",
   },
   {
-    q: "Can I use both — the free in-app bot for FAQs and ZapText for bookings?",
-    a: "A single WhatsApp number can have only one webhook destination at a time. Pick the bot that owns the customer experience. For most growing businesses, that's the one that books and collects revenue, not the one that just answers.",
+    q: "Do you handle dine-in QR ordering, or just delivery / takeaway?",
+    a: "All three. Print one QR per table — customer scans, WhatsApp opens, they tap Send, menu link appears, they order without flagging down a waiter. Bot routes the order to your kitchen along with the table number. Multi-outlet chains: each table's QR encodes its outlet so a Saket scan never ends up in CP's KOT queue.",
   },
   {
-    q: "Is ZapText official WhatsApp Business API or just automation?",
-    a: "100% official WhatsApp Business Platform (Cloud API via Meta). Your number is verified, green-tick eligible, and messages are never at risk of a ban. No browser hacks, no unofficial libraries.",
+    q: "What languages does the bot understand?",
+    a: "English is the default. The bot auto-detects per message and switches to Hindi, Hinglish, Punjabi (Punglish), Tamil (Tanglish), Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, or any of the major Indian scripts when the customer writes in one. Voice notes are transcribed via Groq Whisper — even a 'do biryani aur ek raita bhejdo' voice command lands on the menu page with items pre-selected.",
+  },
+  {
+    q: "Can I edit the menu after going live?",
+    a: "Yes — paste, OCR a photo, or add items manually. Bulk-import handles 'Half Rs.189 / Full Rs.329' price strings automatically. Allergen tags per item are part of the menu (FSSAI Reg 2.4.6 compliant). Changes go live instantly.",
+  },
+  {
+    q: "Multiple outlets — how does that work?",
+    a: "One WhatsApp number for the whole chain. The bot routes orders to the right outlet using the QR code, the customer's shared location, or a quick branch picker. Each outlet manager logs in with their own email (you invite them from Settings → Team Members) and sees only their outlet's orders and analytics. You see the chain-wide breakdown.",
+  },
+  {
+    q: "How fast can I actually go live?",
+    a: "Onboarding (filling your menu, hours, FSSAI, GSTIN) takes about 5 minutes. After that, WhatsApp Business API verification of your number typically takes 24-48 hours — Meta's side, not ours. Once verified, your bot goes live.",
   },
   {
     q: "Do I need to provide my own WhatsApp number?",
     a: "Either works. We can hand you a fresh verified business number in under an hour, or onboard your existing one through BSP migration. You own the number forever.",
   },
   {
-    q: "What languages does the bot actually understand?",
-    a: "Hindi, English, Hinglish (Romanized Hindi), Bengali, Tamil, Telugu, Marathi, Gujarati, Kannada, Malayalam, Punjabi, Odia, and Assamese. It auto-detects per-message and replies in the same language the customer used.",
-  },
-  {
-    q: "Can I edit the bot's answers?",
-    a: "Yes — every reply is editable from your dashboard, and you can upload menus, PDFs, pricelists, CSVs. Changes go live instantly. For the Pro plan and above, you also get a monthly review call where we tune the bot against real conversations.",
-  },
-  {
-    q: "What happens if the bot doesn't know something?",
-    a: "Two modes. Safe mode: it says so, logs the question, and pings you. Auto-learn: it drafts a reply using your broader business context and flags it for your approval. You pick.",
-  },
-  {
-    q: "How fast can I actually go live?",
-    a: "Onboarding (filling your details and configuring the bot) takes about 5 minutes. After that, WhatsApp Business API verification of your number typically takes 24-48 hours — that's Meta's side, not ours. Once verified, your bot goes live. Pro and Enterprise include a 1-hour onboarding call to tune voice and integrations.",
-  },
-  {
     q: "Are there any per-conversation charges beyond the plan?",
-    a: "WhatsApp's own conversation fees (Meta's pricing, paise per conversation) are passed through at cost. The Starter plan includes 500 conversations/month; Growth and above are unlimited at your plan rate. No surprise markup.",
+    a: "WhatsApp's own conversation fees (Meta's per-message pricing in INR) are passed through at cost — no markup. Most reply messages inside the 24-hour customer service window are FREE per Meta's April 2025 rule. The Starter plan covers a comfortable monthly volume for single-outlet kitchens; Growth and above scale up with multi-outlet + analytics.",
   },
   {
     q: "Can I cancel or change plans anytime?",
-    a: "Yes — cancel or downgrade from the dashboard. No contract lock-in. We also offer a 7-day refund if your bot doesn't go live within the first week.",
+    a: "Yes — cancel or downgrade from the dashboard. No contract lock-in. 7-day refund if your bot doesn't go live in the first week.",
   },
 ];
 
@@ -288,6 +145,11 @@ const PLAN_ORDER: Array<{ key: keyof typeof PLANS; tag: string }> = [
 // ─────────────────────────── COMPONENT ───────────────────────────
 
 export default function LandingPage() {
+  // Restaurant-only landing for now. The multi-vertical BizSection +
+  // MiniPhone industry-switcher block is removed from the render
+  // order (functions kept in this file commented out below would
+  // bloat it — they're simply deleted in the same commit). Other
+  // verticals get re-added section-by-section as each ships.
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       <ReferralCapture />
@@ -295,7 +157,6 @@ export default function LandingPage() {
       <Hero />
       <Marquee />
       <WhyNotFreeBot />
-      <BizSection />
       <HowItWorks />
       <Features />
       <Pricing />
@@ -322,7 +183,7 @@ function Navbar() {
           </span>
         </Link>
         <div className="hidden md:flex gap-8 text-[14px] text-[var(--ink-2)]">
-          <a href="#biz" className="opacity-75 hover:opacity-100 transition">For your business</a>
+          <a href="#why-zaptext" className="opacity-75 hover:opacity-100 transition">Why ZapText</a>
           <a href="#how" className="opacity-75 hover:opacity-100 transition">How it works</a>
           <a href="#features" className="opacity-75 hover:opacity-100 transition">Features</a>
           <a href="#pricing" className="opacity-75 hover:opacity-100 transition">Pricing</a>
@@ -379,25 +240,25 @@ function Hero() {
               Live on WhatsApp Business API · India
             </div>
             <h1 className="font-sans font-extrabold mt-6 text-[clamp(44px,6vw,84px)] leading-[1.02] tracking-[-0.035em] text-balance pb-2">
-              Bots that don&apos;t
+              The WhatsApp bot
               <br />
-              just answer. <span className="zt-serif">They close.</span>
+              that <span className="zt-serif">runs your kitchen.</span>
               <br />
-              <span className="zt-zap">On WhatsApp.</span>
+              <span className="zt-zap">Built for restaurants.</span>
             </h1>
             <p className="text-[clamp(16px,1.3vw,19px)] text-[var(--ink-2)] max-w-[540px] mt-10 leading-[1.55]">
               ZapText turns every{" "}
-              <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;order kaha hai bhaiya?&rdquo;</span>{" "}
+              <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;menu dikhao bhaiya&rdquo;</span>{" "}
               into a paid order, every{" "}
-              <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;appointment book karni hai&rdquo;</span>{" "}
-              into a confirmed slot in your calendar. In Hindi, English, Hinglish, regional languages &mdash; built for restaurants, salons, gyms, coaching, real estate, e-commerce, tiffin and grocery.
+              <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;table book karni hai 4 logo ke liye&rdquo;</span>{" "}
+              into a confirmed reservation. Dine-in QR ordering, multi-outlet routing, UPI payments inside chat &mdash; in Hindi, English, Hinglish, and every major Indian language. Made for kitchens, cafes, cloud kitchens, sweet shops, and bakeries.
             </p>
             <div className="flex flex-wrap gap-3 mt-8">
               <Link
                 href="/sign-up"
                 className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[16px] hover:-translate-y-px transition"
               >
-                Try free &mdash; see your first booking <span>→</span>
+                Try free &mdash; first order in 5 minutes <span>→</span>
               </Link>
               <a
                 href="#why-zaptext"
@@ -408,10 +269,10 @@ function Hero() {
             </div>
             <div className="flex flex-wrap gap-5 mt-7 text-[13px] text-[var(--mute)]">
               <span className="inline-flex items-center gap-1.5">
-                <Check /> Books, collects, escalates &mdash; not just FAQ
+                <Check /> Takes orders, sends UPI link &mdash; not just FAQ
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check /> Multiple numbers, branches, brands
+                <Check /> Multi-outlet, table QRs, one number
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Check /> Cancel anytime
@@ -435,55 +296,55 @@ function Check() {
 
 // ─── Why not the free in-app bot ───
 //
-// Honest, calm comparison block aimed at owners considering the free
-// in-app AI option. We don't bash competitors — we show the gaps that
-// matter to a real Indian SMB trying to grow on WhatsApp:
-//   - "Books a slot" vs "answers questions"
-//   - Multiple numbers / branches
-//   - Vertical compliance (FSSAI, RERA, EMS, Coaching Bill)
-//   - Razorpay payment links sent in chat
-//   - Multi-staff inbox + handover
+// Honest, calm comparison block aimed at restaurant owners considering
+// the free in-app AI option. We don't bash competitors — we show the
+// gaps that matter to a real Indian kitchen trying to grow on WhatsApp:
+//   - "Takes the order + UPI link" vs "answers questions"
+//   - Multi-outlet routing + table QR
+//   - FSSAI / allergen / surge / DPDPA compliance
+//   - Voice notes in Hindi / Punjabi / Tamil / Bengali
+//   - Manager email swap without losing outlet data
 function WhyNotFreeBot() {
   const rows: Array<{ scenario: string; freeBot: string; zapText: string }> = [
     {
-      scenario: 'Customer asks for a salon appointment Saturday 5 PM',
-      freeBot: 'Replies with menu and rates. Customer needs to call to book.',
-      zapText: 'Books the slot with the right stylist. Sends payment link. Owner gets a calendar entry.',
+      scenario: 'Customer asks "menu bhejdo" at 11 PM',
+      freeBot: 'Pastes a long text menu blob. No way to actually order.',
+      zapText: 'Sends a mobile menu link. Customer taps items, picks Half / Full, chooses delivery / takeaway / dine-in, sends UPI payment. Order lands in your kitchen.',
     },
     {
-      scenario: 'Tiffin customer asks "kitne roti milte hain monthly plan mein?"',
-      freeBot: 'Generic reply from the catalog blob.',
-      zapText: 'Knows your plan has 4 wheat-chapati + rice + 1 sabzi (regular portion). Quotes precisely.',
-    },
-    {
-      scenario: 'Gym customer asks if pacemaker patients can do EMS sessions',
-      freeBot: 'Might say yes. Liability risk on you.',
-      zapText: 'Hard-blocks the booking. Tells customer to consult a cardiologist. You stay safe.',
-    },
-    {
-      scenario: 'Coaching enquiry: "selection rate kya hai?"',
-      freeBot: 'May invent reassuring numbers.',
-      zapText: 'Quotes only the past results you actually uploaded — never invents ranks. Rajasthan Coaching Bill compliant.',
-    },
-    {
-      scenario: 'Owner runs 3 outlets — Andheri, Bandra, Powai',
-      freeBot: '1 number per phone. You\'re juggling.',
-      zapText: 'One dashboard, multiple numbers, multiple bots. Each outlet keeps its own menu, hours, staff.',
-    },
-    {
-      scenario: 'Customer sends a voice note asking for today\'s sabzi list',
+      scenario: 'Customer voice-notes "do paneer butter masala aur ek naan"',
       freeBot: '&ldquo;Sorry, I can only handle text.&rdquo;',
-      zapText: 'Transcribes the voice note, parses the list, replies with prices &mdash; even in Marathi or Bengali.',
+      zapText: 'Transcribes via Groq Whisper, parses the items, opens the menu page with paneer butter masala + naan already in the cart. Customer just confirms.',
     },
     {
-      scenario: 'Festive surge: 200 messages in an hour',
-      freeBot: 'Throttled or quietly drops messages.',
-      zapText: 'Scales clean. Broadcast templates pre-approved. Every customer answered.',
+      scenario: 'You run 3 outlets — Saket, CP, Gurgaon — and customer is in Hauz Khas',
+      freeBot: 'No idea which outlet to route to. Owner manually re-assigns.',
+      zapText: 'Customer shares location, bot computes nearest outlet inside delivery zone, sends the menu link pre-routed. Order auto-lands in Saket\'s queue.',
     },
     {
-      scenario: 'You want to broadcast Diwali offers to past customers',
-      freeBot: 'Not supported in the basic in-app flow.',
-      zapText: 'Pre-approved Diwali templates, opt-in management, scheduled sends, conversion tracking.',
+      scenario: 'Customer asks "minimum order kitna hai?" with ₹89 in cart',
+      freeBot: 'Doesn\'t know. Owner ends up arguing on chat.',
+      zapText: 'Min-order is configured per outlet (Rs.200). Submit endpoint rejects the ₹89 delivery order with "add ₹111 more or switch to takeaway".',
+    },
+    {
+      scenario: 'Customer asks "FSSAI number kya hai?" — auditor is looking',
+      freeBot: 'Doesn\'t have it. You scramble.',
+      zapText: 'FSSAI lic + expiry + halal/jain certs render on every order confirmation + on the public menu page. Reg 2.4.6 compliant out of the box.',
+    },
+    {
+      scenario: 'Customer with peanut allergy asks about kheer',
+      freeBot: 'Generic reply. Liability is yours.',
+      zapText: 'Per-item allergen tags (8 FSSAI allergens) tagged at menu setup. Bot reads them out. Customer can also flag allergies — bot hard-warns at checkout.',
+    },
+    {
+      scenario: 'Rain hits, you want +15% surge on delivery',
+      freeBot: 'Not supported. You change menu prices manually.',
+      zapText: 'Surge bands configured once. Page banner shows "Rain +15% may apply" BEFORE add-to-cart (CCPA Dark Patterns compliant). Surcharge auto-applies, breakdown shown at checkout.',
+    },
+    {
+      scenario: 'Saket\'s manager Rohit quits, Suresh joins',
+      freeBot: 'Owner re-enters everything. Past orders lost or visible to wrong manager.',
+      zapText: 'Settings → Team Members → swap email. Rohit\'s access revoked, Suresh invited. All Saket orders / table data / customer history stays bound to the outlet, not the email.',
     },
   ];
 
@@ -541,10 +402,10 @@ function WhyNotFreeBot() {
             style={{ padding: '18px 20px' }}
           >
             <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
-              Compliance built-in
+              Restaurant compliance built-in
             </div>
             <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              FSSAI, RERA, AYUSH, Rajasthan Coaching Bill, DPDPA &mdash; baked into the bot prompt. No therapeutic claims, no guaranteed-rank ads, no live-animal listings, no supplement promotions. <b>Your WhatsApp Business Account stays safe.</b>
+              FSSAI Reg 2.4.6 (lic + allergen + veg-non-veg display), GSTIN on invoices, Halal / Jain badges, CCPA pre-cart surge disclosure, DPDPA marketing opt-in &mdash; all baked into the bot + menu page. <b>Your kitchen + WhatsApp number stay clean.</b>
             </div>
           </div>
           <div
@@ -552,10 +413,10 @@ function WhyNotFreeBot() {
             style={{ padding: '18px 20px' }}
           >
             <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
-              You scale, not the platform
+              One number. Many outlets.
             </div>
             <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              Add a second number when you open the second outlet. Add a brand-front for the cloud kitchen. Add a separate Hindi tone for the Bareilly branch. <b>One dashboard. As many bots as your business needs.</b>
+              Add an outlet, generate that outlet&apos;s table QRs, invite a manager &mdash; all from one dashboard. Bot routes orders by QR scan, customer location, or branch picker. Cloud-kitchen multi-brand pattern supported. <b>One WhatsApp number, never re-printed.</b>
             </div>
           </div>
           <div
@@ -563,10 +424,10 @@ function WhyNotFreeBot() {
             style={{ padding: '18px 20px' }}
           >
             <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
-              Built for India&apos;s reality
+              Built for Indian customers
             </div>
             <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              Voice notes from sabziwalas. Mehendi per-pair pricing. Roti count in tiffin plans. EMS pacemaker safety. Bridal multi-day weddings. Daily-mandi paste-and-go. <b>The details a generic bot will never see.</b>
+              Voice notes in Hinglish / Punjabi / Tamil / Bengali. Half / Full pricing parsed automatically. Mithai by weight, kebab by piece, cake by inch. Surge for rain / peak / festival itemised. <b>The details a generic bot will never see.</b>
             </div>
           </div>
         </div>
@@ -829,159 +690,17 @@ function SectionHead({
   );
 }
 
-// ─── Business types section ───
-function BizSection() {
-  const [active, setActive] = useState<BizKey>("restaurant");
-  const b = BIZ[active];
-  return (
-    <section id="biz" className="py-[110px]">
-      <div className="max-w-[1280px] mx-auto px-7">
-        <SectionHead
-          num="01"
-          label="Your industry"
-          title={
-            <>
-              Not one bot for all.
-              <br />
-              <span className="zt-serif">
-                A bot for <em>{b.label.toLowerCase()}</em> industry.
-              </span>
-            </>
-          }
-          lead="Every business speaks its own language. A salon bot sells packages, a gym bot manages trials, a restaurant bot takes orders. Pick your industry — we'll show you what your bot will actually do."
-        />
-        <div className="flex flex-wrap gap-2 mb-8">
-          {(Object.entries(BIZ) as [BizKey, Biz][]).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => setActive(k)}
-              className={`px-4 py-2.5 rounded-full border text-[14px] font-medium inline-flex items-center gap-2 transition ${
-                active === k
-                  ? "bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]"
-                  : "bg-[var(--card)] border-[var(--line)] hover:border-[var(--ink)]"
-              }`}
-            >
-              <span className="text-[15px] leading-none">{v.emoji}</span> {v.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid md:grid-cols-[1.3fr_1fr] gap-10 border border-[var(--line)] rounded-[28px] bg-[var(--card)] p-9">
-          <div>
-            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)]">
-              {b.emoji} {b.label.toUpperCase()}
-            </div>
-            <h3 className="text-[36px] font-bold tracking-[-0.03em] mt-1.5 mb-2">
-              Made for <span className="zt-serif">{b.label.toLowerCase()}.</span>
-            </h3>
-            <p className="text-[16px] text-[var(--ink-2)] mb-4">{b.longDesc}</p>
-            <div className="grid grid-cols-3 gap-[4px] border border-[var(--line)] rounded-[14px] overflow-hidden bg-[var(--bg-2)] my-5">
-              {b.stats.map((s, i) => (
-                <div key={i} className="py-3.5 px-4 bg-[var(--card)]">
-                  <div className="text-[28px] font-bold tracking-[-0.025em]">{s.n}</div>
-                  <div className="text-[11px] text-[var(--mute)] uppercase tracking-[.06em] zt-mono">{s.l}</div>
-                </div>
-              ))}
-            </div>
-            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mt-4 mb-1.5">
-              {"// pre-trained FAQs"}
-            </div>
-            <div className="mt-2.5">
-              {b.faqs.map((f, i) => (
-                <div
-                  key={i}
-                  className={`flex gap-2.5 py-2.5 text-[14.5px] ${
-                    i > 0 ? "border-t border-dashed border-[var(--line)]" : ""
-                  }`}
-                >
-                  <span className="zt-mono text-[11px] text-[var(--mute)] w-[26px] flex-shrink-0 pt-[3px]">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span>
-                    <em className="zt-serif text-[var(--ink-2)]">&ldquo;</em>
-                    {f.q}
-                    <em className="zt-serif text-[var(--ink-2)]">&rdquo;</em>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <MiniPhone biz={b} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MiniPhone({ biz }: { biz: Biz }) {
-  const msgs: Array<{ who: "in" | "out"; t: string; time?: string }> =
-    biz.chat.length > 0
-      ? biz.chat.slice(0, 4)
-      : [
-          { who: "in", t: biz.faqs[0]?.q || "Hi", time: "now" },
-          {
-            who: "out",
-            t: "Bot sees this coming. Pick this industry in the switcher above to see a live demo.",
-            time: "now",
-          },
-        ];
-  return (
-    <div
-      className="rounded-[22px] overflow-hidden bg-[#ECE5DD] flex flex-col h-[460px]"
-      style={{ boxShadow: "0 20px 40px -22px rgba(0,0,0,.3), 0 0 0 1px var(--line)" }}
-    >
-      <div className="bg-[#1f3d2d] text-white p-3.5 flex items-center gap-2.5">
-        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[14px] zt-mono flex-shrink-0">
-          {biz.avatar || biz.label[0]}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-[14px]">{biz.name || `${biz.label} · Bot`}</div>
-          <div className="text-[11px] opacity-70 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#8fffb0]" style={{ boxShadow: "0 0 6px #8fffb0" }} />
-            online
-          </div>
-        </div>
-      </div>
-      <div
-        className="zt-chat-body flex-1 overflow-y-auto p-[14px_12px] flex flex-col gap-2"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 20% 20%, rgba(31,61,45,0.04) 1px, transparent 1.5px), radial-gradient(circle at 80% 60%, rgba(31,61,45,0.04) 1px, transparent 1.5px)",
-          backgroundSize: "120px 120px",
-        }}
-      >
-        {msgs.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[78%] py-2 px-2.5 rounded-[10px] text-[13.5px] leading-[1.4] ${
-              m.who === "in"
-                ? "bg-white self-start rounded-tl-[2px]"
-                : "bg-[#D9FDD3] self-end rounded-tr-[2px]"
-            }`}
-            style={{ boxShadow: "0 1px 0.5px rgba(0,0,0,0.13)" }}
-          >
-            <span dangerouslySetInnerHTML={{ __html: m.t }} />
-            <div className="text-[10px] text-black/40 text-right mt-0.5 font-medium">
-              {m.time || ""} {m.who === "out" && <span style={{ color: "#53bdeb" }}>✓✓</span>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── How it works ───
 function HowItWorks() {
   const steps = [
     {
       n: "01",
       tag: "Step 01 · ~1 min",
-      h: "Pick your business type",
-      p: "Restaurant, coaching, salon, real estate, D2C or gym. Each comes pre-trained with the questions your customers actually ask.",
+      h: "Tell us about your kitchen",
+      p: "Dhaba, cafe, cloud kitchen, sweet shop, bakery, fine-dine — pick your sub-type, your cuisine, your service modes (dine-in / takeaway / delivery). Pre-trained restaurant FAQ + tone load automatically.",
       mini: (
         <>
-          business_type: <b>restaurant</b>
+          sub_type: <b>cloud-kitchen + multi-brand</b>
           <br />
           tone: <b>friendly_hinglish</b>
           <br />
@@ -993,13 +712,13 @@ function HowItWorks() {
     {
       n: "02",
       tag: "Step 02 · ~3 min",
-      h: "Drop in your details",
-      p: "Menu, hours, prices, service list, team names — whatever matters. Our AI absorbs it and writes the replies for you. Edit any answer later.",
+      h: "Drop in your menu",
+      p: "Paste it, snap a photo of your printed menu, or bulk-import an Excel. Half / Full pricing parsed automatically. FSSAI lic + GSTIN + allergens go on the menu page for compliance.",
       mini: (
         <>
-          menu.pdf <b>✓</b> · hours.csv <b>✓</b>
+          menu.jpg <b>✓ 47 items</b> · fssai <b>✓</b>
           <br />
-          <span style={{ opacity: 0.6 }}>generating 47 replies…</span>
+          <span style={{ opacity: 0.6 }}>parsing Half/Full prices…</span>
           <br />
           ready for WhatsApp verify <b>✓</b>
         </>
@@ -1595,13 +1314,13 @@ function Footer() {
               <span>ZapText</span>
             </Link>
             <p className="text-[var(--ink-2)] max-w-[340px] text-[14px] leading-[1.55]">
-              AI WhatsApp bots for Indian small businesses. Built in Bengaluru, deployed across 120+ cities.
+              The WhatsApp bot built for Indian restaurants. Dine-in QR ordering, multi-outlet routing, UPI payments — in every Indian language.
             </p>
           </div>
           <FootCol
             title="Product"
             links={[
-              { h: "#biz", l: "Business types" },
+              { h: "#why-zaptext", l: "Why ZapText" },
               { h: "#features", l: "Features" },
               { h: "#pricing", l: "Pricing" },
               { h: "#how", l: "How it works" },

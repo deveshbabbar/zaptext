@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientById } from '@/lib/db/clients';
-import { createOrder, type DineInOrderItem, type DineInOrderType } from '@/lib/db/restaurant-dine-in';
+import { createOrder, getRecentOrderForCustomer, RECENT_ORDER_WINDOW_MS, type DineInOrderItem, type DineInOrderType } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { notifyOwnerOfNewOrder } from '@/lib/restaurant/notify-order';
 import { recordConsentEvent } from '@/lib/db/consent-log';
@@ -40,6 +40,11 @@ interface SubmitBody {
    *  saved on the order. */
   deliveryLat?: number;
   deliveryLng?: number;
+  /** Set by the /m page "Place a different order" button when a
+   *  customer with a recent order explicitly chooses to place a
+   *  second one (e.g. for a colleague at a different address). The
+   *  short window is anti-double-tap, not a hard cap. */
+  bypassRecent?: boolean;
 }
 
 const MAX_ITEMS_PER_ORDER = 40;
@@ -179,6 +184,28 @@ export async function POST(request: NextRequest) {
 
   if (cleanItems.length === 0) {
     return NextResponse.json({ ok: false, error: 'No valid items in order' }, { status: 400 });
+  }
+
+  // Double-tap / spam guard. If a customer phone has placed a
+  // non-cancelled order in the last 2 minutes against this client,
+  // reject a second submit UNLESS the caller explicitly set
+  // bypassRecent (the "/m page Place a different order" button).
+  // 2 minutes is the sweet spot: catches accidental duplicate
+  // submits without trapping a legitimate second order (different
+  // address, second person at the table, etc.).
+  if (!body.bypassRecent) {
+    const dupe = await getRecentOrderForCustomer(clientId, customerPhone, RECENT_ORDER_WINDOW_MS);
+    if (dupe) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'duplicate_recent',
+          message:
+            'You already placed an order moments ago. If this is a new order (different address or for someone else), tap "Place a different order" to continue.',
+        },
+        { status: 409 }
+      );
+    }
   }
 
   // Minimum-order enforcement — applies to DELIVERY mode only. The /m

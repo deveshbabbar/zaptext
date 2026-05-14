@@ -633,8 +633,36 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
           || msg.interactiveListId === 'services'
           || msg.interactiveListId === 'order')
     ) {
+      // 2-min double-tap guard. If this phone placed a non-cancelled
+      // order in the last 2 minutes, send the menu link with the
+      // ?new=1 bypass flag pre-set — the /m page will surface the
+      // "Place a different order" intercept which gives the customer
+      // an explicit "yes I want another" confirmation. Stops spam
+      // accidental-tap dupes without trapping a genuine second order.
+      const { getRecentOrderForCustomer } = await import('@/lib/db/restaurant-dine-in');
+      const recent = await getRecentOrderForCustomer(client.client_id, customerPhone).catch(() => null);
       const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
       const phoneDigits = (msg.from || '').replace(/\D/g, '');
+      if (recent) {
+        const params = new URLSearchParams();
+        if (phoneDigits) params.set('p', phoneDigits);
+        params.set('new', '1');
+        const menuUrl = `${origin}/m/${client.client_id}?${params.toString()}`;
+        const dupeReply =
+          `You just placed an order with us — the kitchen is on it.\n\n` +
+          `Need to add items? Just reply here and we'll update the order.\n` +
+          `Or, if this is a DIFFERENT order (someone else / different address), tap below to place a new one:\n${menuUrl}`;
+        await sendWhatsAppMessage(phoneNumberId, customerPhone, dupeReply);
+        await addConversationMessage({
+          timestamp: getISTTimestamp(),
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          direction: 'outgoing',
+          message: dupeReply,
+          message_type: 'text',
+        });
+        continue;
+      }
       const menuUrl = `${origin}/m/${client.client_id}${phoneDigits ? `?p=${phoneDigits}` : ''}`;
       const reply =
         `Yahaan se menu dekho aur order karo 👇\n${menuUrl}\n\n` +

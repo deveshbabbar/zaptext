@@ -120,6 +120,11 @@ interface Props {
    *  on the embedded map. Empty for single-outlet kitchens without
    *  coords; the map still works as a generic pin picker. */
   outletMarkers?: OutletMarker[];
+  /** Set when the customer arrived via the "Place a different order"
+   *  bypass on the recent-order intercept (?new=1). Forwards to the
+   *  submit endpoint as bypassRecent so the 2-min duplicate guard
+   *  is skipped for this submission only. */
+  bypassRecentOrderGuard?: boolean;
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -189,6 +194,7 @@ export function MenuPublicClient({
   prefillLat = null,
   prefillLng = null,
   outletMarkers = [],
+  bypassRecentOrderGuard = false,
 }: Props) {
   const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -357,6 +363,9 @@ export function MenuPublicClient({
           // right outlet + saves them on the order for analytics.
           deliveryLat: typeof customerLat === 'number' ? customerLat : undefined,
           deliveryLng: typeof customerLng === 'number' ? customerLng : undefined,
+          // Customer arrived via "Place a different order" bypass —
+          // skip the 2-min duplicate guard for this submission.
+          bypassRecent: bypassRecentOrderGuard,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; orderId?: string; total?: number; error?: string };

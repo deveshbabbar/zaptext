@@ -14,6 +14,7 @@
 import { notFound } from 'next/navigation';
 import { getClientById } from '@/lib/db/clients';
 import { getOutletsForClient } from '@/lib/db/outlets';
+import { getRecentOrderForCustomer } from '@/lib/db/restaurant-dine-in';
 import { MenuPublicClient } from './menu-public-client';
 
 interface MenuItem {
@@ -60,10 +61,15 @@ export default async function PublicMenuPage({
   searchParams,
 }: {
   params: Promise<{ clientId: string }>;
-  searchParams: Promise<{ p?: string; q?: string; lat?: string; lng?: string }>;
+  searchParams: Promise<{ p?: string; q?: string; lat?: string; lng?: string; new?: string }>;
 }) {
   const { clientId } = await params;
-  const { p: prefillPhone = '', q: prefillQuery = '', lat: latRaw = '', lng: lngRaw = '' } = await searchParams;
+  const { p: prefillPhone = '', q: prefillQuery = '', lat: latRaw = '', lng: lngRaw = '', new: bypassRecentRaw = '' } = await searchParams;
+  // ?new=1 is set when the customer clicks "Place a different order"
+  // from the recent-order intercept below. Skips the duplicate guard
+  // so a genuine second order (colleague at the table, different
+  // address) can go through immediately.
+  const bypassRecent = bypassRecentRaw === '1' || bypassRecentRaw === 'true';
   // Parse + validate location once at the server boundary. Invalid
   // values (non-numeric, out-of-range) are silently dropped so a
   // malformed link never crashes the page.
@@ -74,6 +80,73 @@ export default async function PublicMenuPage({
 
   const client = await getClientById(clientId).catch(() => null);
   if (!client || client.type !== 'restaurant') notFound();
+
+  // Double-tap / spam guard. When the link carries a phone (?p=…)
+  // AND that phone has placed a non-cancelled order in the last
+  // 2 minutes AND the URL has no `?new=1` bypass flag, render an
+  // "already ordered" intercept instead of the menu form. Customer
+  // can click "Place a different order" to bypass (sets ?new=1).
+  //
+  // 2 min is anti-double-tap, not a hard cap — a customer waiting
+  // 3 minutes for whatever reason sees the normal form again.
+  if (prefillPhone && !bypassRecent) {
+    const phoneDigits = prefillPhone.replace(/\D/g, '');
+    if (phoneDigits.length >= 10) {
+      const recent = await getRecentOrderForCustomer(clientId, phoneDigits).catch(() => null);
+      if (recent) {
+        const minutesAgo = Math.max(1, Math.round((Date.now() - new Date(recent.created_at).getTime()) / 60000));
+        // Build the bypass URL — preserves the existing query params so
+        // the customer doesn't lose location prefill / cart-query state.
+        const bypassParams = new URLSearchParams();
+        bypassParams.set('p', prefillPhone);
+        if (prefillQuery) bypassParams.set('q', prefillQuery);
+        if (latRaw) bypassParams.set('lat', latRaw);
+        if (lngRaw) bypassParams.set('lng', lngRaw);
+        bypassParams.set('new', '1');
+        const bypassUrl = `/m/${clientId}?${bypassParams.toString()}`;
+        return (
+          <div
+            style={{
+              fontFamily: 'system-ui, sans-serif',
+              maxWidth: 460,
+              margin: '0 auto',
+              padding: '60px 24px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 56, marginBottom: 14 }}>✅</div>
+            <h1 style={{ fontSize: 22, marginBottom: 8 }}>Order already placed</h1>
+            <p style={{ color: '#444', marginBottom: 14, fontSize: 14, lineHeight: 1.55 }}>
+              You sent an order to <b>{client.business_name}</b> {minutesAgo === 1 ? 'a moment' : `${minutesAgo} minutes`} ago. The kitchen is on it — you&apos;ll get a WhatsApp confirmation soon.
+            </p>
+            <p style={{ color: '#666', fontSize: 13, marginTop: 4, marginBottom: 28 }}>
+              Order place ho gaya {minutesAgo === 1 ? 'abhi' : `${minutesAgo} min pehle`}. Kitchen mein lag gaya hai.
+            </p>
+            <a
+              href={bypassUrl}
+              style={{
+                display: 'inline-block',
+                padding: '12px 22px',
+                borderRadius: 99,
+                background: '#111',
+                color: '#fff',
+                fontWeight: 600,
+                textDecoration: 'none',
+                fontSize: 14,
+              }}
+            >
+              Place a different order →
+            </a>
+            <div style={{ marginTop: 12, fontSize: 12, color: '#888', lineHeight: 1.5 }}>
+              Different address ya kisi or ke liye? Tap above.
+              <br />
+              Add items to the existing order? Reply to the kitchen on WhatsApp.
+            </div>
+          </div>
+        );
+      }
+    }
+  }
 
   let menu: MenuCategory[] = [];
   let brandLogoUrl = '';
@@ -221,6 +294,7 @@ export default async function PublicMenuPage({
       prefillQuery={prefillQuery}
       prefillLat={prefillLat}
       prefillLng={prefillLng}
+      bypassRecentOrderGuard={bypassRecent}
       deliveryAvailable={deliveryAvailable}
       dineInEnabled={dineInEnabled}
       takeawayEnabled={takeawayEnabled}

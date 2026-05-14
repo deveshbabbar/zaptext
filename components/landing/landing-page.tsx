@@ -1129,7 +1129,7 @@ function Testimonial() {
               {"// 05 — From the field"}
             </div>
             <p className="zt-serif text-[clamp(30px,3.6vw,50px)] leading-[1.08] tracking-[-0.02em] text-balance mt-4">
-              &ldquo;Pehle din{" "}
+              &ldquo;Saturday night ko{" "}
               <span
                 className="bg-[var(--accent)] rounded-[6px]"
                 style={{
@@ -1140,18 +1140,18 @@ function Testimonial() {
                   fontSize: "0.88em",
                 }}
               >
-                27 missed calls
+                63 orders WhatsApp se
               </span>{" "}
-              WhatsApp pe convert ho gayi.
+              aaye.
               <br />
-              Saara staff free ho gaya —<br />
-              sab bot sambhal raha hai.&rdquo;
+              Phone uthana band kar diya —<br />
+              kitchen mein focus kar paaye.&rdquo;
             </p>
             <div className="flex items-center gap-3 mt-7 text-[14px]">
               <div className="w-[42px] h-[42px] rounded-full bg-[#D9FDD3] grid place-items-center font-bold">RM</div>
               <div>
                 <div className="font-semibold">Rohit Menon</div>
-                <div className="text-[var(--mute)]">Menon Fitness, Bengaluru · on ZapText Growth</div>
+                <div className="text-[var(--mute)]">Tandoor &amp; Tadka, Bengaluru · on ZapText Growth</div>
               </div>
             </div>
           </div>

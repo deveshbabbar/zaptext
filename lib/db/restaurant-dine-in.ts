@@ -481,6 +481,49 @@ export async function getLastOrderForCustomer(
   return null;
 }
 
+/**
+ * Anti-abuse helper: returns the most recent non-cancelled order for
+ * a (clientId, customerPhone) inside a rolling time window. Used by:
+ *   - /api/menu/submit  → reject a second submit within `windowMs`
+ *   - /m/<clientId>     → render an "already ordered" panel
+ *                         instead of the menu form
+ *   - webhook menu-link → don't re-issue a fresh link after a
+ *                         confirmed order
+ *
+ * Window defaults to 2 MINUTES — long enough to catch double-taps and
+ * accidental duplicate-submits, short enough that a genuine customer
+ * who wants to place a SECOND order (e.g. for a colleague at a
+ * different address) only has to wait a moment. The "already ordered"
+ * page also exposes an explicit "Place a different order" bypass
+ * button for impatient legitimate customers.
+ *
+ * Cancelled orders are ignored so a customer who got rejected
+ * (min-order / out-of-zone) can retry immediately.
+ */
+export const RECENT_ORDER_WINDOW_MS = 2 * 60 * 1000;
+
+export async function getRecentOrderForCustomer(
+  clientId: string,
+  customerPhone: string,
+  windowMs: number = RECENT_ORDER_WINDOW_MS
+): Promise<DineInOrder | null> {
+  const since = new Date(Date.now() - windowMs);
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(and(
+      eq(ordersTable.client_id, clientId),
+      eq(ordersTable.customer_phone, customerPhone),
+      gte(ordersTable.created_at, since),
+    ))
+    .orderBy(desc(ordersTable.created_at))
+    .limit(5);
+  for (const r of rows) {
+    if (r.status !== 'cancelled') return dbRowToOrder(r);
+  }
+  return null;
+}
+
 export async function listOrdersForToday(
   clientId: string,
   orderType?: DineInOrderType,

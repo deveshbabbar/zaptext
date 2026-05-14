@@ -88,14 +88,31 @@ export async function getClientByPhoneNumberId(phoneNumberId: string): Promise<C
 // ─── writes ─────────────────────────────────────────────────────────────
 
 export async function addClient(client: ClientRow): Promise<void> {
-  // Duplicate guards: matches the legacy Sheets implementation. We could
-  // rely on the unique index on phone_number_id, but the friendlier
-  // DuplicateBotError surfaces a clear field name to the caller.
+  // Duplicate guards. The REAL routing conflict is on phone_number_id —
+  // Meta routes incoming WhatsApp messages by that ID, so two bots with
+  // the same phone_number_id would race. The display `whatsapp_number`
+  // (+91…) is intentionally allowed to repeat across bots: the seeded
+  // demo bots all share the owner's primary number with empty
+  // phone_number_id (UI showcase only) while the LIVE bot for that same
+  // number carries a real phone_number_id and actually receives traffic.
+  //
+  // So whatsapp_number is only treated as a conflict when an existing
+  // bot ALREADY uses that number AND has a non-empty phone_number_id
+  // AND the new bot also tries to take a (different) non-empty
+  // phone_number_id — in practice that's never legal because Meta only
+  // gives one ID per number.
   const normalizedPhone = (client.whatsapp_number || '').replace(/\D/g, '');
-  if (normalizedPhone) {
-    const existing = await db.select({ w: clientsTable.whatsapp_number }).from(clientsTable);
-    const dup = existing.find((c) => (c.w || '').replace(/\D/g, '') === normalizedPhone);
-    if (dup) throw new DuplicateBotError('whatsapp_number', client.whatsapp_number);
+  if (normalizedPhone && client.phone_number_id) {
+    const sameNumber = await db
+      .select({ id: clientsTable.client_id, w: clientsTable.whatsapp_number, pn: clientsTable.phone_number_id })
+      .from(clientsTable);
+    const conflict = sameNumber.find(
+      (c) =>
+        (c.w || '').replace(/\D/g, '') === normalizedPhone &&
+        (c.pn || '') !== '' &&
+        (c.pn || '') !== client.phone_number_id
+    );
+    if (conflict) throw new DuplicateBotError('whatsapp_number', client.whatsapp_number);
   }
   if (client.phone_number_id) {
     const dup = await db

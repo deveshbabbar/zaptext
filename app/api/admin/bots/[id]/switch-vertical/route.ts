@@ -24,6 +24,7 @@ import { getClientById, updateClientFields } from '@/lib/google-sheets';
 import { getBotsByOwner } from '@/lib/owner-clients';
 import { deleteConversationsForClient } from '@/lib/db/conversations';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
 import { DEMO_BUNDLES } from '@/lib/demo-data';
 import type { BusinessType, ClientConfig } from '@/lib/types';
 
@@ -125,6 +126,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error('[switch-vertical] conversation wipe failed', err);
   }
 
+  // Sync the new KB's catalog into the inventory table. Without this the
+  // [ORDER:] tag pipeline (webhook line ~1152) sees zero stock rows, the
+  // AI's LIVE STOCK block stays empty, and the bot can't actually accept
+  // food orders even though the menu text is in the prompt. Sync writes
+  // one inventory row per menu item / membership plan / course / etc.
+  let inventorySynced = 0;
+  try {
+    const parsedKb = sourceKbJson ? (JSON.parse(sourceKbJson) as Record<string, unknown>) : {};
+    const cfgForSync = {
+      ...parsedKb,
+      type: vertical,
+      businessName: sourceBusinessName,
+    } as unknown as ClientConfig;
+    const syncResult = await syncProductsFromConfig(botId, cfgForSync);
+    inventorySynced = syncResult?.count ?? 0;
+  } catch (err) {
+    console.error('[switch-vertical] inventory sync failed', err);
+  }
+
   return NextResponse.json({
     ok: true,
     vertical,
@@ -132,5 +152,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     source: sourceLabel,
     promptRegenerated: !!nextPrompt,
     conversationsCleared,
+    inventorySynced,
   });
 }

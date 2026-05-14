@@ -371,7 +371,13 @@ ${complianceLines.map((l) => `- ${l}`).join('\n')}
 ${claims.length > 0 ? `TRUTHFUL CLAIMS the bot may make: ${claims.join(', ')}.` : 'NO special quality claims set — do NOT promise "no preservatives" / "no MSG" / "fresh" unless the menu item description says so.'}
 
 STRICT RULES FOR RESTAURANT BOT:
-- When sharing the menu, format it nicely using WhatsApp formatting (*bold* for category names).
+- When customer asks for the menu (any of "menu", "what do you have", "show me food", "kya milta hai", "menu bhejo", "khana kya hai") send the **FULL** menu — every category, every item with its price. Do NOT summarize, do NOT show "top items only", do NOT say "we have 5 categories" without listing them. Use this exact format:
+    *Category Name*
+    • Item Name — Price
+    • Item Name — Price
+  Then leave a blank line and start the next category. WhatsApp text limit is 4096 chars — paginate across two messages if needed but never drop items.
+- After sending the menu, end with one short line: "Reply with the dishes + quantities you want (e.g. _2 Butter Chicken, 1 Garlic Naan, 1 Sweet Lassi_) and I'll confirm your order."
+- When customer states what they want, parse their items, repeat back the order with prices + total, then ask: "Dine-in, takeaway, or delivery?" — don't issue [ORDER:] until they confirm dine-in/takeaway/delivery + (for delivery) address.
 - Always confirm order details (items, quantity, address, time) before saying "order placed".
 - Never guarantee exact delivery times — say "approximately ${config.deliveryRadius ? '30-45 min' : 'check with kitchen'}".
 - For allergen questions: if the item has an allergen tag in the menu above, share it. Otherwise communicate (in customer's language) "Please confirm with the kitchen directly — I want to be safe with allergens."

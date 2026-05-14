@@ -31,6 +31,7 @@ import { db } from '@/lib/db';
 import { clients as clientsTable } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
+import { syncProductsFromConfig } from '@/lib/inventory-sync';
 import { DEMO_BUNDLES } from '@/lib/demo-data';
 import type { BusinessType, ClientConfig } from '@/lib/types';
 
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
     ? body.verticals.filter((v): v is BusinessType => ALL_VERTICALS.includes(v as BusinessType))
     : ALL_VERTICALS;
 
-  const created: Array<{ vertical: BusinessType; client_id: string; business_name: string }> = [];
+  const created: Array<{ vertical: BusinessType; client_id: string; business_name: string; inventorySynced?: number }> = [];
   const skipped: Array<{ vertical: BusinessType; reason: string }> = [];
 
   for (let i = 0; i < requested.length; i++) {
@@ -163,7 +164,23 @@ export async function POST(request: NextRequest) {
         contact_number: placeholderPhone,
         opt_in_accepted: true,
       });
-      created.push({ vertical, client_id: clientId, business_name: bundle.business_name });
+      // Sync the bundle's catalog into the inventory table so the
+      // webhook's [ORDER:] tag pipeline has live stock to reserve against.
+      // Without this, restaurants can't actually accept food orders even
+      // though the menu text is in the system prompt.
+      let inventorySynced = 0;
+      try {
+        const cfgForSync = {
+          ...(bundle.knowledge_base as Record<string, unknown>),
+          type: vertical,
+          businessName: bundle.business_name,
+        } as unknown as ClientConfig;
+        const syncResult = await syncProductsFromConfig(clientId, cfgForSync);
+        inventorySynced = syncResult?.count ?? 0;
+      } catch (err) {
+        console.error('[seed-bots] inventory sync failed', { vertical, err });
+      }
+      created.push({ vertical, client_id: clientId, business_name: bundle.business_name, inventorySynced });
     } catch (err) {
       console.error('[seed-bots] insert failed', { vertical, err });
       skipped.push({ vertical, reason: err instanceof Error ? err.message : 'insert failed' });

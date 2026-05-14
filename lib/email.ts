@@ -239,6 +239,49 @@ export function tplDailyMorningSummary(p: { ownerName: string; businessName: str
   return { subject: `Today's bookings at ${p.businessName} — ${p.bookings.length} scheduled`, html: wrap("Today's Schedule", body, `${process.env.NEXT_PUBLIC_APP_URL}/client/calendar`, 'View Calendar') };
 }
 
+// Restaurant low-stock daily digest — fired by /api/cron/low-stock-alerts
+// in the morning bucket. Lists every menu item where stock <=
+// low_stock_threshold so the owner can re-stock before the lunch rush.
+// Items list is rendered as a compact table for scannability.
+export function tplLowStock(p: {
+  ownerName: string;
+  businessName: string;
+  date: string;
+  items: Array<{ name: string; stock: number; threshold: number }>;
+}) {
+  const rows = p.items
+    .map((it) => {
+      const danger = it.stock === 0 || it.stock <= it.threshold / 2;
+      const stockColor = it.stock === 0 ? '#c0392b' : danger ? '#e67e22' : '#666';
+      return `
+        <tr style="border-bottom:1px solid #eee;">
+          <td style="padding:8px 4px;font-weight:500;">${esc(it.name)}</td>
+          <td style="padding:8px 4px;text-align:right;color:${stockColor};font-weight:600;">${it.stock} left</td>
+          <td style="padding:8px 4px;text-align:right;color:#999;font-size:13px;">alert at ${it.threshold}</td>
+        </tr>`;
+    })
+    .join('');
+  const body = `
+    <p>Good morning <strong>${esc(p.ownerName)}</strong>,</p>
+    <p><strong>${p.items.length} item${p.items.length === 1 ? '' : 's'}</strong> at <strong>${esc(p.businessName)}</strong> ${p.items.length === 1 ? 'is' : 'are'} below your alert threshold this morning (${esc(p.date)}):</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;">
+      <thead>
+        <tr style="border-bottom:2px solid #ddd;color:#5a6b5d;text-align:left;">
+          <th style="padding:8px 4px;font-weight:600;">Item</th>
+          <th style="padding:8px 4px;text-align:right;font-weight:600;">Stock</th>
+          <th style="padding:8px 4px;text-align:right;font-weight:600;">Threshold</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="margin-top:16px;color:#5a6b5d;font-size:13px;">Re-stock or temporarily mark items unavailable in your inventory dashboard before the lunch rush.</p>
+  `;
+  return {
+    subject: `⚠️ ${p.businessName} — ${p.items.length} item${p.items.length === 1 ? '' : 's'} low on stock`,
+    html: wrap('Low stock alert', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/inventory`, 'Update Inventory'),
+  };
+}
+
 export function tplDailyEveningSummary(p: { ownerName: string; businessName: string; tomorrowDate: string; bookings: Array<{ time: string; customer: string; service?: string }>; }) {
   const list = p.bookings.length === 0
     ? '<p style="color:#5a6b5d;">No bookings tomorrow yet.</p>'

@@ -51,18 +51,37 @@ export interface DineInIncoming {
   languages?: string[];
 }
 
-// Splits a bilingual reply (EN block, blank line, Hinglish block) into the
-// EN-only half when the owner has set languages: ['English']. Anything else
-// — Hindi-only, Hinglish-only, multi-language — stays bilingual because
-// that's the safe default for QR-scanning customers who haven't told us
-// their preference yet.
-function maybeStripHinglish(reply: string, languages?: string[]): string {
-  if (!languages || languages.length === 0) return reply;
-  const onlyEnglish = languages.length === 1 && languages[0].trim().toLowerCase() === 'english';
-  if (!onlyEnglish) return reply;
+// All dine-in helper replies below are authored as bilingual blocks
+// (English block, blank line, Hinglish block) for source convenience.
+// At send time we collapse to ONE language. ENGLISH IS THE DEFAULT.
+// Hinglish only when the bot is explicitly Hindi-flavour AND has no
+// English in its languages list — matches the same logic used for
+// order confirmations in /api/menu/submit.
+//
+// Bot language config decision table:
+//   - languages = []                  → English (strip Hinglish half)
+//   - languages = ['English']         → English
+//   - languages = ['English','Hindi'] → English
+//   - languages = ['Hindi']           → Hinglish (strip English half)
+//   - languages = ['Hinglish']        → Hinglish
+//   - languages = ['Tamil']           → English (no Hindi flavour)
+//   - undefined                       → English
+function pickLanguageHalf(reply: string, languages?: string[]): string {
+  const langs = (languages || []).map((l) => l.trim().toLowerCase());
+  const hasEnglish = langs.includes('english');
+  const hasHindiFlavour = langs.includes('hindi') || langs.includes('hinglish');
+  const useEnglish = hasEnglish || !hasHindiFlavour;
+
   const idx = reply.indexOf('\n\n');
-  return idx === -1 ? reply : reply.slice(0, idx);
+  if (idx === -1) return reply;
+  // English block is BEFORE the blank line; Hinglish block AFTER.
+  return useEnglish ? reply.slice(0, idx) : reply.slice(idx + 2);
 }
+
+// Legacy alias — internal call sites use maybeStripHinglish; renaming
+// every call site has no benefit, but the underlying behaviour is now
+// English-default rather than bilingual-default.
+const maybeStripHinglish = pickLanguageHalf;
 
 export interface DineInResult {
   handled: boolean;

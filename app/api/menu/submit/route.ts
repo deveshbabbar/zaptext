@@ -39,15 +39,21 @@ interface SubmitBody {
 const MAX_ITEMS_PER_ORDER = 40;
 const MAX_LINE_QTY = 30;
 
-// Returns a SINGLE-language confirmation. Earlier this concatenated an
-// English block AND a Hinglish block — the resulting WhatsApp message
-// was twice as long as it needed to be and felt like spam. Now we pick
-// one language based on the bot's configured `languages` array:
-//   - ['English'] only       → English
-//   - anything else / none   → Hinglish (universally understood in
-//                              India and the safest default for a bot
-//                              that doesn't yet know the customer's
-//                              language preference at submit time).
+// Returns a SINGLE-language confirmation. ENGLISH IS THE DEFAULT —
+// we only switch to Hinglish when the bot is explicitly configured
+// with a Hindi-flavour language AND no English. This matches the
+// per-message LANGUAGE RULE used by the AI prompt: never volunteer
+// Hinglish; only emit it when we have explicit signal.
+//
+// Bot language config decision table:
+//   - languages = []                  → English
+//   - languages = ['English']         → English
+//   - languages = ['English','Hindi'] → English (English preferred)
+//   - languages = ['Hindi']           → Hinglish
+//   - languages = ['Hinglish']        → Hinglish
+//   - languages = ['Hindi','Tamil']   → Hinglish (Hindi-flavour wins
+//                                       when English is absent)
+//   - undefined                       → English (safe default)
 function buildConfirmation(input: {
   businessName: string;
   mode: 'delivery' | 'takeaway' | 'dine_in';
@@ -59,12 +65,23 @@ function buildConfirmation(input: {
   fssaiLicenseNumber?: string;
 }): string {
   const lines = input.items.map((it) => `• ${it.qty}× ${it.name}`).join('\n');
-  const englishOnly =
-    Array.isArray(input.languages)
-    && input.languages.length === 1
-    && input.languages[0].trim().toLowerCase() === 'english';
 
-  if (englishOnly) {
+  const langs = (input.languages || []).map((l) => l.trim().toLowerCase());
+  const hasEnglish = langs.includes('english');
+  const hasHindiFlavour =
+    langs.includes('hindi') || langs.includes('hinglish');
+  // English wins unless the bot is configured Hindi-flavour AND has no
+  // English at all — that's the only case we volunteer Hinglish.
+  const useEnglish = hasEnglish || (!hasHindiFlavour);
+
+  // FSSAI compliance footer — Reg 2.4.6 requires the licence number
+  // appear on every consumer-facing menu/billing surface. Skipped
+  // gracefully when the owner hasn't provided one yet.
+  const fssaiLine = input.fssaiLicenseNumber
+    ? `\n\nFSSAI Lic. ${input.fssaiLicenseNumber}`
+    : '';
+
+  if (useEnglish) {
     let tail: string;
     if (input.mode === 'delivery') {
       tail = `Delivery to: ${input.deliveryAddress}\nThe kitchen has been notified. We'll WhatsApp you when it's out for delivery.`;
@@ -73,12 +90,6 @@ function buildConfirmation(input: {
     } else {
       tail = `Pickup ready in ~15-20 min. We'll WhatsApp you when it's ready.`;
     }
-    // FSSAI compliance footer — Reg 2.4.6 requires the licence number
-    // appear on every consumer-facing menu/billing surface. Skipped
-    // gracefully when the owner hasn't provided one yet.
-    const fssaiLine = input.fssaiLicenseNumber
-      ? `\n\nFSSAI Lic. ${input.fssaiLicenseNumber}`
-      : '';
     return [
       input.businessName,
       `Order received ✅`,
@@ -88,7 +99,7 @@ function buildConfirmation(input: {
     ].join('\n') + fssaiLine;
   }
 
-  // Default: Hinglish only.
+  // Hinglish-only path (bot explicitly configured Hindi-flavour, no English).
   let tail: string;
   if (input.mode === 'delivery') {
     tail = `Delivery: ${input.deliveryAddress}\nKitchen ko inform kar diya. Out for delivery hone par WhatsApp pe update.`;
@@ -97,9 +108,6 @@ function buildConfirmation(input: {
   } else {
     tail = `Pickup ~15-20 min mein ready. Ready hone par WhatsApp pe update.`;
   }
-  const fssaiLine = input.fssaiLicenseNumber
-    ? `\n\nFSSAI Lic. ${input.fssaiLicenseNumber}`
-    : '';
   return [
     input.businessName,
     `Order mil gaya ✅`,

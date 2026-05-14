@@ -1198,10 +1198,25 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     // The page renders the full catalog, lets the customer build a cart,
     // pick delivery/takeaway/dine-in, then POSTs to /api/menu/submit
     // which writes the order and sends a WA confirmation.
+    //
+    // For voice notes / typed orders longer than 15 chars we also append
+    // ?q=<inbound text>. The menu page reads this query and fuzzy-
+    // matches the customer's words against item names, pre-selecting
+    // anything that hits the cart — voice-order shortcut without
+    // teaching the AI a more structured tag.
     if (client.type === 'restaurant' && finalResponse.includes('[MENU_LINK]')) {
       const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
       const phoneDigits = (msg.from || '').replace(/\D/g, '');
-      const menuUrl = `${origin}/m/${client.client_id}${phoneDigits ? `?p=${phoneDigits}` : ''}`;
+      const params = new URLSearchParams();
+      if (phoneDigits) params.set('p', phoneDigits);
+      // Only pass the query when the inbound looks like an order
+      // intent — short messages like "menu" should NOT pre-populate
+      // a cart with garbage matches. Cap kept modest so the URL stays
+      // well under WhatsApp's link-preview length tolerance.
+      const trimmed = (msg.text || '').trim();
+      if (trimmed.length >= 15) params.set('q', trimmed.slice(0, 200));
+      const qs = params.toString();
+      const menuUrl = `${origin}/m/${client.client_id}${qs ? `?${qs}` : ''}`;
       finalResponse = finalResponse.replace(/\[MENU_LINK\]/g, menuUrl);
     }
 

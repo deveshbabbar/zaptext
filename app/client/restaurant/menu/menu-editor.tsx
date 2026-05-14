@@ -20,6 +20,11 @@ type MenuItem = {
   isVeg?: boolean;
   isBestseller?: boolean;
   sizes?: Array<{ label: string; price: number }> | null;
+  // FSSAI Reg 2.4.6 mandates allergen disclosure for the 8 listed
+  // allergens. We store them as a string[] so the customer-facing menu
+  // page can render badges + the AI prompt can answer allergen queries
+  // truthfully.
+  allergens?: string[];
 };
 
 type MenuCategory = { category?: string; items?: MenuItem[] };
@@ -28,8 +33,21 @@ interface SettingsResponse {
   knowledgeBase: string;
 }
 
+// The 8 FSSAI-mandated allergens. Keep stable — these are stored on
+// menuCategories items + read by the public menu page + AI prompt.
+const ALLERGEN_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'milk', label: 'Milk / Dairy' },
+  { key: 'eggs', label: 'Eggs' },
+  { key: 'gluten', label: 'Gluten / Wheat' },
+  { key: 'peanuts', label: 'Peanuts' },
+  { key: 'tree-nuts', label: 'Tree nuts' },
+  { key: 'soy', label: 'Soy' },
+  { key: 'fish', label: 'Fish' },
+  { key: 'crustacean', label: 'Crustacean / Prawn' },
+];
+
 function emptyItem(): MenuItem {
-  return { name: '', price: '', description: '', isVeg: true, isBestseller: false };
+  return { name: '', price: '', description: '', isVeg: true, isBestseller: false, allergens: [] };
 }
 
 export function MenuEditor({ businessName }: { businessName: string }) {
@@ -260,6 +278,37 @@ export function MenuEditor({ businessName }: { businessName: string }) {
                       >
                         Remove
                       </button>
+                    </div>
+                    <div className="md:col-span-12">
+                      <Label className="text-xs">
+                        Contains allergens
+                        <span className="text-[10px] text-muted-foreground ml-1.5">(FSSAI Reg 2.4.6 — tap any that apply)</span>
+                      </Label>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {ALLERGEN_OPTIONS.map((a) => {
+                          const selected = (item.allergens || []).includes(a.key);
+                          return (
+                            <button
+                              key={a.key}
+                              type="button"
+                              onClick={() => {
+                                const current = item.allergens || [];
+                                const next = selected
+                                  ? current.filter((k) => k !== a.key)
+                                  : [...current, a.key];
+                                updateItem(catIdx, itemIdx, { allergens: next });
+                              }}
+                              className={`text-[11px] px-2 py-1 rounded-full border transition ${
+                                selected
+                                  ? 'bg-foreground text-background border-foreground'
+                                  : 'bg-background text-foreground border-border hover:border-foreground'
+                              }`}
+                            >
+                              {selected ? '✓ ' : ''}{a.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 ))}

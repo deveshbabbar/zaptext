@@ -7,7 +7,7 @@
 // to dine_in_orders and sends a WhatsApp confirmation back to the
 // customer's phone.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface FlatItem {
   id: string;
@@ -18,7 +18,22 @@ interface FlatItem {
   isVeg: boolean;
   isBestseller: boolean;
   sizes: Array<{ label: string; price: number }>;
+  allergens: string[];
 }
+
+// Customer-facing labels keyed by the same 8 FSSAI keys the editor
+// stores. Anything not in this map renders verbatim — safe fallback for
+// future custom allergens an owner might type in via bulk import.
+const ALLERGEN_LABEL: Record<string, string> = {
+  'milk': 'Milk',
+  'eggs': 'Egg',
+  'gluten': 'Gluten',
+  'peanuts': 'Peanut',
+  'tree-nuts': 'Tree nut',
+  'soy': 'Soy',
+  'fish': 'Fish',
+  'crustacean': 'Crustacean',
+};
 
 interface ComplianceInfo {
   fssaiLicenseNumber?: string;
@@ -56,6 +71,11 @@ interface Props {
   takeawayEnabled?: boolean;
   compliance?: ComplianceInfo;
   pricing?: PricingInfo;
+  /** Raw inbound text (voice transcript or typed order) from the bot
+   *  link. When present, the page tries to pre-select matching items
+   *  into the cart so a voice-order customer just confirms + pays
+   *  instead of re-tapping each dish. */
+  prefillQuery?: string;
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -63,6 +83,49 @@ type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
 function parsePrice(raw: string): number {
   const m = raw.replace(/,/g, '').match(/(\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : 0;
+}
+
+// Build a Set of normalised tokens from a free-text query — the bot
+// forwards either the customer's typed message or the Whisper voice
+// transcript verbatim, so we strip punctuation + diacritics, drop very
+// short tokens (less than 3 chars — too generic to match), and lower-
+// case everything. Devanagari is preserved as-is (Whisper transcribes
+// Hindi to Devanagari for Hindi-script speakers).
+function tokenise(raw: string): Set<string> {
+  if (!raw) return new Set();
+  const cleaned = raw
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')   // strip combining accents
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')  // punctuation -> space
+    .toLowerCase();
+  const out = new Set<string>();
+  for (const tok of cleaned.split(/\s+/)) {
+    if (tok.length >= 3) out.add(tok);
+  }
+  return out;
+}
+
+// Try to extract a quantity from the substring of `raw` immediately
+// before a matched item-name occurrence. Returns 1 when no number is
+// nearby — keeps the pre-fill conservative so we never add 10x by
+// accident from a stray "10pm" mention.
+function inferQty(raw: string, itemNameLower: string): number {
+  const lower = raw.toLowerCase();
+  const idx = lower.indexOf(itemNameLower);
+  if (idx === -1) return 1;
+  const before = lower.slice(Math.max(0, idx - 16), idx);
+  const m = before.match(/(\d{1,2})\s*(?:x|×|nos|piece|pcs|plate)?\s*$/);
+  if (!m) {
+    // Common Hindi qty words
+    if (/\b(do|दो)\s*$/.test(before)) return 2;
+    if (/\b(teen|तीन)\s*$/.test(before)) return 3;
+    if (/\b(char|चार)\s*$/.test(before)) return 4;
+    if (/\b(paanch|paach|पांच)\s*$/.test(before)) return 5;
+    return 1;
+  }
+  const n = parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n < 1 || n > 10) return 1;
+  return n;
 }
 
 export function MenuPublicClient({
@@ -78,11 +141,55 @@ export function MenuPublicClient({
   takeawayEnabled = true,
   compliance,
   pricing,
+  prefillQuery = '',
 }: Props) {
   const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [prefillCount, setPrefillCount] = useState(0);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone);
+
+  // One-shot voice/text-order pre-fill. When the bot forwarded the
+  // customer's words via ?q=, scan the query for item-name matches
+  // and pre-add them to the cart. We only run this once per mount
+  // (the deps are stable inputs) so subsequent edits stick.
+  useEffect(() => {
+    if (!prefillQuery || items.length === 0) return;
+    const tokens = tokenise(prefillQuery);
+    if (tokens.size === 0) return;
+    const lowerQuery = prefillQuery.toLowerCase();
+    const additions: Record<string, number> = {};
+    let matched = 0;
+    for (const it of items) {
+      const nameLower = it.name.toLowerCase();
+      // Full-name substring is the strongest signal — match "paneer
+      // butter masala" as a whole rather than each token, so we don't
+      // false-match "butter naan" against "paneer butter masala".
+      const fullHit = lowerQuery.includes(nameLower);
+      // Token fallback: every token of the item name appears in the
+      // query. Item names with 1 token (e.g. "Biryani") only require
+      // that one token to match.
+      const itemTokens = tokenise(it.name);
+      let allHit = itemTokens.size > 0;
+      for (const t of itemTokens) {
+        if (!tokens.has(t)) { allHit = false; break; }
+      }
+      if (fullHit || allHit) {
+        // No variants → add to base id. Variants → ambiguous, skip
+        // (let the customer pick the size manually rather than guess).
+        if (it.sizes.length === 0) {
+          const qty = inferQty(prefillQuery, nameLower);
+          additions[it.id] = qty;
+          matched += 1;
+        }
+      }
+    }
+    if (matched > 0) {
+      setCart((prev) => ({ ...prev, ...additions }));
+      setPrefillCount(matched);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [notes, setNotes] = useState('');
   // Pick the first enabled mode as the initial value. If the owner has
   // disabled every mode (misconfiguration) we still default to delivery
@@ -254,6 +361,40 @@ export function MenuPublicClient({
       </header>
 
       <main style={{ padding: '8px 12px' }}>
+        {prefillCount > 0 && (
+          <div
+            style={{
+              margin: '8px 0 6px',
+              padding: '8px 12px',
+              background: '#e8f5ff',
+              border: '1px solid #b6dffd',
+              borderRadius: 10,
+              fontSize: 12.5,
+              color: '#0a4a78',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            role="status"
+          >
+            <span>🎯</span>
+            <div style={{ flex: 1, lineHeight: 1.4 }}>
+              We added <b>{prefillCount}</b> item{prefillCount === 1 ? '' : 's'} from your message — review the cart, adjust quantities, then tap <b>Place order</b>.
+              <br />
+              <span style={{ fontSize: 11, color: '#3c7eb1' }}>
+                Aapke message se {prefillCount} item{prefillCount === 1 ? '' : 's'} add kar diye — check karke order place karein.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setCart({}); setPrefillCount(0); }}
+              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 99, border: '1px solid #b6dffd', background: '#fff', color: '#0a4a78', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/*
           Pricing transparency banner. Required by CCPA Dark Patterns
           Guidelines 2023 — "drip pricing" (revealing charges only at
@@ -350,6 +491,29 @@ export function MenuPublicClient({
                             {totalQty > 0 && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 99, background: '#111', color: '#fff' }}>{totalQty} in cart</span>}
                           </div>
                           {it.description && <p style={{ fontSize: 12, color: '#666', margin: '2px 0 0' }}>{it.description}</p>}
+                          {it.allergens.length > 0 && (
+                            <div
+                              style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}
+                              aria-label="Contains allergens"
+                            >
+                              {it.allergens.map((a) => (
+                                <span
+                                  key={a}
+                                  style={{
+                                    fontSize: 10,
+                                    padding: '1px 6px',
+                                    borderRadius: 99,
+                                    background: '#fff4e5',
+                                    color: '#a05a00',
+                                    fontWeight: 500,
+                                  }}
+                                  title="Contains allergen"
+                                >
+                                  ⚠ {ALLERGEN_LABEL[a] || a}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {!hasVariants && <p style={{ fontSize: 13, fontWeight: 500, margin: '4px 0 0' }}>{it.price || '—'}</p>}
                         </div>
                         {!hasVariants && (

@@ -22,6 +22,8 @@ interface MenuItem {
   isVeg?: boolean;
   isBestseller?: boolean;
   sizes?: Array<{ label: string; price: number }> | null;
+  // FSSAI Reg 2.4.6 — one or more of the 8 listed allergen keys.
+  allergens?: string[];
 }
 interface MenuCategory { category?: string; items?: MenuItem[] }
 
@@ -57,10 +59,10 @@ export default async function PublicMenuPage({
   searchParams,
 }: {
   params: Promise<{ clientId: string }>;
-  searchParams: Promise<{ p?: string }>;
+  searchParams: Promise<{ p?: string; q?: string }>;
 }) {
   const { clientId } = await params;
-  const { p: prefillPhone = '' } = await searchParams;
+  const { p: prefillPhone = '', q: prefillQuery = '' } = await searchParams;
 
   const client = await getClientById(clientId).catch(() => null);
   if (!client || client.type !== 'restaurant') notFound();
@@ -162,6 +164,7 @@ export default async function PublicMenuPage({
     isVeg: boolean;
     isBestseller: boolean;
     sizes: Array<{ label: string; price: number }>;
+    allergens: string[];
   }> = [];
   menu.forEach((cat, ci) => {
     (cat.items || []).forEach((it, ii) => {
@@ -181,6 +184,9 @@ export default async function PublicMenuPage({
       if (validSizes.length === 0) {
         validSizes = parseSizesFromPriceString(it.price || '');
       }
+      const allergens = Array.isArray(it.allergens)
+        ? it.allergens.filter((a): a is string => typeof a === 'string' && a.length > 0)
+        : [];
       flatItems.push({
         id: `${ci}-${ii}`,
         category: (cat.category || 'Menu').trim() || 'Menu',
@@ -190,6 +196,7 @@ export default async function PublicMenuPage({
         isVeg: it.isVeg !== false,
         isBestseller: !!it.isBestseller,
         sizes: validSizes,
+        allergens,
       });
     });
   });
@@ -203,6 +210,7 @@ export default async function PublicMenuPage({
       brandColor={brandColor}
       tagline={tagline}
       prefillPhone={prefillPhone}
+      prefillQuery={prefillQuery}
       deliveryAvailable={deliveryAvailable}
       dineInEnabled={dineInEnabled}
       takeawayEnabled={takeawayEnabled}

@@ -621,3 +621,37 @@ export async function getRestaurantStats(clientId: string): Promise<RestaurantSt
     customerRetention: { totalCustomers, repeatCustomers, repeatPct },
   };
 }
+
+// Per-outlet revenue breakdown for the multi-outlet overview panel
+// (Phase 3J). Returns a map keyed by outlet_id with this-month
+// revenue + order count. Cancelled orders are excluded — same
+// convention as getRestaurantStats. Single-outlet kitchens still
+// get a single 'main' entry (synthetic).
+export async function getRevenueByOutletThisMonth(
+  clientId: string
+): Promise<Map<string, { revenue: number; orderCount: number }>> {
+  const now = new Date();
+  const monthStart = new Date(now);
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const rows = await db
+    .select({
+      outlet_id: ordersTable.outlet_id,
+      total: ordersTable.total,
+      status: ordersTable.status,
+    })
+    .from(ordersTable)
+    .where(and(eq(ordersTable.client_id, clientId), gte(ordersTable.created_at, monthStart)));
+
+  const out = new Map<string, { revenue: number; orderCount: number }>();
+  for (const r of rows) {
+    if (r.status === 'cancelled') continue;
+    const id = r.outlet_id || 'main';
+    const cur = out.get(id) || { revenue: 0, orderCount: 0 };
+    cur.revenue += Number(r.total) || 0;
+    cur.orderCount += 1;
+    out.set(id, cur);
+  }
+  return out;
+}

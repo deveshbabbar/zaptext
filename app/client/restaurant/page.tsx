@@ -8,7 +8,8 @@
 import { redirect } from 'next/navigation';
 import { requireClientWithBots } from '@/lib/auth';
 import { getBookingsForDate, getBookingsByClient } from '@/lib/db/bookings';
-import { getRestaurantStats } from '@/lib/db/restaurant-dine-in';
+import { getRestaurantStats, getRevenueByOutletThisMonth } from '@/lib/db/restaurant-dine-in';
+import { getOutletsForClient, isMultiOutletEnabled } from '@/lib/db/outlets';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Pill, Kpi, Panel, StatusPill } from '@/components/app/primitives';
 import { SubTypesChips } from '@/components/client/sub-types-chips';
@@ -21,7 +22,7 @@ export default async function RestaurantOverviewPage() {
   const clientId = user.activeBot.client_id;
   const today = getISTDate();
 
-  const [todayBookings, pending, stats] = await Promise.all([
+  const [todayBookings, pending, stats, multiOutlet, outlets, outletRevenue] = await Promise.all([
     getBookingsForDate(clientId, today).catch(() => []),
     getBookingsByClient(clientId, 'pending_approval').catch(() => []),
     getRestaurantStats(clientId).catch(() => ({
@@ -30,7 +31,30 @@ export default async function RestaurantOverviewPage() {
       peakHoursLast7d: new Array(24).fill(0),
       customerRetention: { totalCustomers: 0, repeatCustomers: 0, repeatPct: 0 },
     })),
+    isMultiOutletEnabled(clientId).catch(() => false),
+    getOutletsForClient(clientId).catch(() => []),
+    getRevenueByOutletThisMonth(clientId).catch(() => new Map<string, { revenue: number; orderCount: number }>()),
   ]);
+
+  // Per-outlet breakdown table (Phase 3J). Render only for multi-outlet
+  // kitchens — single-outlet KPIs are already covered by the chain-wide
+  // cards above. Sort by revenue descending so the busiest outlet
+  // surfaces first.
+  const outletBreakdown = multiOutlet
+    ? outlets
+        .filter((o) => o.isActive)
+        .map((o) => {
+          const stat = outletRevenue.get(o.id) || { revenue: 0, orderCount: 0 };
+          return {
+            id: o.id,
+            slug: o.slug,
+            name: o.name,
+            revenue: stat.revenue,
+            orderCount: stat.orderCount,
+          };
+        })
+        .sort((a, b) => b.revenue - a.revenue)
+    : [];
   const peakRev = Math.max(1, ...stats.last7DaysRevenue.map((d) => d.revenue));
   const peakHourMax = Math.max(1, ...stats.peakHoursLast7d);
 
@@ -245,6 +269,85 @@ export default async function RestaurantOverviewPage() {
                     </p>
                   )}
                 </div>
+              )}
+            </Panel>
+          </div>
+        )}
+
+        {/* Per-outlet performance — Phase 3J. Only rendered for
+            multi-outlet kitchens. Single-outlet KPIs already live in
+            the top KPI row. Revenue + order count for the current
+            month, sorted busiest first. */}
+        {outletBreakdown.length > 0 && (
+          <div className="grid grid-cols-1 gap-4 mb-4">
+            <Panel
+              title="Outlet performance"
+              sub={`This month — ${outletBreakdown.length} active outlet${outletBreakdown.length === 1 ? '' : 's'}, sorted by revenue.`}
+              action={<a href="/client/restaurant/outlets" className="text-xs underline">Manage outlets</a>}
+            >
+              {outletBreakdown.every((o) => o.orderCount === 0) ? (
+                <p className="text-[13px] text-[var(--mute)] py-2">
+                  No orders this month yet. As orders land, per-outlet revenue
+                  will rank here so you can spot outliers across the chain.
+                </p>
+              ) : (
+                <ul className="flex flex-col">
+                  {outletBreakdown.map((o, i) => {
+                    const top = outletBreakdown[0].revenue || 1;
+                    const sharePct = top > 0 ? Math.round((o.revenue / top) * 100) : 0;
+                    return (
+                      <li
+                        key={o.id}
+                        className="flex items-center justify-between gap-3 py-2 border-b border-[var(--line)] last:border-b-0"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <span className="zt-mono text-[11px] text-[var(--mute)] w-5 text-right">#{i + 1}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[14px] font-semibold truncate">{o.name}</span>
+                              <span className="text-[10px] uppercase tracking-[.06em] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                @{o.slug}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                height: 4,
+                                marginTop: 4,
+                                background: 'var(--bg-2)',
+                                borderRadius: 99,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${Math.max(2, sharePct)}%`,
+                                  height: '100%',
+                                  background: 'var(--ink)',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 flex-shrink-0 text-right">
+                          <div>
+                            <div className="text-[11.5px] text-[var(--mute)] zt-mono uppercase tracking-[.06em]">
+                              Orders
+                            </div>
+                            <div className="text-[14px] font-semibold zt-mono">{o.orderCount}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11.5px] text-[var(--mute)] zt-mono uppercase tracking-[.06em]">
+                              Revenue
+                            </div>
+                            <div className="text-[14px] font-bold zt-mono">
+                              ₹{Math.round(o.revenue).toLocaleString('en-IN')}
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </Panel>
           </div>

@@ -603,10 +603,16 @@ export const restaurant_tables = pgTable(
     seats: integer('seats').default(0),
     is_active: boolean('is_active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // Multi-outlet scoping. Default 'main' so single-outlet kitchens
+    // are unaffected (their data continues to live under one synthetic
+    // outlet). When a kitchen opts into multi-outlet, the slug becomes
+    // their per-outlet identifier (e.g. 'SAK', 'CP', 'GUR').
+    outlet_id: varchar('outlet_id', { length: 60 }).notNull().default('main'),
   },
   (t) => ({
     clientTableUnique: uniqueIndex('restaurant_tables_client_table_unique').on(t.client_id, t.table_number),
     clientIdx: index('restaurant_tables_client_idx').on(t.client_id),
+    clientOutletIdx: index('restaurant_tables_client_outlet_idx').on(t.client_id, t.outlet_id),
   })
 );
 
@@ -647,11 +653,23 @@ export const dine_in_orders = pgTable(
     special_notes: text('special_notes').default(''),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     served_at: timestamp('served_at', { withTimezone: true }),
+    // Multi-outlet scoping — same pattern as restaurant_tables. The
+    // dashboard layer filters by outlet_id for outlet-manager roles;
+    // owner queries leave it un-filtered. Default 'main' covers all
+    // pre-multi-outlet rows.
+    outlet_id: varchar('outlet_id', { length: 60 }).notNull().default('main'),
+    // Optional customer-supplied location coords (Phase 3K — WhatsApp
+    // native location messages OR map-pin from /m page). NULL when the
+    // customer didn't share location. Used by zone-assignment math to
+    // pick the right outlet at order time.
+    delivery_lat: numeric('delivery_lat', { precision: 10, scale: 7 }),
+    delivery_lng: numeric('delivery_lng', { precision: 10, scale: 7 }),
   },
   (t) => ({
     clientCreatedIdx: index('dine_in_orders_client_created_idx').on(t.client_id, t.created_at),
     sessionIdx: index('dine_in_orders_session_idx').on(t.session_id),
     typeStatusIdx: index('dine_in_orders_type_status_idx').on(t.client_id, t.order_type, t.status),
+    clientOutletCreatedIdx: index('dine_in_orders_client_outlet_created_idx').on(t.client_id, t.outlet_id, t.created_at),
   })
 );
 
@@ -880,5 +898,52 @@ export const consent_log = pgTable(
     clientPhoneIdx: index('consent_log_client_phone_idx').on(t.client_id, t.customer_phone),
     eventIdx: index('consent_log_event_idx').on(t.event_type),
     createdIdx: index('consent_log_created_idx').on(t.created_at),
+  })
+);
+
+// ─── team_members (multi-outlet role-based access) ───────────────────────
+//
+// One row per (owner_client_id, email, outlet_id) assignment. Restaurant
+// chains use this to let outlet managers log in with their own email and
+// see ONLY their outlet's data. The owner remains the master account
+// holder + the one paying the subscription.
+//
+// status values:
+//   - invited     — invite sent, manager hasn't accepted yet
+//   - active      — manager has signed in via Clerk; access granted
+//   - revoked     — owner removed access; row kept for audit trail
+//
+// role values (small set; can grow later):
+//   - outlet_manager — sees own outlet's orders/menu specials/tables
+//   - staff          — view-only for own outlet (no menu edits)
+//
+// CRITICAL invariant: data is keyed on (owner_client_id, outlet_id) —
+// never on team_member email. So when an owner swaps Rohit out and
+// Suresh in (revoke old row, insert new row with same outlet_id), ALL
+// of Saket's orders/menu/customer history stays intact. The new
+// manager just walks into the same dataset under a new auth identity.
+//
+// Email matching is case-insensitive at the application layer; we
+// store the user's typed-in form for display but always look up via
+// lowercased + trimmed value.
+export const team_members = pgTable(
+  'team_members',
+  {
+    id: text('id').primaryKey(),
+    owner_client_id: text('owner_client_id').notNull(),
+    email: varchar('email', { length: 200 }).notNull(),
+    role: varchar('role', { length: 40 }).notNull(),
+    outlet_id: varchar('outlet_id', { length: 60 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('invited'),
+    invited_at: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
+    accepted_at: timestamp('accepted_at', { withTimezone: true }),
+    revoked_at: timestamp('revoked_at', { withTimezone: true }),
+    invited_by_email: varchar('invited_by_email', { length: 200 }).default(''),
+  },
+  (t) => ({
+    // "Who manages this outlet right now?" — typical query.
+    ownerOutletStatusIdx: index('team_members_owner_outlet_status_idx').on(t.owner_client_id, t.outlet_id, t.status),
+    // "Does this email have access to anything?" — login-time lookup.
+    emailStatusIdx: index('team_members_email_status_idx').on(t.email, t.status),
   })
 );

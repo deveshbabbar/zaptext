@@ -276,12 +276,27 @@ export function tplNewOrder(p: {
       </tr>`)
     .join('');
 
+  // DPDPA 2023 §8(5) "reasonable security safeguards" + §6 purpose
+  // limitation: email is a low-control channel (forwarded, archived,
+  // searched). Surface enough for the owner to recognise the order in
+  // dashboard, but NOT enough to act on it from email alone — the
+  // dashboard link below is the source of truth for customer PII. We
+  // ship last-4 of phone and a "see dashboard" stub for the address,
+  // not the full values.
+  const phoneDigits = (p.customerPhone || '').replace(/\D/g, '');
+  const maskedPhone = phoneDigits.length >= 4
+    ? `••• ${phoneDigits.slice(-4)}`
+    : '•••';
+
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Mode', value: modeLabel },
-    { label: 'Customer', value: `${esc(p.customerName || 'Unknown')} (+${esc(p.customerPhone)})` },
+    { label: 'Customer', value: `${esc(p.customerName || 'Unknown')} (${esc(maskedPhone)})` },
   ];
   if (p.mode === 'home_delivery' && p.deliveryAddress) {
-    detailRows.push({ label: 'Delivery to', value: esc(p.deliveryAddress) });
+    detailRows.push({
+      label: 'Delivery to',
+      value: '<span style="color:#666;">Address available in dashboard →</span>',
+    });
   }
   if (p.notes) {
     detailRows.push({ label: 'Notes', value: esc(p.notes) });

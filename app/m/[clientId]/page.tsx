@@ -72,6 +72,36 @@ export default async function PublicMenuPage({
   let deliveryAvailable = true;
   let dineInEnabled = true;
   let takeawayEnabled = true;
+  // Compliance disclosures rendered in the page footer / item-row icons.
+  // FSSAI Reg 2.4.6 (Aug 2020 gazette) requires veg/non-veg symbol per
+  // item for ALL food business operators; allergen disclosure for the 8
+  // mandated allergens; calorie/serving info only for FBOs with a
+  // central licence OR ≥10 outlets. We surface what the owner has
+  // provided; we never invent missing data.
+  let fssaiLicenseNumber = '';
+  let fssaiExpiryDate = '';
+  let fssaiCentralLicence = false;
+  let outletCount = 1;
+  let gstin = '';
+  let halalCertified = false;
+  let halalCertNumber = '';
+  let jainCertified = false;
+  let pureVeg = false;
+  let sharedKitchenWithNonVeg = false;
+  // Pricing disclosures rendered as a banner ABOVE the menu — CCPA Dark
+  // Patterns Guidelines 2023 prohibit "drip pricing" (revealing extra
+  // charges only at checkout). Every surcharge / delivery fee / packaging
+  // fee the owner has configured is surfaced up-front so the customer
+  // can never be surprised by an inflated total. We never invent
+  // surcharges; only what the owner explicitly set is shown.
+  let rainSurchargePercent = 0;
+  let peakHourSurchargePercent = 0;
+  let festivalSurchargePercent = 0;
+  let deliveryCharges = '';
+  let packagingChargesPerOrder = '';
+  let packagingChargesPerItem = '';
+  let minimumOrder = '';
+  let deliveryRadius = '';
   try {
     const kb = client.knowledge_base_json
       ? (JSON.parse(client.knowledge_base_json) as Record<string, unknown>)
@@ -80,6 +110,24 @@ export default async function PublicMenuPage({
     if (typeof kb.brandLogoUrl === 'string') brandLogoUrl = kb.brandLogoUrl;
     if (typeof kb.brandColor === 'string') brandColor = kb.brandColor;
     if (typeof kb.tagline === 'string') tagline = kb.tagline;
+    if (typeof kb.fssaiLicenseNumber === 'string') fssaiLicenseNumber = kb.fssaiLicenseNumber;
+    if (typeof kb.fssaiExpiryDate === 'string') fssaiExpiryDate = kb.fssaiExpiryDate;
+    if (typeof kb.fssaiCentralLicence === 'boolean') fssaiCentralLicence = kb.fssaiCentralLicence;
+    if (typeof kb.outletCount === 'number' && kb.outletCount > 0) outletCount = kb.outletCount;
+    if (typeof kb.gstin === 'string') gstin = kb.gstin;
+    if (typeof kb.halalCertified === 'boolean') halalCertified = kb.halalCertified;
+    if (typeof kb.halalCertNumber === 'string') halalCertNumber = kb.halalCertNumber;
+    if (typeof kb.jainCertified === 'boolean') jainCertified = kb.jainCertified;
+    if (typeof kb.pureVeg === 'boolean') pureVeg = kb.pureVeg;
+    if (typeof kb.sharedKitchenWithNonVeg === 'boolean') sharedKitchenWithNonVeg = kb.sharedKitchenWithNonVeg;
+    if (typeof kb.rainSurchargePercent === 'number') rainSurchargePercent = kb.rainSurchargePercent;
+    if (typeof kb.peakHourSurchargePercent === 'number') peakHourSurchargePercent = kb.peakHourSurchargePercent;
+    if (typeof kb.festivalSurchargePercent === 'number') festivalSurchargePercent = kb.festivalSurchargePercent;
+    if (typeof kb.deliveryCharges === 'string') deliveryCharges = kb.deliveryCharges;
+    if (typeof kb.packagingChargesPerOrder === 'string') packagingChargesPerOrder = kb.packagingChargesPerOrder;
+    if (typeof kb.packagingChargesPerItem === 'string') packagingChargesPerItem = kb.packagingChargesPerItem;
+    if (typeof kb.minimumOrder === 'string') minimumOrder = kb.minimumOrder;
+    if (typeof kb.deliveryRadius === 'string') deliveryRadius = kb.deliveryRadius;
     // serviceModes is the authoritative on/off list from the restaurant
     // form. Each mode picker on the page must respect it independently —
     // earlier this only gated dine_in, so kitchens that disabled
@@ -100,6 +148,10 @@ export default async function PublicMenuPage({
       deliveryAvailable = deliveryAvailable && kb.deliveryAvailable;
     }
   } catch { /* ignore */ }
+
+  // Calorie display is FSSAI-mandatory only for central-licence FBOs or
+  // 10+ outlet chains (Reg 2.4.6). Below the threshold it's optional.
+  const calorieDisclosureRequired = fssaiCentralLicence || outletCount >= 10;
 
   const flatItems: Array<{
     id: string;
@@ -154,6 +206,27 @@ export default async function PublicMenuPage({
       deliveryAvailable={deliveryAvailable}
       dineInEnabled={dineInEnabled}
       takeawayEnabled={takeawayEnabled}
+      compliance={{
+        fssaiLicenseNumber,
+        fssaiExpiryDate,
+        gstin,
+        halalCertified,
+        halalCertNumber,
+        jainCertified,
+        pureVeg,
+        sharedKitchenWithNonVeg,
+        calorieDisclosureRequired,
+      }}
+      pricing={{
+        rainSurchargePercent,
+        peakHourSurchargePercent,
+        festivalSurchargePercent,
+        deliveryCharges,
+        packagingChargesPerOrder,
+        packagingChargesPerItem,
+        minimumOrder,
+        deliveryRadius,
+      }}
     />
   );
 }

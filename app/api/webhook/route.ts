@@ -12,6 +12,7 @@ import { canUse, checkMessageQuota } from '@/lib/feature-gates';
 import { isCustomerPaused } from '@/lib/db/paused-customers';
 import { markMessageProcessedIfNew } from '@/lib/db/processed-messages';
 import { incrementUsageAtomic, monthKey } from '@/lib/db/usage-counters';
+import { recordConsentEvent } from '@/lib/db/consent-log';
 import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
@@ -671,6 +672,19 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         client.client_id, customerPhone, 7, incomingTs
       ));
       if (isFirstContact) {
+        // DPDPA 2023 §6 evidence: the customer's first inbound message
+        // in our 7-day window opens the 24-h customer service window
+        // and constitutes consent to a transactional reply. NOT a
+        // marketing opt-in. Log fire-and-forget so a DB hiccup never
+        // delays the welcome menu.
+        void recordConsentEvent({
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          event_type: 'inbound_csw',
+          source: 'webhook',
+          business_name_shown: client.business_name,
+          categories: ['transactional'],
+        });
         try {
           const menu = await getWelcomeMenu(client);
           if (menu) {

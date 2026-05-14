@@ -19,6 +19,7 @@ import { getClientById } from '@/lib/db/clients';
 import { createOrder, type DineInOrderItem, type DineInOrderType } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { notifyOwnerOfNewOrder } from '@/lib/restaurant/notify-order';
+import { recordConsentEvent } from '@/lib/db/consent-log';
 
 interface SubmitBody {
   clientId?: string;
@@ -51,6 +52,7 @@ function buildConfirmation(input: {
   items: DineInOrderItem[];
   total: number;
   languages?: string[];
+  fssaiLicenseNumber?: string;
 }): string {
   const lines = input.items.map((it) => `• ${it.qty}× ${it.name}`).join('\n');
   const englishOnly =
@@ -67,13 +69,19 @@ function buildConfirmation(input: {
     } else {
       tail = `Pickup ready in ~15-20 min. We'll WhatsApp you when it's ready.`;
     }
+    // FSSAI compliance footer — Reg 2.4.6 requires the licence number
+    // appear on every consumer-facing menu/billing surface. Skipped
+    // gracefully when the owner hasn't provided one yet.
+    const fssaiLine = input.fssaiLicenseNumber
+      ? `\n\nFSSAI Lic. ${input.fssaiLicenseNumber}`
+      : '';
     return [
       input.businessName,
       `Order received ✅`,
       lines,
       `Total: ₹${input.total.toFixed(0)}`,
       tail,
-    ].join('\n');
+    ].join('\n') + fssaiLine;
   }
 
   // Default: Hinglish only.
@@ -85,13 +93,16 @@ function buildConfirmation(input: {
   } else {
     tail = `Pickup ~15-20 min mein ready. Ready hone par WhatsApp pe update.`;
   }
+  const fssaiLine = input.fssaiLicenseNumber
+    ? `\n\nFSSAI Lic. ${input.fssaiLicenseNumber}`
+    : '';
   return [
     input.businessName,
     `Order mil gaya ✅`,
     lines,
     `Total: ₹${input.total.toFixed(0)}`,
     tail,
-  ].join('\n');
+  ].join('\n') + fssaiLine;
 }
 
 export async function POST(request: NextRequest) {
@@ -167,15 +178,21 @@ export async function POST(request: NextRequest) {
     special_notes: String(body.notes || '').trim(),
   });
 
-  // Resolve the bot's configured languages so the confirmation can
-  // pick the right single-language wording. Tolerate malformed KB —
-  // the confirmation falls back to Hinglish (the safe default).
+  // Resolve the bot's configured languages + FSSAI licence so the
+  // confirmation can pick the right single-language wording AND meet
+  // the FSSAI Reg 2.4.6 disclosure requirement. Tolerate malformed
+  // KB — the confirmation falls back to Hinglish (the safe default),
+  // and an absent FSSAI number simply omits the line.
   let botLanguages: string[] | undefined;
+  let fssaiLicenseNumber: string | undefined;
   try {
     if (client.knowledge_base_json) {
       const kbObj = JSON.parse(client.knowledge_base_json) as Record<string, unknown>;
       if (Array.isArray(kbObj.languages)) {
         botLanguages = (kbObj.languages as unknown[]).filter((x): x is string => typeof x === 'string');
+      }
+      if (typeof kbObj.fssaiLicenseNumber === 'string' && kbObj.fssaiLicenseNumber.trim()) {
+        fssaiLicenseNumber = kbObj.fssaiLicenseNumber.trim();
       }
     }
   } catch { /* ignore — undefined falls back to Hinglish */ }
@@ -192,6 +209,7 @@ export async function POST(request: NextRequest) {
       items: cleanItems,
       total: order.total,
       languages: botLanguages,
+      fssaiLicenseNumber,
     });
     try {
       await sendWhatsAppMessage(client.phone_number_id, customerPhone, confirmation);
@@ -203,6 +221,21 @@ export async function POST(request: NextRequest) {
   // Email the owner so they have a permanent, searchable record + a
   // one-click CTA into /client/restaurant/orders. Best-effort.
   await notifyOwnerOfNewOrder(client, order, 'menu_link');
+
+  // DPDPA 2023 §6/§6(10) evidence: the customer just entered their
+  // phone on the /m page and submitted an order — this is "free,
+  // specific, informed" consent to retain order details + send a WA
+  // confirmation. Log it fire-and-forget so a DB hiccup never fails
+  // the order.
+  void recordConsentEvent({
+    client_id: clientId,
+    customer_phone: customerPhone,
+    event_type: 'menu_phone_entry',
+    source: `/m/${clientId}`,
+    business_name_shown: client.business_name,
+    categories: ['transactional'],
+    user_agent: request.headers.get('user-agent') || '',
+  });
 
   return NextResponse.json({ ok: true, orderId: order.id, total: order.total });
 }

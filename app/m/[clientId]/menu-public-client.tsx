@@ -20,6 +20,29 @@ interface FlatItem {
   sizes: Array<{ label: string; price: number }>;
 }
 
+interface ComplianceInfo {
+  fssaiLicenseNumber?: string;
+  fssaiExpiryDate?: string;          // ISO date string
+  gstin?: string;
+  halalCertified?: boolean;
+  halalCertNumber?: string;
+  jainCertified?: boolean;
+  pureVeg?: boolean;
+  sharedKitchenWithNonVeg?: boolean;
+  calorieDisclosureRequired?: boolean;
+}
+
+interface PricingInfo {
+  rainSurchargePercent?: number;
+  peakHourSurchargePercent?: number;
+  festivalSurchargePercent?: number;
+  deliveryCharges?: string;
+  packagingChargesPerOrder?: string;
+  packagingChargesPerItem?: string;
+  minimumOrder?: string;
+  deliveryRadius?: string;
+}
+
 interface Props {
   businessName: string;
   clientId: string;
@@ -31,6 +54,8 @@ interface Props {
   deliveryAvailable?: boolean;
   dineInEnabled?: boolean;
   takeawayEnabled?: boolean;
+  compliance?: ComplianceInfo;
+  pricing?: PricingInfo;
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -51,6 +76,8 @@ export function MenuPublicClient({
   deliveryAvailable = true,
   dineInEnabled = true,
   takeawayEnabled = true,
+  compliance,
+  pricing,
 }: Props) {
   const accent = brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brandColor) ? brandColor : '#111';
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -227,6 +254,71 @@ export function MenuPublicClient({
       </header>
 
       <main style={{ padding: '8px 12px' }}>
+        {/*
+          Pricing transparency banner. Required by CCPA Dark Patterns
+          Guidelines 2023 — "drip pricing" (revealing charges only at
+          checkout) is one of the 13 banned dark patterns. Everything
+          the owner has configured that COULD affect the final total is
+          surfaced here, before the customer adds their first item.
+
+          We render the banner only when at least one surcharge / fee /
+          minimum is configured. A restaurant with zero surcharges shows
+          no banner — pure menu prices == final.
+        */}
+        {pricing && (() => {
+          const surgeBits: string[] = [];
+          if (pricing.rainSurchargePercent && pricing.rainSurchargePercent > 0)
+            surgeBits.push(`🌧️ Rain +${pricing.rainSurchargePercent}%`);
+          if (pricing.peakHourSurchargePercent && pricing.peakHourSurchargePercent > 0)
+            surgeBits.push(`⏰ Peak hour +${pricing.peakHourSurchargePercent}%`);
+          if (pricing.festivalSurchargePercent && pricing.festivalSurchargePercent > 0)
+            surgeBits.push(`🎉 Festival +${pricing.festivalSurchargePercent}%`);
+
+          const feeBits: string[] = [];
+          if (pricing.deliveryCharges) feeBits.push(`Delivery ${pricing.deliveryCharges}`);
+          if (pricing.packagingChargesPerOrder) feeBits.push(`Packaging ${pricing.packagingChargesPerOrder}/order`);
+          if (pricing.packagingChargesPerItem) feeBits.push(`Packaging ${pricing.packagingChargesPerItem}/item`);
+          if (pricing.minimumOrder) feeBits.push(`Min order ${pricing.minimumOrder}`);
+          if (pricing.deliveryRadius) feeBits.push(`Delivery radius ${pricing.deliveryRadius}`);
+
+          if (surgeBits.length === 0 && feeBits.length === 0) return null;
+
+          return (
+            <section
+              style={{
+                margin: '8px 0 6px',
+                padding: '10px 12px',
+                background: '#fffaf2',
+                border: '1px solid #ffe4bf',
+                borderRadius: 10,
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                color: '#5a3a00',
+              }}
+              aria-label="Pricing transparency"
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                Pricing transparency / Price ki saari details
+              </div>
+              {feeBits.length > 0 && (
+                <div style={{ marginBottom: surgeBits.length > 0 ? 4 : 0 }}>
+                  {feeBits.join(' · ')}
+                </div>
+              )}
+              {surgeBits.length > 0 && (
+                <div>
+                  Possible surcharges (only when conditions apply, itemised before you confirm):
+                  <br />
+                  {surgeBits.join(' · ')}
+                </div>
+              )}
+              <div style={{ marginTop: 6, fontSize: 11, color: '#8a6a2a' }}>
+                Final breakdown shown on the order summary screen — no hidden charges.
+              </div>
+            </section>
+          );
+        })()}
+
         {grouped.length === 0 ? (
           <p style={{ color: '#888', padding: 16 }}>
             Menu loading… If this stays empty, the restaurant hasn&apos;t configured items yet.
@@ -378,6 +470,86 @@ export function MenuPublicClient({
 
         {error && (
           <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#fee', color: '#900', fontSize: 13 }}>{error}</div>
+        )}
+
+        {/*
+          FSSAI / GST / certification disclosure footer.
+
+          Mandatory per FSSAI Reg 2.4.6 (Aug 2020 gazette) — the FBO's
+          licence number must appear on every menu surface customers
+          see. Allergen disclosure + veg/non-veg symbols are rendered
+          per-item above; this footer covers the licence + certifications
+          + shared-kitchen safety note.
+
+          Shared-kitchen disclaimer is shown whenever a kitchen advertises
+          pure-veg AND has `sharedKitchenWithNonVeg = true` — required by
+          FSSAI Adv & Claims Regs 2018 Reg 3 ("claims must be truthful,
+          unambiguous, meaningful, not misleading"). Never advertise
+          "100% pure" wording — that's the line FSSAI 2025 guidance
+          specifically called out.
+        */}
+        {compliance && (
+          <section
+            style={{
+              marginTop: 32,
+              padding: '14px 14px 18px',
+              borderTop: '1px solid #eee',
+              fontSize: 11.5,
+              color: '#666',
+              lineHeight: 1.5,
+            }}
+            aria-label="Regulatory disclosures"
+          >
+            {(compliance.pureVeg && compliance.sharedKitchenWithNonVeg) && (
+              <div
+                style={{
+                  background: '#fff8e1',
+                  border: '1px solid #ffe082',
+                  borderRadius: 8,
+                  padding: '8px 10px',
+                  color: '#7a5b00',
+                  marginBottom: 10,
+                }}
+              >
+                <b>Shared kitchen disclosure:</b> our vegetarian dishes are prepared
+                in a kitchen that also handles non-vegetarian items. If strict
+                veg-only is required, please call before ordering.
+              </div>
+            )}
+
+            {(compliance.halalCertified || compliance.jainCertified) && (
+              <div style={{ marginBottom: 8 }}>
+                {compliance.halalCertified && (
+                  <span style={{ display: 'inline-block', marginRight: 10, padding: '2px 8px', background: '#e8f5e9', color: '#1b5e20', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
+                    HALAL CERTIFIED{compliance.halalCertNumber ? ` · ${compliance.halalCertNumber}` : ''}
+                  </span>
+                )}
+                {compliance.jainCertified && (
+                  <span style={{ display: 'inline-block', marginRight: 10, padding: '2px 8px', background: '#fff3e0', color: '#7a4f00', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
+                    JAIN-CERTIFIED MENU
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div>
+              {compliance.fssaiLicenseNumber ? (
+                <>
+                  FSSAI Lic. No. <b>{compliance.fssaiLicenseNumber}</b>
+                  {compliance.fssaiExpiryDate ? ` · valid till ${compliance.fssaiExpiryDate}` : ''}
+                </>
+              ) : (
+                <>FSSAI licence pending — confirm with kitchen.</>
+              )}
+              {compliance.gstin ? <> · GSTIN <b>{compliance.gstin}</b></> : null}
+            </div>
+
+            <div style={{ marginTop: 6, fontSize: 10.5, color: '#888' }}>
+              {compliance.calorieDisclosureRequired
+                ? 'Calorie information per serving is available on request — central licence / 10+ outlets.'
+                : 'Allergen information available on request. Veg/non-veg indicated per item above.'}
+            </div>
+          </section>
         )}
       </main>
 

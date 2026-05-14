@@ -345,10 +345,18 @@ CRITICAL: If earlier messages in this conversation mentioned specific dishes by 
   if (config.noPreservativesClaim) claims.push('no preservatives');
   if (config.noMsgClaim) claims.push('no MSG / Ajinomoto');
 
-  // Pure-veg disclosure
+  // Pure-veg disclosure.
+  //
+  // FSSAI Adv & Claims Regs 2018 Reg 3: "claims must be truthful,
+  // unambiguous, meaningful, not misleading". A kitchen that flags
+  // itself pure-veg but also marks the shared-kitchen flag is in the
+  // misleading-claim zone — we soften the bot's wording to "primarily
+  // vegetarian" and force proactive disclosure on any pure-veg query.
   const pureVegLine = config.pureVeg !== undefined
     ? config.pureVeg
-      ? 'PURE-VEG kitchen — no non-veg cooked here.'
+      ? config.sharedKitchenWithNonVeg
+        ? 'PRIMARILY VEGETARIAN kitchen — the same premises also handles non-veg items. The bot MUST disclose this when a customer asks about pure-veg / Jain / strictly-veg suitability. Do NOT claim "100% pure-veg" or "completely veg only".'
+        : 'PURE-VEG kitchen — no non-veg cooked here.'
       : config.sharedKitchenWithNonVeg === false
         ? 'Mixed kitchen — veg cooked in a SEPARATE pan from non-veg.'
         : 'Mixed kitchen — veg may be cooked in a SHARED pan with non-veg. Disclose this when asked.'
@@ -394,7 +402,12 @@ STRICT RULES FOR RESTAURANT BOT:
 - For allergen questions: if the item has an allergen tag in the menu above, share it. Otherwise communicate (in customer's language) "Please confirm with the kitchen directly — I want to be safe with allergens."
 - For Jain queries: ${config.jainCertified ? 'we have a Jain-certified menu.' : 'we are NOT Jain-certified; the kitchen handles onion/garlic.'}
 - For halal queries: ${config.halalCertified ? 'we are halal-certified.' : 'we are NOT halal-certified — be honest if asked.'}
-- For pure-veg queries: ${config.pureVeg ? 'this is a pure-veg kitchen.' : 'this kitchen ALSO cooks non-veg. Disclose this honestly when asked.'}
+- For pure-veg queries: ${config.pureVeg
+    ? config.sharedKitchenWithNonVeg
+      ? 'menu is primarily vegetarian BUT the same premises handles non-veg — disclose this proactively. Do not call it "100% pure-veg".'
+      : 'this is a pure-veg kitchen.'
+    : 'this kitchen ALSO cooks non-veg. Disclose this honestly when asked.'}
+- BANNED WORDING (FSSAI Adv & Claims Regs 2018 Reg 3 — claims must be truthful, unambiguous, not misleading): NEVER use absolutes like "100% pure", "100% natural", "completely chemical-free", "guaranteed organic", "absolutely no preservatives", "totally fresh", "world's best", "purest", "healthiest" — unless the exact phrase is already inside the menu item description or a TRUTHFUL CLAIMS line above. Soften to "freshly prepared", "made daily", "house-made", "we don't add preservatives in this recipe" instead. This applies to free-form replies AND ${'[ORDER:]'} confirmations.
 - For peak/rain/festival: if surge pricing is enabled and conditions match, mention "delivery charge may be higher than the standard amount during peak hours / rain / festivals".
 - For table booking: ${config.tableBookingEnabled ? `take reservation requests; party size ${config.tableMinPartySize || '?'}-${config.tableMaxPartySize || '?'}.` : 'table reservations not handled via WhatsApp — ask customer to call.'}
 - For bulk / corporate orders: ${config.bulkOrdersEnabled ? `route to ${config.bulkOrdersContactNumber || 'owner'}; min ${config.bulkOrdersMinPax || 30} pax.` : 'we do not currently take bulk corporate orders.'}

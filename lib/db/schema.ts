@@ -832,3 +832,53 @@ export const grocery_cart_drafts = pgTable(
     expIdx: index('grocery_cart_drafts_exp_idx').on(t.expires_at),
   })
 );
+
+// ─── consent_log (DPDPA 2023) ────────────────────────────────────────────
+//
+// Evidence ledger for every consent event we rely on under the Digital
+// Personal Data Protection Act 2023 §6 ("free, specific, informed,
+// unconditional and unambiguous") and Meta's Business Messaging Policy
+// opt-in requirements. DPDPA §6(10): "the Data Fiduciary shall be
+// obliged to prove that a notice was given by her to the Data Principal
+// and consent was given" — i.e. we need a row per event we'll later cite.
+//
+// event_type values:
+//   - inbound_csw         — customer's first inbound message in the
+//                           7-day window, opens the 24-h customer
+//                           service window. NOT marketing opt-in.
+//   - menu_phone_entry    — customer typed their phone on /m/<clientId>
+//                           and confirmed the order — covers reorder
+//                           history retention + WA confirmation send.
+//   - qr_scan_start       — customer scanned table QR + tapped Send on
+//                           the pre-filled message (consent flow).
+//   - marketing_opt_in    — explicit "yes I want offers" event.
+//   - marketing_opt_out   — STOP / RUKO keyword or unsubscribe tap.
+//   - erasure_request     — DPDPA §12 right-to-erasure invocation by the
+//                           customer; 90-day SLA to honour.
+//
+// `business_name_shown` records the EXACT business-name string the user
+// saw at consent time — needed because the bot may be re-branded later
+// and we still need to attest to the original disclosure.
+// `notice_version` is the privacy-notice version string so we can prove
+// which text was shown. `categories` is a JSON-stringified string[] of
+// permission categories granted at this event.
+export const consent_log = pgTable(
+  'consent_log',
+  {
+    id: text('id').primaryKey(),
+    client_id: text('client_id').notNull(),
+    customer_phone: varchar('customer_phone', { length: 32 }).notNull(),
+    event_type: varchar('event_type', { length: 40 }).notNull(),
+    source: varchar('source', { length: 80 }).notNull().default(''),
+    business_name_shown: text('business_name_shown').notNull().default(''),
+    notice_version: varchar('notice_version', { length: 20 }).notNull().default(''),
+    categories: text('categories').notNull().default('[]'),
+    user_agent: text('user_agent').default(''),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    clientPhoneIdx: index('consent_log_client_phone_idx').on(t.client_id, t.customer_phone),
+    eventIdx: index('consent_log_event_idx').on(t.event_type),
+    createdIdx: index('consent_log_created_idx').on(t.created_at),
+  })
+);

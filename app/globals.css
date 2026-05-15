@@ -292,3 +292,17 @@ body {
     max-width: 100%;
   }
 }
+
+/* Landing Features grid: each card declares its desired span via
+   --feat-span. On mobile (single-column grid) we let the card span the
+   single row track normally; only at md+ do we expand it to span its
+   N-of-12 share. This prevents implicit-track horizontal overflow on
+   narrow viewports. */
+.zt-feat-card {
+  grid-column: auto;
+}
+@media (min-width: 768px) {
+  .zt-feat-card {
+    grid-column: span var(--feat-span, 12) / span var(--feat-span, 12);
+  }
+}

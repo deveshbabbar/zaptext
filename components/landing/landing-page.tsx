@@ -1017,9 +1017,12 @@ function FeatCard({
       ? "text-white/40"
       : "text-[var(--mute)]";
   return (
-    <div className={`${base} ${variantCls}`} style={{ gridColumn: `span ${span} / span ${span}` }}>
+    <div
+      className={`${base} ${variantCls} zt-feat-card`}
+      style={{ ['--feat-span' as never]: String(span) }}
+    >
       <div className={`zt-mono text-[11px] uppercase tracking-[.08em] ${lblCls}`}>{label}</div>
-      <h4 className="text-[22px] font-bold tracking-[-0.022em] mt-2 mb-1.5">{title}</h4>
+      <h4 className="text-[20px] sm:text-[22px] font-bold tracking-[-0.022em] mt-2 mb-1.5">{title}</h4>
       {children}
     </div>
   );

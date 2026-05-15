@@ -61,12 +61,11 @@ export function WhatsAppDemoWidget() {
   const waUrl = `https://wa.me/${number}?text=${PREFILL_MESSAGE}`;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2.5">
+    <div className="fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-50 flex flex-col items-end gap-2.5">
       {/* Expanded card */}
       {open && (
         <div
-          className="bg-[var(--background)] border border-[var(--line)] rounded-[16px] shadow-2xl overflow-hidden"
-          style={{ width: 320 }}
+          className="bg-[var(--background)] border border-[var(--line)] rounded-[16px] shadow-2xl overflow-hidden w-[280px] sm:w-[320px] max-w-[calc(100vw-1.5rem)]"
         >
           <div
             className="bg-[var(--ink)] text-[var(--background)] flex items-start justify-between"
@@ -112,11 +111,10 @@ export function WhatsAppDemoWidget() {
       {/* FAB toggle */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded-full font-semibold text-[14px] shadow-2xl hover:-translate-y-px transition flex items-center gap-2.5"
+        className="rounded-full font-semibold text-[13px] sm:text-[14px] shadow-2xl hover:-translate-y-px transition flex items-center gap-2 sm:gap-2.5 px-4 sm:px-[22px] py-3 sm:py-[14px]"
         style={{
           background: open ? 'var(--ink)' : '#25D366',
           color: open ? 'var(--background)' : '#fff',
-          padding: '14px 22px',
         }}
         aria-label={open ? 'Close demo widget' : 'Try live WhatsApp demo'}
       >
@@ -124,8 +122,9 @@ export function WhatsAppDemoWidget() {
           <>Hide demo</>
         ) : (
           <>
-            <span aria-hidden="true" className="text-[16px]">💬</span>
-            <span>Try the live demo</span>
+            <span aria-hidden="true" className="text-[15px] sm:text-[16px]">💬</span>
+            <span className="hidden sm:inline">Try the live demo</span>
+            <span className="sm:hidden">Live demo</span>
           </>
         )}
       </button>

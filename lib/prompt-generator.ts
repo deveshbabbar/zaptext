@@ -228,95 +228,87 @@ function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant
     : 'Restaurant / Food Business';
 
   // Render menu with the new structured per-item fields.
+  // Extracted as a helper so per-outlet overrides can re-use the same
+  // formatter — keeps allergen / variant / time-window disclosures
+  // identical across the chain default and every branch override.
+  type MenuCat = NonNullable<typeof config.menuCategories>[number];
+  function renderMenuList(cats: MenuCat[]): string {
+    return cats
+      .map((cat) => {
+        const items = (cat.items || [])
+          .map((item) => {
+            const foodTypeLabel = item.foodType === 'egg' ? '🟡 Egg' : item.foodType === 'non-veg' || !item.isVeg ? '🔴 Non-Veg' : '🟢 Veg';
+            const tags: string[] = [foodTypeLabel];
+            if (item.isBestseller) tags.push('⭐ Bestseller');
+            if (item.isJainCompatible) tags.push('🟡 Jain');
+            if (item.spiceLevel === 'spicy' || item.spiceLevel === 'extra-spicy') tags.push('🌶️ ' + item.spiceLevel);
+
+            const legacySizes = (item as unknown as { sizes?: Array<{ label: string; price: number }> | null }).sizes;
+            const variantsForPrompt = item.weightVariants && item.weightVariants.length > 0
+              ? item.weightVariants.map((v) => ({ label: v.label, price: v.price }))
+              : Array.isArray(legacySizes)
+                ? legacySizes.filter((s) => s && typeof s.label === 'string' && typeof s.price === 'number' && s.price > 0)
+                : [];
+            const variantLine = variantsForPrompt.length > 0
+              ? `\n    Variants: ${variantsForPrompt.map((v) => `${v.label} ${v.price}`).join(' · ')}`
+              : '';
+            const allergenLine = item.allergens && item.allergens.length > 0
+              ? `\n    ⚠️ Contains: ${item.allergens.join(', ')}`
+              : '';
+            const calLine = typeof item.caloriesKcal === 'number'
+              ? ` (${item.caloriesKcal} kcal)`
+              : '';
+            const timeLine = item.availableTimeWindow
+              ? `\n    Available: ${item.availableTimeWindow.start}–${item.availableTimeWindow.end}`
+              : '';
+            const dayLine = item.availableDays && item.availableDays.length > 0 && item.availableDays.length < 7
+              ? `\n    Days: ${item.availableDays.join(', ')}`
+              : '';
+            const aggLine = item.aggregatorPriceOverride
+              ? `\n    On Swiggy/Zomato: ${[
+                  item.aggregatorPriceOverride.swiggy ? `Swiggy ${item.aggregatorPriceOverride.swiggy}` : '',
+                  item.aggregatorPriceOverride.zomato ? `Zomato ${item.aggregatorPriceOverride.zomato}` : '',
+                ].filter(Boolean).join(' · ')}`
+              : '';
+
+            return `  • ${item.name} - ${item.price}${calLine} ${tags.join(' ')}\n    ${item.description}${variantLine}${allergenLine}${timeLine}${dayLine}${aggLine}`;
+          })
+          .join('\n');
+        return `*${cat.category}*\n${items}`;
+      })
+      .join('\n\n');
+  }
+
   const totalItems = (config.menuCategories || []).reduce((n, c) => n + (c.items?.length || 0), 0);
   const menuText = totalItems > 0
-    ? (config.menuCategories || [])
-        .map((cat) => {
-          const items = (cat.items || [])
-            .map((item) => {
-              const foodTypeLabel = item.foodType === 'egg' ? '🟡 Egg' : item.foodType === 'non-veg' || !item.isVeg ? '🔴 Non-Veg' : '🟢 Veg';
-              const tags: string[] = [foodTypeLabel];
-              if (item.isBestseller) tags.push('⭐ Bestseller');
-              if (item.isJainCompatible) tags.push('🟡 Jain');
-              if (item.spiceLevel === 'spicy' || item.spiceLevel === 'extra-spicy') tags.push('🌶️ ' + item.spiceLevel);
-
-              // Variants — small/medium/large or 250g/500g/1kg.
-              // Prefer the new structured `weightVariants` shape, then
-              // fall back to the legacy `sizes` shape that the bulk-import
-              // path + menu editor still write (Half/Full, 250g/500g, etc.)
-              // — without this fallback, the AI never sees per-size prices
-              // and always quotes only the base figure.
-              const legacySizes = (item as unknown as { sizes?: Array<{ label: string; price: number }> | null }).sizes;
-              const variantsForPrompt = item.weightVariants && item.weightVariants.length > 0
-                ? item.weightVariants.map((v) => ({ label: v.label, price: v.price }))
-                : Array.isArray(legacySizes)
-                  ? legacySizes.filter((s) => s && typeof s.label === 'string' && typeof s.price === 'number' && s.price > 0)
-                  : [];
-              const variantLine = variantsForPrompt.length > 0
-                ? `\n    Variants: ${variantsForPrompt.map((v) => `${v.label} ${v.price}`).join(' · ')}`
-                : '';
-              // Allergens — FSSAI-style disclosure
-              const allergenLine = item.allergens && item.allergens.length > 0
-                ? `\n    ⚠️ Contains: ${item.allergens.join(', ')}`
-                : '';
-              // Calories
-              const calLine = typeof item.caloriesKcal === 'number'
-                ? ` (${item.caloriesKcal} kcal)`
-                : '';
-              // Time-window restriction
-              const timeLine = item.availableTimeWindow
-                ? `\n    Available: ${item.availableTimeWindow.start}–${item.availableTimeWindow.end}`
-                : '';
-              const dayLine = item.availableDays && item.availableDays.length > 0 && item.availableDays.length < 7
-                ? `\n    Days: ${item.availableDays.join(', ')}`
-                : '';
-              // Aggregator price differential — owner pays Zomato/Swiggy a cut
-              const aggLine = item.aggregatorPriceOverride
-                ? `\n    On Swiggy/Zomato: ${[
-                    item.aggregatorPriceOverride.swiggy ? `Swiggy ${item.aggregatorPriceOverride.swiggy}` : '',
-                    item.aggregatorPriceOverride.zomato ? `Zomato ${item.aggregatorPriceOverride.zomato}` : '',
-                  ].filter(Boolean).join(' · ')}`
-                : '';
-
-              return `  • ${item.name} - ${item.price}${calLine} ${tags.join(' ')}\n    ${item.description}${variantLine}${allergenLine}${timeLine}${dayLine}${aggLine}`;
-            })
-            .join('\n');
-          return `*${cat.category}*\n${items}`;
-        })
-        .join('\n\n')
+    ? renderMenuList(config.menuCategories || [])
     : `(none — there are currently NO menu items configured for this restaurant)
 
 CRITICAL: If earlier messages in this conversation mentioned specific dishes by name, prices, or descriptions, those items have been removed and are NO LONGER on the menu. Do NOT repeat them, do NOT confirm orders for them, and do NOT quote their prices. If the customer asks for the menu, tell them politely the menu is being updated and to contact the owner directly.`;
 
-  // Cloud-kitchen multi-brand — list each brand WITH its own menu.
-  // The bot serves the right brand's items based on which brand the
-  // customer asked for. Legacy bots without per-brand menus fall back
-  // to the deprecated `bestsellerItems` string.
-  const brandsBlock = (config.brands || []).filter((b) => b.name?.trim()).length > 0
-    ? `\n\nBRAND-FRONTS UNDER THIS KITCHEN (each brand has its OWN menu — do NOT mix dishes across brands):\n${(config.brands || [])
-        .map((b) => {
-          const website = b.website ? `\n  Website: ${b.website}` : '';
-          const brandMenu = (b.menuCategories || []).filter((c) => (c.items || []).length > 0);
-          const menuStr = brandMenu.length > 0
-            ? '\n  Menu:\n' + brandMenu
-                .map((cat) => {
-                  const items = (cat.items || [])
-                    .filter((it) => it.name?.trim())
-                    .map((it) => {
-                      const tags: string[] = [];
-                      if (it.isVeg) tags.push('🟢'); else tags.push('🔴');
-                      if (it.isBestseller) tags.push('⭐');
-                      return `    • ${it.name} - ${it.price || '(price TBD)'} ${tags.join(' ')}${it.description ? `  — ${it.description}` : ''}`;
-                    })
-                    .join('\n');
-                  return `  *${cat.category || 'Menu'}*\n${items}`;
-                })
-                .join('\n')
-            : (b.bestsellerItems ? `\n  Bestsellers: ${b.bestsellerItems}` : '');
-          return `- *${b.name}* (${b.cuisineType || 'cuisine not specified'})${website}${menuStr}`;
-        })
-        .join('\n\n')}`
+  // Per-outlet menu overrides — branches that customized the menu away
+  // from the chain default. The bot picks the right menu based on the
+  // outlet context it has (QR scan / customer location / branch picker).
+  // Branches without an override silently fall through to the chain menu.
+  const outletsList = (config as unknown as { outlets?: Array<{ id: string; name: string; slug?: string }> }).outlets || [];
+  const overrides = (config as unknown as { menuByOutlet?: Record<string, MenuCat[]> }).menuByOutlet || {};
+  const overrideBlocks = outletsList
+    .filter((o) => o && o.id && Array.isArray(overrides[o.id]) && (overrides[o.id]?.length ?? 0) > 0)
+    .map((o) => {
+      const cats = overrides[o.id] || [];
+      const body = renderMenuList(cats);
+      return `\n\n=== MENU OVERRIDE FOR BRANCH: ${o.name}${o.slug ? ` (${o.slug})` : ''} ===\nUse THIS menu (not the chain default) when the customer is ordering from this branch.\n\n${body}`;
+    });
+  const perOutletMenuBlock = overrideBlocks.length > 0
+    ? overrideBlocks.join('') + `\n\nBranches NOT listed above use the chain default menu. If you don't know which branch the customer is at, ask them.`
     : '';
+
+  // Multi-brand cloud-kitchen support was removed from the UI — every
+  // restaurant now has a single menu, with optional per-outlet overrides
+  // handled below. Legacy bots that still have a `brands` array in their
+  // stored config just get an empty block (the chain-wide menu above
+  // already lists their items).
+  const brandsBlock = '';
 
   // Service modes
   const modes = config.serviceModes || ['dine_in', 'delivery'];
@@ -450,7 +442,7 @@ ${pureVegLine}
 ${brandsBlock}
 
 FULL MENU (AUTHORITATIVE — overrides any earlier message in this chat):
-${menuText}
+${menuText}${perOutletMenuBlock}
 
 ${windowsLine}
 

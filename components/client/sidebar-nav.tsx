@@ -80,7 +80,6 @@ interface SidebarNavProps {
 const OWNER_ONLY_RESTAURANT_HREFS: ReadonlySet<string> = new Set([
   '/client/restaurant/outlets',
   '/client/restaurant/team',
-  '/client/restaurant/brands',
 ]);
 
 // Vertical-specific workspace links. These are MERGED into the Workspace
@@ -91,7 +90,6 @@ const VERTICAL_ITEMS: Record<string, NavItem[]> = {
     { href: '/client/restaurant', icon: '🍽️', label: 'Restaurant overview' },
     { href: '/client/restaurant/analytics', icon: '📊', label: 'Analytics' },
     { href: '/client/restaurant/menu', icon: '📋', label: 'Menu' },
-    { href: '/client/restaurant/brands', icon: '🏷️', label: 'Brands' },
     { href: '/client/restaurant/tables-live', icon: '🟢', label: 'Live tables' },
     { href: '/client/restaurant/qr-codes', icon: '📱', label: 'QR codes' },
     { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },

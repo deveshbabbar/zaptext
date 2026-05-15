@@ -50,12 +50,33 @@ function emptyItem(): MenuItem {
   return { name: '', price: '', description: '', isVeg: true, isBestseller: false, allergens: [] };
 }
 
+type OutletLite = { id: string; name: string; slug?: string };
+
+// `selectedOutletId === null` means "chain default" — edits flow into
+// kb.menuCategories. A specific outlet id puts the editor in override
+// mode — edits flow into kb.menuByOutlet[outletId]. An outlet with no
+// override entry inherits the chain default.
+
 export function MenuEditor({ businessName }: { businessName: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [kb, setKb] = useState<Record<string, unknown>>({});
-  const [menu, setMenu] = useState<MenuCategory[]>([]);
+  const [chainMenu, setChainMenu] = useState<MenuCategory[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, MenuCategory[]>>({});
+  const [outlets, setOutlets] = useState<OutletLite[]>([]);
+  const [multiOutletEnabled, setMultiOutletEnabled] = useState(false);
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  // The menu the editor renders + mutates. Mirrors either the chain
+  // default (selectedOutletId === null) or the active override.
+  const menu: MenuCategory[] =
+    selectedOutletId === null ? chainMenu : overrides[selectedOutletId] ?? chainMenu;
+
+  // Branch inherits when NO override entry exists. An empty array IS an
+  // override (owner explicitly cleared the menu — kitchen renovating etc.)
+  const isInheriting =
+    selectedOutletId !== null && !Object.prototype.hasOwnProperty.call(overrides, selectedOutletId);
 
   useEffect(() => {
     (async () => {
@@ -65,8 +86,12 @@ export function MenuEditor({ businessName }: { businessName: string }) {
         const data = (await res.json()) as SettingsResponse;
         const parsed = data.knowledgeBase ? JSON.parse(data.knowledgeBase) : {};
         setKb(parsed);
-        const cats = Array.isArray(parsed.menuCategories) ? parsed.menuCategories : [];
-        setMenu(cats);
+        setChainMenu(Array.isArray(parsed.menuCategories) ? parsed.menuCategories : []);
+        const mbo = parsed.menuByOutlet;
+        setOverrides(mbo && typeof mbo === 'object' && !Array.isArray(mbo) ? (mbo as Record<string, MenuCategory[]>) : {});
+        const list = Array.isArray(parsed.outlets) ? (parsed.outlets as OutletLite[]) : [];
+        setOutlets(list.filter((o) => o && o.id && o.name));
+        setMultiOutletEnabled(parsed.multiOutletEnabled === true);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Could not load menu');
       } finally {
@@ -74,6 +99,33 @@ export function MenuEditor({ businessName }: { businessName: string }) {
       }
     })();
   }, []);
+
+  // Single setter writes to chain OR active override.
+  function setMenu(next: MenuCategory[]) {
+    if (selectedOutletId === null) {
+      setChainMenu(next);
+    } else {
+      setOverrides({ ...overrides, [selectedOutletId]: next });
+    }
+  }
+
+  // Copy chain menu into this outlet's override so the owner can edit
+  // it independently. No-op for the chain selection.
+  function customizeForThisBranch() {
+    if (selectedOutletId === null) return;
+    setOverrides({ ...overrides, [selectedOutletId]: structuredClone(chainMenu) });
+    setDirty(true);
+  }
+
+  // Drop the override entry — branch goes back to inheriting.
+  function revertToChainDefault() {
+    if (selectedOutletId === null) return;
+    if (!confirm('Discard this branch\'s custom menu and inherit the chain default?')) return;
+    const next = { ...overrides };
+    delete next[selectedOutletId];
+    setOverrides(next);
+    setDirty(true);
+  }
 
   function markDirty() {
     setDirty(true);
@@ -135,7 +187,19 @@ export function MenuEditor({ businessName }: { businessName: string }) {
   async function handleSave() {
     setSaving(true);
     try {
-      const nextKb = { ...kb, menuCategories: menu };
+      // Garbage-collect outlet overrides that no longer have a matching
+      // outlet (deleted from Outlets editor since last load) so the
+      // payload doesn't grow unboundedly.
+      const validIds = new Set(outlets.map((o) => o.id));
+      const cleanedOverrides: Record<string, MenuCategory[]> = {};
+      for (const [id, cats] of Object.entries(overrides)) {
+        if (validIds.has(id)) cleanedOverrides[id] = cats;
+      }
+      const nextKb: Record<string, unknown> = {
+        ...kb,
+        menuCategories: chainMenu,
+        menuByOutlet: cleanedOverrides,
+      };
       const res = await fetch('/api/client/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -146,8 +210,13 @@ export function MenuEditor({ businessName }: { businessName: string }) {
         throw new Error(data.message || data.error || `save failed (${res.status})`);
       }
       setKb(nextKb);
+      setOverrides(cleanedOverrides);
       setDirty(false);
-      toast.success('Menu saved');
+      toast.success(
+        selectedOutletId === null
+          ? 'Chain menu saved'
+          : `Menu saved for ${outlets.find((o) => o.id === selectedOutletId)?.name || 'this branch'}`
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -193,8 +262,70 @@ export function MenuEditor({ businessName }: { businessName: string }) {
               {businessName} <span className="zt-serif">menu.</span>
             </>
           }
-          sub={`${totalItems} item${totalItems === 1 ? '' : 's'} across ${menu.length} section${menu.length === 1 ? '' : 's'}. Bulk import a photo / Excel of your existing menu, or add items manually.`}
+          sub={
+            selectedOutletId === null
+              ? `${totalItems} item${totalItems === 1 ? '' : 's'} across ${menu.length} section${menu.length === 1 ? '' : 's'}. ${multiOutletEnabled ? 'This is the chain default — every branch starts from this menu. Pick a branch below to customize.' : 'Bulk import a photo / Excel of your existing menu, or add items manually.'}`
+              : isInheriting
+                ? `${outlets.find((o) => o.id === selectedOutletId)?.name || 'This branch'} inherits the chain default (${totalItems} item${totalItems === 1 ? '' : 's'}). Click "Customize for this branch" to make changes here only.`
+                : `Custom menu for ${outlets.find((o) => o.id === selectedOutletId)?.name || 'this branch'} — ${totalItems} item${totalItems === 1 ? '' : 's'}.`
+          }
         />
+
+        {multiOutletEnabled && outlets.length > 0 && (
+          <Panel title="Which menu are you editing?">
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => setSelectedOutletId(null)}
+                className={`text-[12px] px-3 py-1.5 rounded-full border transition-colors ${
+                  selectedOutletId === null
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'bg-background border-border hover:border-foreground'
+                }`}
+              >
+                Chain default
+              </button>
+              {outlets.map((o) => {
+                const hasOverride = Object.prototype.hasOwnProperty.call(overrides, o.id);
+                const active = selectedOutletId === o.id;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setSelectedOutletId(o.id)}
+                    className={`text-[12px] px-3 py-1.5 rounded-full border transition-colors ${
+                      active
+                        ? 'bg-foreground text-background border-foreground'
+                        : 'bg-background border-border hover:border-foreground'
+                    }`}
+                    title={hasOverride ? 'Custom menu' : 'Inherits chain default'}
+                  >
+                    {o.name}
+                    {hasOverride ? ' ✏️' : ''}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedOutletId !== null && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                {isInheriting ? (
+                  <Button type="button" variant="outline" size="sm" onClick={customizeForThisBranch}>
+                    ✏️ Customize menu for this branch
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={revertToChainDefault}>
+                    ↺ Revert to chain default
+                  </Button>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  {isInheriting
+                    ? 'Any change you make here will only affect this branch.'
+                    : 'This branch has its own menu. The chain default stays untouched.'}
+                </span>
+              </div>
+            )}
+          </Panel>
+        )}
 
         <div className="space-y-4">
           {menu.length === 0 && (

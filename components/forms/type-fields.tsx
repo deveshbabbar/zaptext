@@ -1,10 +1,50 @@
 'use client';
 
+import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { DynamicList } from './dynamic-list';
+
+// MapLibre touches `window`, load client-side only. Multiple instances
+// share the cached module — the heavy WebGL context is only created
+// when the user explicitly clicks "Pin location" on a branch.
+const BranchLocationPicker = dynamic(
+  () => import('@/components/maps/business-location-picker').then((m) => m.BusinessLocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        style={{
+          height: 200,
+          borderRadius: 10,
+          border: '1px dashed var(--line, #ddd)',
+          background: '#f7f7f7',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 12,
+          color: '#888',
+        }}
+      >
+        Loading map…
+      </div>
+    ),
+  }
+);
+
+function newOutletId(): string {
+  return `o_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function suggestSlug(name: string): string {
+  return (name || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '')
+    .slice(0, 8) || 'OUT';
+}
 import { BusinessType, FAQ } from '@/lib/types';
 import { FAQ_TEMPLATES } from '@/lib/constants';
 import {
@@ -61,14 +101,12 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
   };
   const serviceModes = (data.serviceModes as string[]) || ['dine_in', 'delivery'];
   const deliveryPartners = (data.deliveryPartners as string[]) || [];
-  const brands = (data.brands as Array<Record<string, unknown>>) || [];
 
   const SUB_TYPES: Array<{ value: string; label: string; emoji: string }> = [
     { value: 'dine-in-family', label: 'Family restaurant', emoji: '🍽️' },
     { value: 'fine-dine', label: 'Fine-dine', emoji: '🍷' },
     { value: 'qsr', label: 'QSR / fast-food', emoji: '🍔' },
-    { value: 'cloud-kitchen-single', label: 'Cloud kitchen (single brand)', emoji: '☁️' },
-    { value: 'cloud-kitchen-multi-brand', label: 'Cloud kitchen (multi-brand)', emoji: '🏷️' },
+    { value: 'cloud-kitchen-single', label: 'Cloud kitchen', emoji: '☁️' },
     { value: 'dhaba', label: 'Dhaba', emoji: '🛻' },
     { value: 'food-truck', label: 'Food truck', emoji: '🚚' },
     { value: 'sweet-shop', label: 'Sweet shop / mithai', emoji: '🍬' },
@@ -85,7 +123,6 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
     { value: 'tiffin-attached', label: 'Restaurant + tiffin', emoji: '🍱' },
   ];
 
-  const isCloudKitchenMultiBrand = subTypes.includes('cloud-kitchen-multi-brand');
   const isCustomCake = subTypes.includes('custom-cake-studio') || subTypes.includes('bakery') || subTypes.includes('eggless-bakery');
   const isIceCream = subTypes.includes('ice-cream-parlour');
   const isJuiceBar = subTypes.includes('juice-bar');
@@ -243,29 +280,7 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
           })}
         </div>
         {(data.multiOutletEnabled as boolean) === true && (
-          <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
-            <div>
-              <Label className="text-xs">Roughly how many outlets right now?</Label>
-              <Input
-                type="number"
-                min={2}
-                max={50}
-                value={(data.outletCount as number) || 2}
-                onChange={(e) => {
-                  const n = Math.max(2, Math.min(50, parseInt(e.target.value, 10) || 2));
-                  onChange('outletCount', n);
-                }}
-                className="mt-1 w-24"
-              />
-            </div>
-            <p className="text-[11px] leading-relaxed">
-              After signup, you&apos;ll see <b>Settings → Outlets</b> in your
-              dashboard. Add each outlet (name, address, FSSAI, manager
-              email, delivery radius). One WhatsApp number serves all
-              outlets — the bot auto-routes orders by QR scan, customer
-              location, or a quick branch picker.
-            </p>
-          </div>
+          <BranchListEditor data={data} onChange={onChange} />
         )}
       </div>
 
@@ -321,199 +336,6 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
           <Input value={(data.alcoholLicenseNumber as string) || ''} onChange={(e) => onChange('alcoholLicenseNumber', e.target.value)} />
           <p className="text-[10px] text-amber-700 mt-1">⚠️ Bot will NEVER promote alcohol on WhatsApp (Meta Commerce Policy). This is for your records only.</p>
         </div>
-      )}
-
-      {/* Cloud-kitchen multi-brand — each brand front gets its OWN menu.
-          Brands store: { name, cuisineType, website, menuCategories: [{ category, items: [...] }] }.
-          The prompt-generator + client dashboard read this same shape. */}
-      {isCloudKitchenMultiBrand && (
-        <>
-          <h3 className="text-lg font-semibold border-b border-border pb-2">Cloud-Kitchen Brands</h3>
-          <p className="text-xs text-muted-foreground">
-            List each brand-front you operate from this kitchen (Rebel / Charcoal Eats pattern).
-            Each brand keeps its <b>own menu</b> — categories, items, prices — exactly like a separate restaurant.
-            The bot serves the right brand&apos;s menu based on which brand the customer asked for.
-          </p>
-          <DynamicList
-            items={brands}
-            onChange={(items) => onChange('brands', items)}
-            newItem={() => ({
-              name: '',
-              cuisineType: '',
-              website: '',
-              menuCategories: [{ category: '', items: [{ name: '', price: '', description: '', isVeg: true, isBestseller: false }] }],
-            })}
-            addLabel="+ Add another brand"
-            renderItem={(item, _, update) => {
-              const brandCats = (item.menuCategories as Array<Record<string, unknown>>) || [];
-              const setBrandCats = (next: Array<Record<string, unknown>>) => update('menuCategories', next);
-              return (
-                <div className="space-y-3 rounded-md border border-border bg-card p-3">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <Label>Brand name *</Label>
-                      <Input
-                        placeholder="Biryani by Kilo"
-                        value={(item.name as string) || ''}
-                        onChange={(e) => update('name', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label>Cuisine</Label>
-                      <Input
-                        placeholder="Hyderabadi biryani"
-                        value={(item.cuisineType as string) || ''}
-                        onChange={(e) => update('cuisineType', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label>Brand website (optional)</Label>
-                      <Input
-                        placeholder="https://brand.com"
-                        value={(item.website as string) || ''}
-                        onChange={(e) => update('website', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <Label className="text-[12px] font-semibold">
-                        Menu for <span className="text-primary">{(item.name as string) || 'this brand'}</span>
-                      </Label>
-                      <span className="text-[10.5px] text-muted-foreground">
-                        {brandCats.length} category / {brandCats.reduce((acc, c) => acc + (((c.items as Array<unknown>) || []).length), 0)} items
-                      </span>
-                    </div>
-
-                    {brandCats.map((cat, catIdx) => (
-                      <div key={catIdx} className="border border-border rounded-md p-3 space-y-2 mb-2 bg-background">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1">
-                            <Label className="text-[11px]">Category name</Label>
-                            <Input
-                              placeholder="Biryani / Starters / Desserts"
-                              value={(cat.category as string) || ''}
-                              onChange={(e) => {
-                                const next = [...brandCats];
-                                next[catIdx] = { ...next[catIdx], category: e.target.value };
-                                setBrandCats(next);
-                              }}
-                            />
-                          </div>
-                          {brandCats.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setBrandCats(brandCats.filter((_, i) => i !== catIdx))}
-                              className="text-muted-foreground hover:text-destructive text-sm self-end pb-1.5"
-                              title="Remove category"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-
-                        <DynamicList
-                          items={(cat.items as Array<Record<string, unknown>>) || []}
-                          onChange={(items) => {
-                            const next = [...brandCats];
-                            next[catIdx] = { ...next[catIdx], items };
-                            setBrandCats(next);
-                          }}
-                          newItem={() => ({ name: '', price: '', description: '', isVeg: true, isBestseller: false })}
-                          addLabel="+ Add item"
-                          renderItem={(it, _ix, upd) => (
-                            <div className="space-y-2">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <Label className="text-[11px]">Item</Label>
-                                  <Input
-                                    placeholder="Mutton biryani"
-                                    value={(it.name as string) || ''}
-                                    onChange={(e) => upd('name', e.target.value)}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-[11px]">Price</Label>
-                                  <Input
-                                    placeholder="₹349"
-                                    value={(it.price as string) || ''}
-                                    onChange={(e) => upd('price', e.target.value)}
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <Label className="text-[11px]">Description (optional)</Label>
-                                <Input
-                                  placeholder="Slow-dum-cooked Hyderabadi style"
-                                  value={(it.description as string) || ''}
-                                  onChange={(e) => upd('description', e.target.value)}
-                                />
-                              </div>
-                              <div className="flex gap-4 items-end">
-                                <div>
-                                  <Label className="text-[11px]">Type</Label>
-                                  <div className="flex gap-1.5 mt-1">
-                                    {[
-                                      { key: 'veg', label: '🟢 Veg' },
-                                      { key: 'non-veg', label: '🔴 Non-Veg' },
-                                      { key: 'egg', label: '🟡 Egg' },
-                                    ].map((opt) => {
-                                      const currentType = (it as Record<string, unknown>).foodType as string | undefined;
-                                      const resolvedType = currentType || (it.isVeg ? 'veg' : 'non-veg');
-                                      const active = resolvedType === opt.key;
-                                      return (
-                                        <button
-                                          key={opt.key}
-                                          type="button"
-                                          onClick={() => {
-                                            upd('foodType', opt.key);
-                                            upd('isVeg', opt.key === 'veg');
-                                          }}
-                                          className={`px-2 py-1 rounded text-[11px] border transition-colors ${
-                                            active
-                                              ? 'bg-primary text-primary-foreground border-primary'
-                                              : 'bg-secondary border-border hover:border-primary/50'
-                                          }`}
-                                        >
-                                          {opt.label}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Switch
-                                    checked={(it.isBestseller as boolean) ?? false}
-                                    onCheckedChange={(v) => upd('isBestseller', v)}
-                                  />
-                                  <Label className="text-[11px]">Bestseller</Label>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        />
-                      </div>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBrandCats([
-                          ...brandCats,
-                          { category: '', items: [{ name: '', price: '', description: '', isVeg: true, isBestseller: false }] },
-                        ])
-                      }
-                      className="w-full border border-dashed border-border rounded-md py-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      + Add menu category for this brand
-                    </button>
-                  </div>
-                </div>
-              );
-            }}
-          />
-        </>
       )}
 
       {/* Service windows */}
@@ -5677,6 +5499,196 @@ function GroceryForm({ data, onChange }: { data: Record<string, unknown>; onChan
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Branch (outlet) list editor — inline onboarding for multi-outlet chains.
+// One row per outlet with name, address, on-demand map pin, delivery radius.
+// Stored on the form data as `outlets: Outlet[]`. The onboard route writes
+// the full config blob to knowledge_base_json; lib/db/outlets.ts reads
+// from the same `outlets` key, so this is round-trip compatible with
+// the post-signup Outlets editor.
+interface BranchListEditorProps {
+  data: Record<string, unknown>;
+  onChange: (field: string, value: unknown) => void;
+}
+
+function BranchListEditor({ data, onChange }: BranchListEditorProps) {
+  type Branch = {
+    id: string;
+    slug: string;
+    name: string;
+    address: string;
+    latitude?: number;
+    longitude?: number;
+    deliveryRadiusKm?: number;
+    isActive: boolean;
+  };
+
+  const outlets = (data.outlets as Branch[] | undefined) || [];
+  // Until the owner adds even one branch, seed two empty rows so the
+  // page never looks empty. Touching either row immediately persists.
+  const ensureSeeded = () => {
+    if (outlets.length === 0) {
+      const seeded: Branch[] = [
+        { id: newOutletId(), slug: '', name: '', address: '', isActive: true },
+        { id: newOutletId(), slug: '', name: '', address: '', isActive: true },
+      ];
+      onChange('outlets', seeded);
+      onChange('outletCount', seeded.length);
+      return seeded;
+    }
+    return outlets;
+  };
+
+  const rows = outlets.length === 0 ? ensureSeeded() : outlets;
+
+  const update = (idx: number, patch: Partial<Branch>) => {
+    const next = [...rows];
+    next[idx] = { ...next[idx], ...patch };
+    onChange('outlets', next);
+  };
+
+  const addBranch = () => {
+    const next = [...rows, { id: newOutletId(), slug: '', name: '', address: '', isActive: true }];
+    onChange('outlets', next);
+    onChange('outletCount', next.length);
+  };
+
+  const removeBranch = (idx: number) => {
+    if (rows.length <= 1) return;
+    const next = rows.filter((_, i) => i !== idx);
+    onChange('outlets', next);
+    onChange('outletCount', next.length);
+  };
+
+  // Track which row has its map expanded — only one open at a time so
+  // we don't pay for multiple WebGL contexts at once on mobile.
+  const [pickerOpen, setPickerOpen] = useState<string | null>(null);
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-[11.5px] text-amber-900 leading-relaxed">
+        <b>One menu serves every branch.</b> Add each branch below — the
+        bot routes orders by QR scan, customer location, or a quick branch
+        picker. You&apos;ll be able to edit the menu <i>per branch</i> from
+        your dashboard (e.g. one branch may have a smaller menu).
+      </div>
+
+      {rows.map((b, idx) => {
+        const pinSet = typeof b.latitude === 'number' && typeof b.longitude === 'number';
+        const open = pickerOpen === b.id;
+        return (
+          <div key={b.id} className="rounded-md border border-border bg-card p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-[12px] font-semibold">Branch {idx + 1}</Label>
+              {rows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeBranch(idx)}
+                  className="text-[11px] text-muted-foreground hover:text-destructive"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[11px]">Branch name *</Label>
+                <Input
+                  placeholder="e.g., Bandra outlet"
+                  value={b.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    update(idx, {
+                      name,
+                      // Auto-suggest slug only while the owner hasn't
+                      // typed a custom one — preserves manual edits.
+                      slug: b.slug && b.slug !== suggestSlug(b.name) ? b.slug : suggestSlug(name),
+                    });
+                  }}
+                />
+              </div>
+              <div>
+                <Label className="text-[11px]">Short code (for QR / order routing)</Label>
+                <Input
+                  placeholder="BANDRA"
+                  maxLength={12}
+                  value={b.slug}
+                  onChange={(e) =>
+                    update(idx, {
+                      slug: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 12),
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-[11px]">Full address *</Label>
+              <Input
+                placeholder="Shop 3, Linking Road, Bandra West, Mumbai 400050"
+                value={b.address}
+                onChange={(e) => update(idx, { address: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+              <div>
+                <Label className="text-[11px]">Delivery radius (km)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={0.5}
+                  placeholder="5"
+                  value={b.deliveryRadiusKm ?? ''}
+                  onChange={(e) =>
+                    update(idx, {
+                      deliveryRadiusKm:
+                        e.target.value === '' ? undefined : Math.max(0, Math.min(50, parseFloat(e.target.value) || 0)),
+                    })
+                  }
+                  className="w-32"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(open ? null : b.id)}
+                className={`text-[12px] px-3 py-1.5 rounded border transition-colors ${
+                  pinSet
+                    ? 'bg-secondary border-border text-foreground'
+                    : 'bg-primary text-primary-foreground border-primary'
+                }`}
+              >
+                {pinSet ? (open ? 'Hide map' : '✏️ Edit pin') : '📍 Pin location on map'}
+              </button>
+            </div>
+            {open && (
+              <div className="pt-1">
+                <BranchLocationPicker
+                  lat={b.latitude ?? null}
+                  lng={b.longitude ?? null}
+                  onChange={(lat, lng) => update(idx, { latitude: lat, longitude: lng })}
+                  heightPx={220}
+                />
+              </div>
+            )}
+            {!open && pinSet && (
+              <p className="text-[10.5px] text-muted-foreground m-0">
+                ✓ Location pinned. Customers within {b.deliveryRadiusKm ?? '?'} km will be routed to this branch.
+              </p>
+            )}
+          </div>
+        );
+      })}
+
+      <button
+        type="button"
+        onClick={addBranch}
+        className="w-full border border-dashed border-border rounded-md py-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        + Add another branch
+      </button>
     </div>
   );
 }

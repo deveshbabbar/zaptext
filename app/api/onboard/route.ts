@@ -112,6 +112,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Multi-outlet sanity: if owner enabled multi-branch in the form,
+    // drop half-empty rows (no name OR no address) before saving so the
+    // dashboard never renders broken entries. If everything is empty we
+    // silently demote back to single-outlet so the bot still works.
+    const cfg = config as unknown as Record<string, unknown>;
+    if (cfg.multiOutletEnabled === true && Array.isArray(cfg.outlets)) {
+      const cleaned = (cfg.outlets as Array<Record<string, unknown>>).filter((o) =>
+        typeof o?.name === 'string' && (o.name as string).trim().length > 0 &&
+        typeof o?.address === 'string' && (o.address as string).trim().length > 0
+      );
+      if (cleaned.length === 0) {
+        cfg.multiOutletEnabled = false;
+        cfg.outletCount = 1;
+        delete cfg.outlets;
+      } else {
+        cfg.outlets = cleaned;
+        cfg.outletCount = cleaned.length;
+      }
+    }
+
     const systemPrompt = generateSystemPrompt(config);
     const clientId = generateId();
     const client: ClientRow = {

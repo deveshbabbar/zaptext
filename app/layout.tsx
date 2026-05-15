@@ -5,10 +5,13 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
+// Trimmed font weights: every extra weight = one extra woff2 over the
+// wire (~30-50 KB each). 400/600/700 covers body, semibold, and bold
+// CTAs; heavier weights gracefully degrade via font-display: swap.
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: ["400", "600", "700"],
   display: "swap",
 });
 
@@ -23,7 +26,7 @@ const instrumentSerif = Instrument_Serif({
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["500"],
   display: "swap",
 });
 

@@ -2,10 +2,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { PLANS, DURATIONS, type DurationKey } from "@/lib/plans";
-import { ROICalculator } from "@/components/landing/roi-calculator";
-import { WhatsAppDemoWidget } from "@/components/landing/whatsapp-demo-widget";
-import { ReferralCapture } from "@/components/landing/referral-capture";
+
+// Below-the-fold widgets are lazy-loaded so the hero + pricing render
+// before the JS for these heavier interactive components is parsed.
+// All three either touch window, read cookies, or hold their own
+// state — none of them affects SSR'd HTML.
+const ROICalculator = dynamic(
+  () => import("@/components/landing/roi-calculator").then((m) => m.ROICalculator),
+  { ssr: false, loading: () => null }
+);
+const WhatsAppDemoWidget = dynamic(
+  () => import("@/components/landing/whatsapp-demo-widget").then((m) => m.WhatsAppDemoWidget),
+  { ssr: false, loading: () => null }
+);
+const ReferralCapture = dynamic(
+  () => import("@/components/landing/referral-capture").then((m) => m.ReferralCapture),
+  { ssr: false, loading: () => null }
+);
 
 // ─────────────────────────── DATA ───────────────────────────
 

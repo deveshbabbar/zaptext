@@ -2,12 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { CommonFieldsForm } from '@/components/forms/common-fields';
-import { TypeFieldsForm } from '@/components/forms/type-fields';
 import { BUSINESS_TYPES } from '@/lib/constants';
 import { BusinessType } from '@/lib/types';
 import { toast } from 'sonner';
 import { PageTopbar, PageHead, Panel, Pill, MonoLabel } from '@/components/app/primitives';
+
+// TypeFieldsForm is a single 5700-line module that holds all nine
+// verticals' detail forms. Lazy-load it so visiting Step 1 (type
+// picker) doesn't pull the whole bundle — it only loads after the
+// owner clicks Continue.
+const TypeFieldsForm = dynamic(
+  () => import('@/components/forms/type-fields').then((m) => m.TypeFieldsForm),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="text-sm text-muted-foreground" style={{ padding: 24 }}>
+        Loading form…
+      </div>
+    ),
+  }
+);
 
 export default function CreateBotPage() {
   const router = useRouter();

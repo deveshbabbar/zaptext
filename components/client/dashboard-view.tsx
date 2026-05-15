@@ -309,7 +309,7 @@ export function ClientDashboard({
         }
       />
 
-      <div style={{ padding: '28px 32px 60px' }}>
+      <div className="px-4 sm:px-6 md:px-8 pt-5 sm:pt-7 pb-12 sm:pb-16">
         <PageHead title={<>Namaste, <span className="zt-serif">{userName}</span> 👋</>} />
 
         {!activeBot.phone_number_id && <WebhookSetupCard activeBot={activeBot} />}

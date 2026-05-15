@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
 import AdminSidebar from './_components/admin-sidebar';
+import { AppShell } from '@/components/app/app-shell';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
@@ -12,10 +13,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .toUpperCase();
 
   return (
-    <div className="flex h-screen">
+    <>
       <WelcomeTrigger />
-      <AdminSidebar name={admin.name} email={admin.email} initials={initials} />
-      <main className="flex-1 overflow-auto bg-background">{children}</main>
-    </div>
+      <AppShell
+        brandSub="Admin"
+        aside={<AdminSidebar name={admin.name} email={admin.email} initials={initials} />}
+      >
+        {children}
+      </AppShell>
+    </>
   );
 }

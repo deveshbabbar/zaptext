@@ -15,7 +15,7 @@ export default function AdminSidebar({ name, email, initials }: AdminSidebarProp
 
   return (
     <aside
-      className="w-[268px] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
+      className="w-[268px] max-w-[85vw] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
       style={{ padding: '18px 14px' }}
     >
       <Link

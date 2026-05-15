@@ -114,11 +114,10 @@ export function BotContextCard({ activeBot, multiBot, sub }: Props) {
 
   return (
     <div
-      className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--card)]/95 backdrop-blur flex items-center gap-3 flex-wrap"
-      style={{ padding: '12px 24px' }}
+      className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--card)]/95 backdrop-blur flex items-center gap-2 sm:gap-3 flex-wrap px-3 sm:px-6 py-2.5 sm:py-3"
     >
       <div
-        className={`w-11 h-11 rounded-[12px] grid place-items-center text-[22px] flex-shrink-0 ${TYPE_BG[activeBot.type] || 'bg-gray-100'}`}
+        className={`w-9 h-9 sm:w-11 sm:h-11 rounded-[10px] sm:rounded-[12px] grid place-items-center text-[18px] sm:text-[22px] flex-shrink-0 ${TYPE_BG[activeBot.type] || 'bg-gray-100'}`}
         aria-hidden="true"
       >
         {TYPE_ICONS[activeBot.type] || '🤖'}
@@ -145,7 +144,7 @@ export function BotContextCard({ activeBot, multiBot, sub }: Props) {
             {activeBot.status}
           </span>
         </div>
-        <div className="text-[16px] font-bold text-foreground leading-tight truncate">
+        <div className="text-[14px] sm:text-[16px] font-bold text-foreground leading-tight truncate">
           {activeBot.business_name || '(unnamed bot)'}
         </div>
         <div className="text-[12px] text-[var(--mute)] mt-0.5 truncate">

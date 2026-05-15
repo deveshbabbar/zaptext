@@ -10,6 +10,7 @@ import { findActiveMembershipForEmail } from '@/lib/db/team-members';
 import { getClientById } from '@/lib/db/clients';
 import Link from 'next/link';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
+import { AppShell } from '@/components/app/app-shell';
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const user = await requireClientWithBots();
@@ -86,13 +87,11 @@ export default async function ClientLayout({ children }: { children: React.React
     .join('')
     .toUpperCase();
 
-  return (
-    <div className="flex h-screen">
-      <WelcomeTrigger />
-      <aside
-        className="w-[268px] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
-        style={{ padding: '18px 14px' }}
-      >
+  const sidebar = (
+    <aside
+      className="w-[268px] max-w-[85vw] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] flex flex-col overflow-y-auto"
+      style={{ padding: '18px 14px' }}
+    >
         <Link
           href="/"
           className="flex items-center gap-2.5 pb-4 border-b border-white/10 mb-3.5"
@@ -183,9 +182,13 @@ export default async function ClientLayout({ children }: { children: React.React
           </div>
           <UserButton />
         </div>
-      </aside>
+    </aside>
+  );
 
-      <main className="flex-1 overflow-auto bg-background">
+  return (
+    <>
+      <WelcomeTrigger />
+      <AppShell brandSub="Workspace" aside={sidebar}>
         {user.activeBot && (
           <BotContextCard
             activeBot={user.activeBot}
@@ -194,8 +197,8 @@ export default async function ClientLayout({ children }: { children: React.React
           />
         )}
         {children}
-      </main>
-    </div>
+      </AppShell>
+    </>
   );
 }
 

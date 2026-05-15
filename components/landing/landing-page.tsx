@@ -172,10 +172,18 @@ export default function LandingPage() {
 
 // ─── Navbar ───
 function Navbar() {
+  const [open, setOpen] = useState(false);
+  const links = [
+    { h: "#why-zaptext", l: "Why ZapText" },
+    { h: "#how", l: "How it works" },
+    { h: "#features", l: "Features" },
+    { h: "#pricing", l: "Pricing" },
+    { h: "#faq", l: "FAQs" },
+  ];
   return (
     <nav className="sticky top-0 z-50 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--background)_80%,transparent)] backdrop-blur-md">
-      <div className="max-w-[1280px] mx-auto px-7 h-[68px] flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 font-bold text-[18px] tracking-tight">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7 h-[60px] sm:h-[68px] flex items-center justify-between gap-2">
+        <Link href="/" className="flex items-center gap-2.5 font-bold text-[17px] sm:text-[18px] tracking-tight">
           <Mark />
           <span>
             ZapText
@@ -183,21 +191,61 @@ function Navbar() {
           </span>
         </Link>
         <div className="hidden md:flex gap-8 text-[14px] text-[var(--ink-2)]">
-          <a href="#why-zaptext" className="opacity-75 hover:opacity-100 transition">Why ZapText</a>
-          <a href="#how" className="opacity-75 hover:opacity-100 transition">How it works</a>
-          <a href="#features" className="opacity-75 hover:opacity-100 transition">Features</a>
-          <a href="#pricing" className="opacity-75 hover:opacity-100 transition">Pricing</a>
-          <a href="#faq" className="opacity-75 hover:opacity-100 transition">FAQs</a>
+          {links.map((it) => (
+            <a key={it.h} href={it.h} className="opacity-75 hover:opacity-100 transition">{it.l}</a>
+          ))}
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/sign-in" className="px-4 py-2.5 text-[14px] font-semibold text-[var(--ink-2)] hover:text-[var(--ink)] transition">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <Link href="/sign-in" className="hidden sm:inline-flex px-3 sm:px-4 py-2 sm:py-2.5 text-[13px] sm:text-[14px] font-semibold text-[var(--ink-2)] hover:text-[var(--ink)] transition">
             Sign in
           </Link>
-          <Link href="/sign-up" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--ink)] text-[var(--background)] font-semibold text-[14px] hover:-translate-y-px transition">
-            Get started <span aria-hidden>→</span>
+          <Link href="/sign-up" className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-[var(--ink)] text-[var(--background)] font-semibold text-[13px] sm:text-[14px] hover:-translate-y-px transition">
+            <span className="hidden sm:inline">Get started</span>
+            <span className="sm:hidden">Sign up</span>
+            <span aria-hidden>→</span>
           </Link>
+          <button
+            type="button"
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="md:hidden w-10 h-10 inline-flex items-center justify-center rounded-md hover:bg-[var(--bg-2)]"
+          >
+            {open ? (
+              <span className="text-[22px] leading-none">×</span>
+            ) : (
+              <span className="flex flex-col gap-[5px]">
+                <span className="block w-5 h-[2px] bg-[var(--ink)] rounded-sm" />
+                <span className="block w-5 h-[2px] bg-[var(--ink)] rounded-sm" />
+                <span className="block w-5 h-[2px] bg-[var(--ink)] rounded-sm" />
+              </span>
+            )}
+          </button>
         </div>
       </div>
+      {open && (
+        <div className="md:hidden border-t border-[var(--line)] bg-[var(--background)]">
+          <div className="max-w-[1280px] mx-auto px-4 sm:px-7 py-3 flex flex-col">
+            {links.map((it) => (
+              <a
+                key={it.h}
+                href={it.h}
+                onClick={() => setOpen(false)}
+                className="py-2.5 text-[15px] text-[var(--ink-2)] hover:text-[var(--ink)] border-b border-[var(--line)] last:border-b-0"
+              >
+                {it.l}
+              </a>
+            ))}
+            <Link
+              href="/sign-in"
+              onClick={() => setOpen(false)}
+              className="py-2.5 mt-1 text-[15px] font-semibold text-[var(--ink)]"
+            >
+              Sign in
+            </Link>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
@@ -213,9 +261,9 @@ function Mark() {
 // ─── Hero ───
 function Hero() {
   return (
-    <section className="relative py-10 md:py-12 pb-20 overflow-hidden">
+    <section className="relative py-8 md:py-12 pb-14 md:pb-20 overflow-hidden">
       <div
-        className="absolute pointer-events-none"
+        className="absolute pointer-events-none hidden sm:block"
         style={{
           width: 520,
           height: 520,
@@ -229,8 +277,8 @@ function Hero() {
           zIndex: 0,
         }}
       />
-      <div className="max-w-[1280px] mx-auto px-7 relative">
-        <div className="grid lg:grid-cols-[1.15fr_1fr] gap-14 items-stretch">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7 relative">
+        <div className="grid lg:grid-cols-[1.15fr_1fr] gap-8 lg:gap-14 items-stretch">
           <div>
             <div className="inline-flex items-center gap-2 zt-mono text-[12px] uppercase tracking-wide text-[var(--ink-2)] px-3 py-[7px] border border-[var(--line)] rounded-full bg-white/40">
               <span
@@ -239,30 +287,30 @@ function Hero() {
               />
               Live on WhatsApp Business API · India
             </div>
-            <h1 className="font-sans font-extrabold mt-6 text-[clamp(44px,6vw,84px)] leading-[1.02] tracking-[-0.035em] text-balance pb-2">
+            <h1 className="font-sans font-extrabold mt-5 sm:mt-6 text-[clamp(36px,8vw,84px)] leading-[1.02] tracking-[-0.035em] text-balance pb-2">
               The WhatsApp bot
               <br />
               that <span className="zt-serif">runs your kitchen.</span>
               <br />
               <span className="zt-zap">Built for restaurants.</span>
             </h1>
-            <p className="text-[clamp(16px,1.3vw,19px)] text-[var(--ink-2)] max-w-[540px] mt-10 leading-[1.55]">
+            <p className="text-[clamp(15px,1.3vw,19px)] text-[var(--ink-2)] max-w-[540px] mt-6 sm:mt-10 leading-[1.55]">
               ZapText turns every{" "}
               <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;menu dikhao bhaiya&rdquo;</span>{" "}
               into a paid order, every{" "}
               <span className="zt-serif text-[1.05em] text-[var(--ink)]">&ldquo;table book karni hai 4 logo ke liye&rdquo;</span>{" "}
               into a confirmed reservation. Dine-in QR ordering, multi-outlet routing, UPI payments inside chat &mdash; in Hindi, English, Hinglish, and every major Indian language. Made for kitchens, cafes, cloud kitchens, sweet shops, and bakeries.
             </p>
-            <div className="flex flex-wrap gap-3 mt-8">
+            <div className="flex flex-wrap gap-2.5 sm:gap-3 mt-6 sm:mt-8">
               <Link
                 href="/sign-up"
-                className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[16px] hover:-translate-y-px transition"
+                className="inline-flex items-center gap-2 px-5 sm:px-7 py-[14px] sm:py-[18px] rounded-[14px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[14px] sm:text-[16px] hover:-translate-y-px transition"
               >
                 Try free &mdash; first order in 5 minutes <span>→</span>
               </Link>
               <a
                 href="#why-zaptext"
-                className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] border border-[var(--ink)] bg-transparent font-semibold text-[16px] hover:-translate-y-px transition"
+                className="inline-flex items-center gap-2 px-5 sm:px-7 py-[14px] sm:py-[18px] rounded-[14px] border border-[var(--ink)] bg-transparent font-semibold text-[14px] sm:text-[16px] hover:-translate-y-px transition"
               >
                 Why not the free in-app bot?
               </a>
@@ -349,8 +397,8 @@ function WhyNotFreeBot() {
   ];
 
   return (
-    <section id="why-zaptext" className="border-y border-[var(--line)]" style={{ padding: '88px 0', background: 'var(--bg-2)' }}>
-      <div className="max-w-[1180px] mx-auto px-7">
+    <section id="why-zaptext" className="border-y border-[var(--line)] py-14 md:py-[88px]" style={{ background: 'var(--bg-2)' }}>
+      <div className="max-w-[1180px] mx-auto px-4 sm:px-7">
         <div className="zt-mono text-[12px] uppercase tracking-[.1em] text-[var(--mute)] mb-3">
           // Why not the free in-app bot?
         </div>
@@ -375,23 +423,23 @@ function WhyNotFreeBot() {
               key={i}
               className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1.2fr] gap-0 border-b border-[var(--line)] last:border-b-0 text-[14px]"
             >
-              <div style={{ padding: '18px 22px' }} className="text-[var(--ink)] font-medium">
+              <div className="px-4 sm:px-[22px] py-4 sm:py-[18px] text-[var(--ink)] font-medium border-b md:border-b-0 border-[var(--line)] bg-[var(--bg-2)] md:bg-transparent">
+                <span className="md:hidden zt-mono text-[10px] uppercase tracking-[.08em] text-[var(--mute)] block mb-1">Scenario</span>
                 {r.scenario}
               </div>
               <div
-                style={{ padding: '18px 22px', borderLeft: '1px solid var(--line)' }}
-                className="text-[var(--ink-2)] leading-[1.5]"
-                dangerouslySetInnerHTML={{ __html: r.freeBot }}
-              />
+                className="px-4 sm:px-[22px] py-4 sm:py-[18px] text-[var(--ink-2)] leading-[1.5] border-b md:border-b-0 md:border-l border-[var(--line)]"
+              >
+                <span className="md:hidden zt-mono text-[10px] uppercase tracking-[.08em] text-[var(--mute)] block mb-1">Free in-app AI</span>
+                <span dangerouslySetInnerHTML={{ __html: r.freeBot }} />
+              </div>
               <div
-                style={{
-                  padding: '18px 22px',
-                  borderLeft: '1px solid var(--line)',
-                  background: 'color-mix(in oklab, var(--accent) 8%, transparent)',
-                }}
-                className="text-[var(--ink)] leading-[1.5]"
-                dangerouslySetInnerHTML={{ __html: r.zapText }}
-              />
+                style={{ background: 'color-mix(in oklab, var(--accent) 8%, transparent)' }}
+                className="px-4 sm:px-[22px] py-4 sm:py-[18px] text-[var(--ink)] leading-[1.5] md:border-l border-[var(--line)]"
+              >
+                <span className="md:hidden zt-mono text-[10px] uppercase tracking-[.08em] text-[var(--mute)] block mb-1">ZapText</span>
+                <span dangerouslySetInnerHTML={{ __html: r.zapText }} />
+              </div>
             </div>
           ))}
         </div>
@@ -503,7 +551,7 @@ function PhoneChat() {
   return (
     <div className="relative flex justify-center items-start">
       <Sticker
-        className="absolute top-[60px] -left-[30px] -rotate-[4deg]"
+        className="hidden lg:flex absolute top-[60px] -left-[30px] -rotate-[4deg]"
         label="Response time"
         main={
           <>
@@ -513,7 +561,7 @@ function PhoneChat() {
         dot
       />
       <Sticker
-        className="absolute bottom-[120px] -right-[40px] rotate-[3deg]"
+        className="hidden lg:flex absolute bottom-[120px] -right-[40px] rotate-[3deg]"
         label="More bookings"
         main={
           <>
@@ -523,7 +571,7 @@ function PhoneChat() {
         badge="3×"
       />
       <Sticker
-        className="absolute top-[300px] -left-[60px] rotate-[2deg] zt-bob"
+        className="hidden lg:flex absolute top-[300px] -left-[60px] rotate-[2deg] zt-bob"
         label="Understands"
         main={
           <>
@@ -534,7 +582,7 @@ function PhoneChat() {
       />
 
       <div
-        className="w-[340px] h-[640px] bg-[#111] rounded-[44px] p-3 relative z-[2]"
+        className="w-[280px] sm:w-[320px] md:w-[340px] h-[540px] sm:h-[600px] md:h-[640px] max-w-full bg-[#111] rounded-[44px] p-3 relative z-[2]"
         style={{
           boxShadow:
             "0 40px 80px -30px rgba(20,20,15,.35), inset 0 0 0 1px rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.05)",
@@ -676,7 +724,7 @@ function SectionHead({
   lead: React.ReactNode;
 }) {
   return (
-    <div className="grid md:grid-cols-[1fr_1.8fr] gap-8 md:gap-14 items-end mb-14">
+    <div className="grid md:grid-cols-[1fr_1.8fr] gap-5 md:gap-14 items-end mb-10 md:mb-14">
       <div>
         <div className="zt-mono text-[12px] uppercase tracking-[.08em] text-[var(--mute)]">
           {`// ${num} — ${label}`}
@@ -743,8 +791,8 @@ function HowItWorks() {
     },
   ];
   return (
-    <section id="how" className="py-[110px] bg-[var(--bg-2)] border-y border-[var(--line)]">
-      <div className="max-w-[1280px] mx-auto px-7">
+    <section id="how" className="py-14 md:py-[110px] bg-[var(--bg-2)] border-y border-[var(--line)]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
         <SectionHead
           num="02"
           label="How it works"
@@ -807,8 +855,8 @@ function HowItWorks() {
 // ─── Features ───
 function Features() {
   return (
-    <section id="features" className="py-[110px]">
-      <div className="max-w-[1280px] mx-auto px-7">
+    <section id="features" className="py-14 md:py-[110px]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
         <SectionHead
           num="03"
           label="What's in the box"
@@ -985,8 +1033,8 @@ function Pricing() {
   // which left a gap.
   const [duration, setDuration] = useState<DurationKey>(1);
   return (
-    <section id="pricing" className="py-[110px] bg-[var(--bg-2)] border-y border-[var(--line)]">
-      <div className="max-w-[1280px] mx-auto px-7">
+    <section id="pricing" className="py-14 md:py-[110px] bg-[var(--bg-2)] border-y border-[var(--line)]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
         <SectionHead
           num="04"
           label="Pricing"
@@ -1121,9 +1169,9 @@ function Pricing() {
 // ─── Testimonial ───
 function Testimonial() {
   return (
-    <section className="py-[110px]">
-      <div className="max-w-[1280px] mx-auto px-7">
-        <div className="grid md:grid-cols-[1.3fr_1fr] gap-12 items-center">
+    <section className="py-14 md:py-[110px]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
+        <div className="grid md:grid-cols-[1.3fr_1fr] gap-8 md:gap-12 items-center">
           <div>
             <div className="zt-mono text-[12px] uppercase tracking-[.08em] text-[var(--mute)]">
               {"// 05 — From the field"}
@@ -1201,8 +1249,8 @@ function QStat({
 // ─── FAQ ───
 function FAQSection() {
   return (
-    <section id="faq" className="pb-[110px]">
-      <div className="max-w-[1280px] mx-auto px-7">
+    <section id="faq" className="pt-4 pb-14 md:pb-[110px]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
         <SectionHead
           num="06"
           label="Common questions"
@@ -1247,8 +1295,8 @@ function FAQSection() {
 // ─── Big CTA ───
 function BigCTA() {
   return (
-    <section className="max-w-[1280px] mx-auto px-7 mt-[60px] mb-[60px]">
-      <div className="relative overflow-hidden rounded-[36px] bg-[var(--ink)] text-[var(--background)]" style={{ padding: "80px 56px" }}>
+    <section className="max-w-[1280px] mx-auto px-4 sm:px-7 mt-10 sm:mt-[60px] mb-10 sm:mb-[60px]">
+      <div className="relative overflow-hidden rounded-[24px] sm:rounded-[36px] bg-[var(--ink)] text-[var(--background)] px-6 py-12 sm:px-14 sm:py-[80px]">
         <div
           className="absolute pointer-events-none"
           style={{
@@ -1285,13 +1333,13 @@ function BigCTA() {
           <div className="flex gap-2.5 flex-wrap">
             <Link
               href="/sign-up"
-              className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] bg-[var(--accent)] text-[var(--accent-2)] font-semibold text-[16px] hover:-translate-y-px transition"
+              className="inline-flex items-center gap-2 px-5 sm:px-7 py-[14px] sm:py-[18px] rounded-[14px] bg-[var(--accent)] text-[var(--accent-2)] font-semibold text-[14px] sm:text-[16px] hover:-translate-y-px transition"
             >
               Get started — ₹0 setup fee <span>→</span>
             </Link>
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 px-7 py-[18px] rounded-[14px] border border-white/20 text-[var(--background)] font-semibold text-[16px] hover:-translate-y-px transition"
+              className="inline-flex items-center gap-2 px-5 sm:px-7 py-[14px] sm:py-[18px] rounded-[14px] border border-white/20 text-[var(--background)] font-semibold text-[14px] sm:text-[16px] hover:-translate-y-px transition"
             >
               Talk to us first
             </Link>
@@ -1305,8 +1353,8 @@ function BigCTA() {
 // ─── Footer ───
 function Footer() {
   return (
-    <footer className="border-t border-[var(--line)] py-12 text-[14px]">
-      <div className="max-w-[1280px] mx-auto px-7">
+    <footer className="border-t border-[var(--line)] py-10 sm:py-12 text-[14px]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10 mb-14">
           <div>
             <Link href="/" className="flex items-center gap-2.5 font-bold text-[18px] mb-3.5">

@@ -9,11 +9,11 @@ export function PageTopbar({
 }) {
   return (
     <div
-      className="flex justify-between items-center px-8 py-5 border-b border-[var(--line)] sticky top-0 z-10 backdrop-blur-md"
+      className="flex justify-between items-center gap-3 flex-wrap px-4 sm:px-8 py-3 sm:py-5 border-b border-[var(--line)] sticky top-0 z-10 backdrop-blur-md"
       style={{ background: "color-mix(in oklab, var(--background) 85%, transparent)" }}
     >
-      <div className="text-[13px] text-[var(--mute)]">{crumbs}</div>
-      {actions && <div className="flex gap-2 items-center">{actions}</div>}
+      <div className="text-[12px] sm:text-[13px] text-[var(--mute)] min-w-0">{crumbs}</div>
+      {actions && <div className="flex gap-2 items-center flex-wrap">{actions}</div>}
     </div>
   );
 }
@@ -28,12 +28,12 @@ export function PageHead({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-7 flex justify-between items-end gap-5 flex-wrap">
-      <div>
-        <h1 className="text-[38px] font-bold tracking-[-0.035em] leading-none m-0">{title}</h1>
-        {sub && <p className="text-[var(--ink-2)] text-[15px] mt-2 m-0">{sub}</p>}
+    <div className="mb-5 sm:mb-7 flex justify-between items-end gap-4 sm:gap-5 flex-wrap">
+      <div className="min-w-0">
+        <h1 className="text-[clamp(26px,5vw,38px)] font-bold tracking-[-0.035em] leading-tight sm:leading-none m-0 break-words">{title}</h1>
+        {sub && <p className="text-[var(--ink-2)] text-[14px] sm:text-[15px] mt-2 m-0">{sub}</p>}
       </div>
-      {actions && <div className="flex gap-2 items-center">{actions}</div>}
+      {actions && <div className="flex gap-2 items-center flex-wrap">{actions}</div>}
     </div>
   );
 }

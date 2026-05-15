@@ -262,3 +262,33 @@
   max-height: 320px;
   margin-top: 12px;
 }
+
+/* ─── Mobile responsiveness ─── */
+
+/* Prevent any stray horizontal scroll caused by absolute-positioned
+   landing-page decorations or hero stickers on narrow viewports. */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* Most dashboard pages wrap their content in a `<div style={{padding:'28px 32px 60px'}}>`
+   directly under <main>. On phones, 32px horizontal padding eats too much
+   width — tighten inline-padded page wrappers to 16px on small screens.
+   Vertical padding from the inline style is preserved. */
+@media (max-width: 640px) {
+  main > div[style*="padding"] {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+/* Defensive cap on wide inline tables in dashboards so the page itself
+   never grows wider than the viewport. */
+@media (max-width: 640px) {
+  main table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}

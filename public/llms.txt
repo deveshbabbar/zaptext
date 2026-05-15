@@ -1,0 +1,38 @@
+# ZapText
+
+> ZapText is an AI WhatsApp bot built for Indian restaurants. It takes orders, runs dine-in QR ordering, routes multi-branch chains, sends UPI payment links inside chat, and works in every major Indian language (Hindi, English, Hinglish, Punjabi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam). Built on the official Meta WhatsApp Cloud API. Pricing starts at ₹599/month with a free tier and 7-day refund guarantee.
+
+ZapText is restaurant-only today. Target customers are kitchens, cafes, cloud kitchens, sweet shops, bakeries, fine-dine restaurants, and multi-branch chains operating in India. The product is run by ZapText Labs Pvt Ltd, GST-registered in India, billed via Razorpay in INR. Onboarding is self-serve in about 5 minutes; WhatsApp Business API number verification takes another 24–48 hours on Meta's side.
+
+## Product
+
+- [Home](https://zaptext.shop): Landing page with hero, features, pricing, FAQ, and "why not the free in-app bot" comparison
+- [Restaurant vertical](https://zaptext.shop/restaurant): Restaurant-specific feature breakdown
+- [Compare](https://zaptext.shop/compare): ZapText vs Gallabox, Interakt, AiSensy, WATI, DoubleTick
+- [llms-full.txt](https://zaptext.shop/llms-full.txt): Complete product spec — every feature, exact pricing, compliance, target market, what the product does NOT do
+
+## Pricing
+
+- Free — forever, no card, 50 outbound replies lifetime cap
+- Starter ₹599/mo — solo single-branch kitchens, 1 WhatsApp number
+- Growth ₹1,499/mo — multi-branch, dine-in QR + table reservations (most popular)
+- Scale ₹3,999/mo — multi-bot, API access
+- Enterprise — chains, white-label, SLA (custom pricing)
+- Durations available: 1 month, 6 months (~8% off), 12 months (~17% off)
+- Setup fee free as a launch offer; originally ₹2k–₹10k depending on tier
+
+## Company
+
+- [About](https://zaptext.shop/about)
+- [Contact](https://zaptext.shop/contact)
+
+## Legal
+
+- [Privacy Policy](https://zaptext.shop/privacy)
+- [Terms of Service](https://zaptext.shop/terms)
+- [Refund Policy](https://zaptext.shop/refund)
+- [Cancellation Policy](https://zaptext.shop/cancellation)
+
+## Optional
+
+- [Sitemap](https://zaptext.shop/sitemap.xml)

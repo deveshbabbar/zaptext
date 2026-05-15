@@ -166,8 +166,6 @@ export default async function PublicMenuPage({
   let fssaiCentralLicence = false;
   let outletCount = 1;
   let gstin = '';
-  let halalCertified = false;
-  let halalCertNumber = '';
   let jainCertified = false;
   let pureVeg = false;
   let sharedKitchenWithNonVeg = false;
@@ -198,8 +196,6 @@ export default async function PublicMenuPage({
     if (typeof kb.fssaiCentralLicence === 'boolean') fssaiCentralLicence = kb.fssaiCentralLicence;
     if (typeof kb.outletCount === 'number' && kb.outletCount > 0) outletCount = kb.outletCount;
     if (typeof kb.gstin === 'string') gstin = kb.gstin;
-    if (typeof kb.halalCertified === 'boolean') halalCertified = kb.halalCertified;
-    if (typeof kb.halalCertNumber === 'string') halalCertNumber = kb.halalCertNumber;
     if (typeof kb.jainCertified === 'boolean') jainCertified = kb.jainCertified;
     if (typeof kb.pureVeg === 'boolean') pureVeg = kb.pureVeg;
     if (typeof kb.sharedKitchenWithNonVeg === 'boolean') sharedKitchenWithNonVeg = kb.sharedKitchenWithNonVeg;
@@ -302,8 +298,6 @@ export default async function PublicMenuPage({
         fssaiLicenseNumber,
         fssaiExpiryDate,
         gstin,
-        halalCertified,
-        halalCertNumber,
         jainCertified,
         pureVeg,
         sharedKitchenWithNonVeg,

@@ -50,7 +50,7 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
   const menuCategories = (data.menuCategories as Array<Record<string, unknown>>) || [{ category: '', items: [{ name: '', price: '', description: '', isVeg: true, isBestseller: false }] }];
   const paymentMethods = (data.paymentMethods as string[]) || ['Cash on Delivery'];
   // Multi-select sub-types — many restaurants overlap categories (cafe + bakery,
-  // sweet-shop + tiffin, family + halal). Read from array, fall back to legacy
+  // sweet-shop + tiffin, pure-veg + jain). Read from array, fall back to legacy
   // single `subType` field for old data rows. Write to BOTH so old code paths
   // that read `subType` still work.
   const subTypes = (data.subTypes as string[]) || ((data.subType as string) ? [data.subType as string] : []);
@@ -81,7 +81,6 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
     { value: 'cafe', label: 'Cafe', emoji: '🥪' },
     { value: 'pure-veg', label: 'Pure-veg restaurant', emoji: '🟢' },
     { value: 'jain-only', label: 'Jain-only', emoji: '🟡' },
-    { value: 'halal-certified', label: 'Halal-certified', emoji: '☪️' },
     { value: 'regional-specialty', label: 'Regional specialty', emoji: '🌶️' },
     { value: 'tiffin-attached', label: 'Restaurant + tiffin', emoji: '🍱' },
   ];
@@ -130,30 +129,59 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
       <div>
         <Label>How do you serve customers?</Label>
         <div className="flex gap-2 mt-1 flex-wrap">
-          {[
-            { v: 'dine_in', l: 'Dine-in' },
-            { v: 'takeaway', l: 'Takeaway' },
-            { v: 'delivery', l: 'Delivery' },
-            { v: 'cloud_kitchen_only', l: 'Cloud kitchen only' },
-          ].map((o) => {
-            const active = serviceModes.includes(o.v);
-            return (
-              <button
-                key={o.v}
-                type="button"
-                onClick={() => {
-                  const next = active ? serviceModes.filter((m) => m !== o.v) : [...serviceModes, o.v];
-                  onChange('serviceModes', next);
-                }}
-                className={`px-3 py-1.5 rounded text-xs border transition-colors ${
-                  active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary border-border'
-                }`}
-              >
-                {o.l}
-              </button>
-            );
-          })}
+          {(() => {
+            const cloudOnly = serviceModes.includes('cloud_kitchen_only');
+            return [
+              { v: 'dine_in', l: 'Dine-in' },
+              { v: 'takeaway', l: 'Takeaway' },
+              { v: 'delivery', l: 'Delivery' },
+              { v: 'cloud_kitchen_only', l: 'Cloud kitchen only' },
+            ].map((o) => {
+              const active = serviceModes.includes(o.v);
+              // Dine-in is mutually exclusive with "Cloud kitchen only".
+              // If cloud-only is on, dine-in is disabled (and visibly muted).
+              const disabled = cloudOnly && o.v === 'dine_in';
+              return (
+                <button
+                  key={o.v}
+                  type="button"
+                  disabled={disabled}
+                  title={disabled ? 'Cloud-kitchen-only kitchens don’t serve dine-in customers.' : undefined}
+                  onClick={() => {
+                    if (disabled) return;
+                    let next: string[];
+                    if (active) {
+                      next = serviceModes.filter((m) => m !== o.v);
+                    } else {
+                      next = [...serviceModes, o.v];
+                    }
+                    // Toggling "Cloud kitchen only" auto-removes dine_in
+                    // — they're mutually exclusive.
+                    if (o.v === 'cloud_kitchen_only' && !active) {
+                      next = next.filter((m) => m !== 'dine_in');
+                    }
+                    onChange('serviceModes', next);
+                  }}
+                  className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                    disabled
+                      ? 'bg-secondary/40 border-border text-muted-foreground line-through cursor-not-allowed'
+                      : active
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-secondary border-border'
+                  }`}
+                >
+                  {o.l}
+                </button>
+              );
+            });
+          })()}
         </div>
+        {serviceModes.includes('cloud_kitchen_only') && (
+          <p className="text-[10.5px] text-muted-foreground mt-1.5 m-0">
+            Cloud-kitchen-only mode — dine-in is unavailable. Customers can order
+            delivery / takeaway only.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -272,15 +300,12 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
           <Input placeholder="29XXXXX1234X1Z5" value={(data.gstin as string) || ''} onChange={(e) => onChange('gstin', e.target.value.toUpperCase())} />
         </div>
         <div>
-          <Label>PAN (Swiggy/Zomato onboarding)</Label>
+          <Label>PAN (optional)</Label>
           <Input placeholder="ABCDE1234F" value={(data.panNumber as string) || ''} onChange={(e) => onChange('panNumber', e.target.value.toUpperCase())} />
+          <p className="text-[10px] text-muted-foreground mt-1">Stored for invoicing only.</p>
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="flex items-center gap-2">
-          <Switch checked={(data.halalCertified as boolean) ?? false} onCheckedChange={(v) => onChange('halalCertified', v)} />
-          <Label className="text-xs">Halal-certified</Label>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex items-center gap-2">
           <Switch checked={(data.jainCertified as boolean) ?? false} onCheckedChange={(v) => onChange('jainCertified', v)} />
           <Label className="text-xs">Jain-certified menu</Label>
@@ -290,18 +315,6 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
           <Label className="text-xs">Serves alcohol (legal context only)</Label>
         </div>
       </div>
-      {(data.halalCertified as boolean) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Halal cert number</Label>
-            <Input value={(data.halalCertNumber as string) || ''} onChange={(e) => onChange('halalCertNumber', e.target.value)} />
-          </div>
-          <div>
-            <Label>Halal cert expiry</Label>
-            <Input type="date" value={(data.halalCertExpiry as string) || ''} onChange={(e) => onChange('halalCertExpiry', e.target.value)} />
-          </div>
-        </div>
-      )}
       {(data.servesAlcohol as boolean) && (
         <div>
           <Label>Alcohol licence number</Label>
@@ -310,27 +323,195 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
         </div>
       )}
 
-      {/* Cloud-kitchen multi-brand */}
+      {/* Cloud-kitchen multi-brand — each brand front gets its OWN menu.
+          Brands store: { name, cuisineType, website, menuCategories: [{ category, items: [...] }] }.
+          The prompt-generator + client dashboard read this same shape. */}
       {isCloudKitchenMultiBrand && (
         <>
           <h3 className="text-lg font-semibold border-b border-border pb-2">Cloud-Kitchen Brands</h3>
-          <p className="text-xs text-muted-foreground">List each brand-front you operate from this kitchen (Rebel/Charcoal Eats pattern).</p>
+          <p className="text-xs text-muted-foreground">
+            List each brand-front you operate from this kitchen (Rebel / Charcoal Eats pattern).
+            Each brand keeps its <b>own menu</b> — categories, items, prices — exactly like a separate restaurant.
+            The bot serves the right brand&apos;s menu based on which brand the customer asked for.
+          </p>
           <DynamicList
             items={brands}
             onChange={(items) => onChange('brands', items)}
-            newItem={() => ({ name: '', cuisineType: '', zomatoUrl: '', swiggyUrl: '', bestsellerItems: '' })}
-            addLabel="Add brand"
-            renderItem={(item, _, update) => (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Brand name</Label><Input placeholder="Biryani by Kilo" value={(item.name as string) || ''} onChange={(e) => update('name', e.target.value)} /></div>
-                  <div><Label>Cuisine</Label><Input placeholder="Hyderabadi biryani" value={(item.cuisineType as string) || ''} onChange={(e) => update('cuisineType', e.target.value)} /></div>
-                  <div><Label>Zomato URL</Label><Input placeholder="https://zomato.com/..." value={(item.zomatoUrl as string) || ''} onChange={(e) => update('zomatoUrl', e.target.value)} /></div>
-                  <div><Label>Swiggy URL</Label><Input placeholder="https://swiggy.com/..." value={(item.swiggyUrl as string) || ''} onChange={(e) => update('swiggyUrl', e.target.value)} /></div>
+            newItem={() => ({
+              name: '',
+              cuisineType: '',
+              website: '',
+              menuCategories: [{ category: '', items: [{ name: '', price: '', description: '', isVeg: true, isBestseller: false }] }],
+            })}
+            addLabel="+ Add another brand"
+            renderItem={(item, _, update) => {
+              const brandCats = (item.menuCategories as Array<Record<string, unknown>>) || [];
+              const setBrandCats = (next: Array<Record<string, unknown>>) => update('menuCategories', next);
+              return (
+                <div className="space-y-3 rounded-md border border-border bg-card p-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <Label>Brand name *</Label>
+                      <Input
+                        placeholder="Biryani by Kilo"
+                        value={(item.name as string) || ''}
+                        onChange={(e) => update('name', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>Cuisine</Label>
+                      <Input
+                        placeholder="Hyderabadi biryani"
+                        value={(item.cuisineType as string) || ''}
+                        onChange={(e) => update('cuisineType', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>Brand website (optional)</Label>
+                      <Input
+                        placeholder="https://brand.com"
+                        value={(item.website as string) || ''}
+                        onChange={(e) => update('website', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Label className="text-[12px] font-semibold">
+                        Menu for <span className="text-primary">{(item.name as string) || 'this brand'}</span>
+                      </Label>
+                      <span className="text-[10.5px] text-muted-foreground">
+                        {brandCats.length} category / {brandCats.reduce((acc, c) => acc + (((c.items as Array<unknown>) || []).length), 0)} items
+                      </span>
+                    </div>
+
+                    {brandCats.map((cat, catIdx) => (
+                      <div key={catIdx} className="border border-border rounded-md p-3 space-y-2 mb-2 bg-background">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1">
+                            <Label className="text-[11px]">Category name</Label>
+                            <Input
+                              placeholder="Biryani / Starters / Desserts"
+                              value={(cat.category as string) || ''}
+                              onChange={(e) => {
+                                const next = [...brandCats];
+                                next[catIdx] = { ...next[catIdx], category: e.target.value };
+                                setBrandCats(next);
+                              }}
+                            />
+                          </div>
+                          {brandCats.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setBrandCats(brandCats.filter((_, i) => i !== catIdx))}
+                              className="text-muted-foreground hover:text-destructive text-sm self-end pb-1.5"
+                              title="Remove category"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        <DynamicList
+                          items={(cat.items as Array<Record<string, unknown>>) || []}
+                          onChange={(items) => {
+                            const next = [...brandCats];
+                            next[catIdx] = { ...next[catIdx], items };
+                            setBrandCats(next);
+                          }}
+                          newItem={() => ({ name: '', price: '', description: '', isVeg: true, isBestseller: false })}
+                          addLabel="+ Add item"
+                          renderItem={(it, _ix, upd) => (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-[11px]">Item</Label>
+                                  <Input
+                                    placeholder="Mutton biryani"
+                                    value={(it.name as string) || ''}
+                                    onChange={(e) => upd('name', e.target.value)}
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[11px]">Price</Label>
+                                  <Input
+                                    placeholder="₹349"
+                                    value={(it.price as string) || ''}
+                                    onChange={(e) => upd('price', e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-[11px]">Description (optional)</Label>
+                                <Input
+                                  placeholder="Slow-dum-cooked Hyderabadi style"
+                                  value={(it.description as string) || ''}
+                                  onChange={(e) => upd('description', e.target.value)}
+                                />
+                              </div>
+                              <div className="flex gap-4 items-end">
+                                <div>
+                                  <Label className="text-[11px]">Type</Label>
+                                  <div className="flex gap-1.5 mt-1">
+                                    {[
+                                      { key: 'veg', label: '🟢 Veg' },
+                                      { key: 'non-veg', label: '🔴 Non-Veg' },
+                                      { key: 'egg', label: '🟡 Egg' },
+                                    ].map((opt) => {
+                                      const currentType = (it as Record<string, unknown>).foodType as string | undefined;
+                                      const resolvedType = currentType || (it.isVeg ? 'veg' : 'non-veg');
+                                      const active = resolvedType === opt.key;
+                                      return (
+                                        <button
+                                          key={opt.key}
+                                          type="button"
+                                          onClick={() => {
+                                            upd('foodType', opt.key);
+                                            upd('isVeg', opt.key === 'veg');
+                                          }}
+                                          className={`px-2 py-1 rounded text-[11px] border transition-colors ${
+                                            active
+                                              ? 'bg-primary text-primary-foreground border-primary'
+                                              : 'bg-secondary border-border hover:border-primary/50'
+                                          }`}
+                                        >
+                                          {opt.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={(it.isBestseller as boolean) ?? false}
+                                    onCheckedChange={(v) => upd('isBestseller', v)}
+                                  />
+                                  <Label className="text-[11px]">Bestseller</Label>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        />
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBrandCats([
+                          ...brandCats,
+                          { category: '', items: [{ name: '', price: '', description: '', isVeg: true, isBestseller: false }] },
+                        ])
+                      }
+                      className="w-full border border-dashed border-border rounded-md py-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      + Add menu category for this brand
+                    </button>
+                  </div>
                 </div>
-                <div><Label>Bestsellers (comma)</Label><Input placeholder="Mutton biryani, Paneer biryani" value={(item.bestsellerItems as string) || ''} onChange={(e) => update('bestsellerItems', e.target.value)} /></div>
-              </div>
-            )}
+              );
+            }}
           />
         </>
       )}
@@ -469,10 +650,6 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
       <div>
         <Label>Special Offers</Label>
         <Input placeholder="20% off on orders above Rs.500" value={(data.specialOffers as string) || ''} onChange={(e) => onChange('specialOffers', e.target.value)} />
-      </div>
-      <div>
-        <Label>Zomato/Swiggy Links</Label>
-        <Input placeholder="https://zomato.com/..." value={(data.zomatoSwiggyLinks as string) || ''} onChange={(e) => onChange('zomatoSwiggyLinks', e.target.value)} />
       </div>
 
       <div className="flex items-center justify-between border-b border-border pb-2">
@@ -5464,13 +5641,6 @@ function GroceryForm({ data, onChange }: { data: Record<string, unknown>; onChan
         <>
           <h3 className="text-lg font-semibold border-b border-border pb-2">Meat / Poultry Certification</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={(data.halalCertified as boolean) ?? false}
-                onCheckedChange={(v) => onChange('halalCertified', v)}
-              />
-              <Label>Halal certified</Label>
-            </div>
             <div className="flex items-center gap-3">
               <Switch
                 checked={(data.jhatkaCertified as boolean) ?? false}

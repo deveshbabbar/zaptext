@@ -214,11 +214,12 @@ export default function CreateBotPage() {
             >
               <div className="text-[14px] font-bold flex items-center gap-1.5 mb-1">✨ Auto-fill with AI</div>
               <p className="text-[12.5px] text-[var(--mute)] mb-3 m-0">
-                Paste your Zomato / Swiggy / Instagram link — we&apos;ll extract everything
+                Paste your <b>restaurant website</b> — we&apos;ll extract the menu, hours,
+                and contact details. (Zomato / Swiggy / Instagram links aren&apos;t supported yet.)
               </p>
               <div className="flex gap-2">
                 <input
-                  placeholder="https://zomato.com/your-restaurant"
+                  placeholder="https://yourrestaurant.com"
                   value={websiteUrl}
                   onChange={(e) => setWebsiteUrl(e.target.value)}
                   className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"

@@ -135,7 +135,7 @@ const SECTIONS: { name: string; rows: Row[] }[] = [
         zapText: { text: 'Mandatory RERA + project number injected on every property mention', ok: true },
       },
       {
-        feature: 'Restaurant: FSSAI license, halal / jain certification, allergen disclosure',
+        feature: 'Restaurant: FSSAI license, jain certification, allergen disclosure',
         freeBot: { text: 'Read from profile if owner adds', ok: false },
         zapText: { text: 'Structured per-item fields, FSSAI-style allergen tags, dietary flags', ok: true },
       },

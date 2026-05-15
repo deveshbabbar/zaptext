@@ -73,8 +73,6 @@ interface ComplianceInfo {
   fssaiLicenseNumber?: string;
   fssaiExpiryDate?: string;          // ISO date string
   gstin?: string;
-  halalCertified?: boolean;
-  halalCertNumber?: string;
   jainCertified?: boolean;
   pureVeg?: boolean;
   sharedKitchenWithNonVeg?: boolean;
@@ -924,18 +922,11 @@ export function MenuPublicClient({
               </div>
             )}
 
-            {(compliance.halalCertified || compliance.jainCertified) && (
+            {compliance.jainCertified && (
               <div style={{ marginBottom: 8 }}>
-                {compliance.halalCertified && (
-                  <span style={{ display: 'inline-block', marginRight: 10, padding: '2px 8px', background: '#e8f5e9', color: '#1b5e20', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
-                    HALAL CERTIFIED{compliance.halalCertNumber ? ` · ${compliance.halalCertNumber}` : ''}
-                  </span>
-                )}
-                {compliance.jainCertified && (
-                  <span style={{ display: 'inline-block', marginRight: 10, padding: '2px 8px', background: '#fff3e0', color: '#7a4f00', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
-                    JAIN-CERTIFIED MENU
-                  </span>
-                )}
+                <span style={{ display: 'inline-block', marginRight: 10, padding: '2px 8px', background: '#fff3e0', color: '#7a4f00', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
+                  JAIN-CERTIFIED MENU
+                </span>
               </div>
             )}
 

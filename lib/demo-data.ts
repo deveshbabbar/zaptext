@@ -37,7 +37,6 @@ const RESTAURANT: DemoBundle = {
     parkingAvailable: true,
     acAvailable: true,
     purelyVeg: false,
-    halalCertified: true,
     jainOptionsAvailable: true,
     noOnionGarlicAvailable: true,
     serviceLunchWindow: '12-3 PM',

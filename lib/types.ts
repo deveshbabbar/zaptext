@@ -89,15 +89,24 @@ export type RestaurantSubType =
   | 'cafe'
   | 'pure-veg'
   | 'jain-only'
-  | 'halal-certified'
   | 'regional-specialty'
   | 'tiffin-attached';
 
 export interface CloudKitchenBrand {
   name: string;
   cuisineType?: string;
+  /** Optional brand website. Aggregator links (Zomato/Swiggy) are NOT collected
+   *  here — our scraper can't read them and the data they contain isn't
+   *  needed for the bot to answer customers. */
+  website?: string;
+  /** Each brand has its OWN menu (categories with items). The bot serves
+   *  the right brand's menu when the customer asks for that brand. */
+  menuCategories?: MenuCategory[];
+  /** @deprecated use menuCategories */
   zomatoUrl?: string;
+  /** @deprecated use menuCategories */
   swiggyUrl?: string;
+  /** @deprecated use menuCategories */
   bestsellerItems?: string;
 }
 
@@ -111,13 +120,15 @@ export interface RestaurantFields extends CommonFields {
   minimumOrder: string;
   paymentMethods: string[];
   specialOffers: string;
-  zomatoSwiggyLinks: string;
+  /** @deprecated removed from the onboarding UI. Kept for back-compat with
+   *  bots stored before the scraper-cant-read-aggregators change. */
+  zomatoSwiggyLinks?: string;
 
   // ─── New optional fields (research-derived, all backward-compat) ───
   /** Single sub-type (legacy — kept for back-compat with old data rows) */
   subType?: RestaurantSubType;
   /** Multi-select sub-types (preferred — many businesses overlap categories
-   *  e.g. cafe + bakery, sweet-shop + tiffin-attached, family + halal-certified) */
+   *  e.g. cafe + bakery, sweet-shop + tiffin-attached, pure-veg + jain-only). */
   subTypes?: RestaurantSubType[];
   /** dine_in / takeaway / delivery / cloud_kitchen_only — mode flags */
   serviceModes?: ('dine_in' | 'takeaway' | 'delivery' | 'cloud_kitchen_only')[];
@@ -132,9 +143,6 @@ export interface RestaurantFields extends CommonFields {
   fssaiQrCodeUrl?: string;
   gstin?: string;
   panNumber?: string;
-  halalCertified?: boolean;
-  halalCertNumber?: string;
-  halalCertExpiry?: string;
   jainCertified?: boolean;
   servesAlcohol?: boolean;
   alcoholLicenseNumber?: string;
@@ -1592,7 +1600,6 @@ export interface GroceryFields extends CommonFields {
   returnRefundMode?: 'replace-next-delivery' | 'wallet-credit' | 'refund-original' | 'shopkeeper-discretion';
   organicCertBody?: 'NPOP' | 'India-Organic' | 'Jaivik-Bharat' | 'PGS-India' | 'none';
   organicCertNumber?: string;
-  halalCertified?: boolean;
   jhatkaCertified?: boolean;
   byoGrainAllowed?: boolean;
   grindingFeePerKg?: string;

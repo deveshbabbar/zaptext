@@ -1,10 +1,36 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { validateDisplayName } from '@/lib/whatsapp-naming';
+
+// MapLibre touches `window` — load client-side only.
+const BusinessLocationPicker = dynamic(
+  () => import('@/components/maps/business-location-picker').then((m) => m.BusinessLocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        style={{
+          height: 260,
+          borderRadius: 10,
+          border: '1px solid var(--line, #ddd)',
+          background: '#f7f7f7',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 12,
+          color: '#888',
+        }}
+      >
+        Loading map…
+      </div>
+    ),
+  }
+);
 
 interface CommonFieldsProps {
   data: Record<string, unknown>;
@@ -256,7 +282,7 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           />
         </div>
         <div>
-          <Label htmlFor="address">Full Address</Label>
+          <Label htmlFor="address">Full Address *</Label>
           <Input
             id="address"
             placeholder="e.g., A-12, Green Park Main, New Delhi 110016"
@@ -264,6 +290,22 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
             onChange={(e) => onChange('address', e.target.value)}
           />
         </div>
+      </div>
+
+      <div>
+        <Label>Pin your exact location on the map *</Label>
+        <p className="text-[11.5px] text-muted-foreground mt-1 mb-2">
+          The bot uses this pin (not the typed address) to measure delivery distance,
+          show the right outlet to nearby customers, and drop a maps link in chat.
+        </p>
+        <BusinessLocationPicker
+          lat={typeof data.latitude === 'number' ? (data.latitude as number) : null}
+          lng={typeof data.longitude === 'number' ? (data.longitude as number) : null}
+          onChange={(lat, lng) => {
+            onChange('latitude', lat);
+            onChange('longitude', lng);
+          }}
+        />
       </div>
 
       <div>
@@ -312,17 +354,17 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-60">
         <div>
           <Label htmlFor="upiId">
-            UPI ID <span className="text-[10px] uppercase tracking-wide text-muted-foreground ml-1">Coming soon</span>
+            Restaurant UPI ID <span className="text-[10px] uppercase tracking-wide text-muted-foreground ml-1">Coming soon</span>
           </Label>
           <Input
             id="upiId"
-            placeholder="e.g., rohit@ybl or 98xxx@upi"
+            placeholder="e.g., rohitsbiryani@ybl or 98xxx@upi"
             value={(data.upiId as string) || ''}
             onChange={(e) => onChange('upiId', e.target.value.trim())}
             disabled
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Stored for future use. Bot will NOT share this in customer chat right now.
+            Stored for future use. The bot will NOT share this with customers right now (cash on delivery only).
           </p>
         </div>
         <div>
@@ -337,7 +379,7 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
             disabled
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Stored for future use. Will appear in your customer&apos;s UPI app once online payments go live.
+            Restaurant&apos;s registered UPI name. Will appear in the customer&apos;s UPI app once online payments go live.
           </p>
         </div>
       </div>
@@ -349,15 +391,15 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="existingSystem">Existing order/booking system (optional)</Label>
+          <Label htmlFor="existingSystem">Existing POS / order system (optional)</Label>
           <Input
             id="existingSystem"
-            placeholder="e.g., Petpooja, Practo, Fresha, or 'Google Sheet'"
+            placeholder="e.g., Petpooja, POSist, UrbanPiper, Limetray, or 'Google Sheet'"
             value={(data.existingSystem as string) || ''}
             onChange={(e) => onChange('existingSystem', e.target.value)}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Just the name — we&apos;ll mention it in the email so you know where to paste/import.
+            Just the name — we&apos;ll mention it in the nightly orders email so you know where to import.
           </p>
         </div>
         <div>

@@ -219,7 +219,6 @@ function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant
     cafe: 'Cafe',
     'pure-veg': 'Pure-veg restaurant',
     'jain-only': 'Jain-only restaurant',
-    'halal-certified': 'Halal-certified restaurant',
     'regional-specialty': 'Regional-specialty restaurant',
     'tiffin-attached': 'Restaurant + tiffin service',
   };
@@ -289,17 +288,34 @@ function buildRestaurantPrompt(config: Extract<ClientConfig, { type: 'restaurant
 
 CRITICAL: If earlier messages in this conversation mentioned specific dishes by name, prices, or descriptions, those items have been removed and are NO LONGER on the menu. Do NOT repeat them, do NOT confirm orders for them, and do NOT quote their prices. If the customer asks for the menu, tell them politely the menu is being updated and to contact the owner directly.`;
 
-  // Cloud-kitchen multi-brand — list each brand
+  // Cloud-kitchen multi-brand — list each brand WITH its own menu.
+  // The bot serves the right brand's items based on which brand the
+  // customer asked for. Legacy bots without per-brand menus fall back
+  // to the deprecated `bestsellerItems` string.
   const brandsBlock = (config.brands || []).filter((b) => b.name?.trim()).length > 0
-    ? `\n\nBRAND-FRONTS UNDER THIS KITCHEN:\n${(config.brands || [])
+    ? `\n\nBRAND-FRONTS UNDER THIS KITCHEN (each brand has its OWN menu — do NOT mix dishes across brands):\n${(config.brands || [])
         .map((b) => {
-          const links = [
-            b.zomatoUrl ? `Zomato: ${b.zomatoUrl}` : '',
-            b.swiggyUrl ? `Swiggy: ${b.swiggyUrl}` : '',
-          ].filter(Boolean).join(' · ');
-          return `- *${b.name}* (${b.cuisineType || 'cuisine not specified'})${b.bestsellerItems ? ` · bestsellers: ${b.bestsellerItems}` : ''}${links ? `\n  ${links}` : ''}`;
+          const website = b.website ? `\n  Website: ${b.website}` : '';
+          const brandMenu = (b.menuCategories || []).filter((c) => (c.items || []).length > 0);
+          const menuStr = brandMenu.length > 0
+            ? '\n  Menu:\n' + brandMenu
+                .map((cat) => {
+                  const items = (cat.items || [])
+                    .filter((it) => it.name?.trim())
+                    .map((it) => {
+                      const tags: string[] = [];
+                      if (it.isVeg) tags.push('🟢'); else tags.push('🔴');
+                      if (it.isBestseller) tags.push('⭐');
+                      return `    • ${it.name} - ${it.price || '(price TBD)'} ${tags.join(' ')}${it.description ? `  — ${it.description}` : ''}`;
+                    })
+                    .join('\n');
+                  return `  *${cat.category || 'Menu'}*\n${items}`;
+                })
+                .join('\n')
+            : (b.bestsellerItems ? `\n  Bestsellers: ${b.bestsellerItems}` : '');
+          return `- *${b.name}* (${b.cuisineType || 'cuisine not specified'})${website}${menuStr}`;
         })
-        .join('\n')}`
+        .join('\n\n')}`
     : '';
 
   // Service modes
@@ -402,7 +418,6 @@ CRITICAL: If earlier messages in this conversation mentioned specific dishes by 
     complianceLines.push(`FSSAI: not yet provided`);
   }
   if (config.gstin) complianceLines.push(`GSTIN: ${config.gstin}`);
-  if (config.halalCertified) complianceLines.push(`Halal-certified${config.halalCertNumber ? ` (${config.halalCertNumber})` : ''}`);
   if (config.jainCertified) complianceLines.push('Jain-certified menu');
   if (config.servesAlcohol) complianceLines.push(`Alcohol licence on file: ${config.alcoholLicenseNumber || '(number on file)'} — bot must NOT promote or take alcohol orders`);
 
@@ -467,7 +482,6 @@ STRICT RULES FOR RESTAURANT BOT:
 - Never guarantee exact delivery times — say "approximately ${config.deliveryRadius ? '30-45 min' : 'check with kitchen'}".
 - For allergen questions: if the item has an allergen tag in the menu above, share it. Otherwise communicate (in customer's language) "Please confirm with the kitchen directly — I want to be safe with allergens."
 - For Jain queries: ${config.jainCertified ? 'we have a Jain-certified menu.' : 'we are NOT Jain-certified; the kitchen handles onion/garlic.'}
-- For halal queries: ${config.halalCertified ? 'we are halal-certified.' : 'we are NOT halal-certified — be honest if asked.'}
 - For pure-veg queries: ${config.pureVeg
     ? config.sharedKitchenWithNonVeg
       ? 'menu is primarily vegetarian BUT the same premises handles non-veg — disclose this proactively. Do not call it "100% pure-veg".'
@@ -1932,7 +1946,6 @@ CRITICAL: Do NOT invent prices or items. If the customer asks for today's list, 
   }
   if (subs.includes('meat') || subs.includes('poultry')) {
     const flags: string[] = [];
-    if (config.halalCertified) flags.push('Halal-certified');
     if (config.jhatkaCertified) flags.push('Jhatka-certified');
     if (flags.length) subTypeExtras = `\nMEAT CERTIFICATION: ${flags.join(' · ')}`;
   }

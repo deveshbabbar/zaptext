@@ -377,7 +377,7 @@ function WhyNotFreeBot() {
     {
       scenario: 'Customer asks "FSSAI number kya hai?" — auditor is looking',
       freeBot: 'Doesn\'t have it. You scramble.',
-      zapText: 'FSSAI lic + expiry + halal/jain certs render on every order confirmation + on the public menu page. Reg 2.4.6 compliant out of the box.',
+      zapText: 'FSSAI lic + expiry + jain certs render on every order confirmation + on the public menu page. Reg 2.4.6 compliant out of the box.',
     },
     {
       scenario: 'Customer with peanut allergy asks about kheer',
@@ -453,7 +453,7 @@ function WhyNotFreeBot() {
               Restaurant compliance built-in
             </div>
             <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              FSSAI Reg 2.4.6 (lic + allergen + veg-non-veg display), GSTIN on invoices, Halal / Jain badges, CCPA pre-cart surge disclosure, DPDPA marketing opt-in &mdash; all baked into the bot + menu page. <b>Your kitchen + WhatsApp number stay clean.</b>
+              FSSAI Reg 2.4.6 (lic + allergen + veg-non-veg display), GSTIN on invoices, Jain badges, CCPA pre-cart surge disclosure, DPDPA marketing opt-in &mdash; all baked into the bot + menu page. <b>Your kitchen + WhatsApp number stay clean.</b>
             </div>
           </div>
           <div

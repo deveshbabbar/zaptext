@@ -156,13 +156,13 @@ export default function LandingPage() {
       <Navbar />
       <Hero />
       <Marquee />
-      <WhyNotFreeBot />
       <HowItWorks />
       <Features />
       <Pricing />
       <ROICalculator />
       <Testimonial />
       <FAQSection />
+      <WhyNotFreeBot />
       <BigCTA />
       <Footer />
       <WhatsAppDemoWidget />
@@ -396,105 +396,172 @@ function WhyNotFreeBot() {
     },
   ];
 
+  const pillars: Array<{ title: string; body: string }> = [
+    {
+      title: 'Restaurant compliance, built-in',
+      body: 'FSSAI Reg 2.4.6 (lic + allergen + veg/non-veg), GSTIN on invoices, Jain badges, CCPA pre-cart surge disclosure, DPDPA marketing opt-in &mdash; all baked into the bot + menu page. <b class="text-white">Your kitchen + WhatsApp number stay clean.</b>',
+    },
+    {
+      title: 'One number. Many outlets.',
+      body: 'Add an outlet, generate its table QRs, invite a manager &mdash; all from one dashboard. Bot routes orders by QR scan, customer location, or branch picker. Cloud-kitchen multi-brand supported. <b class="text-white">One WhatsApp number, never re-printed.</b>',
+    },
+    {
+      title: 'Built for Indian customers',
+      body: 'Voice notes in Hinglish / Punjabi / Tamil / Bengali. Half / Full pricing parsed. Mithai by weight, kebab by piece, cake by inch. Surge for rain / peak / festival itemised. <b class="text-white">Details a generic bot will never see.</b>',
+    },
+  ];
+
   return (
-    <section id="why-zaptext" className="border-y border-[var(--line)] py-14 md:py-[88px]" style={{ background: 'var(--bg-2)' }}>
-      <div className="max-w-[1180px] mx-auto px-4 sm:px-7">
-        <div className="zt-mono text-[12px] uppercase tracking-[.1em] text-[var(--mute)] mb-3">
-          // Why not the free in-app bot?
+    <section
+      id="why-zaptext"
+      className="relative overflow-hidden bg-[var(--ink)] text-[var(--background)] py-16 sm:py-24 md:py-[120px]"
+    >
+      {/* Accent corner glow */}
+      <div
+        className="absolute pointer-events-none"
+        aria-hidden
+        style={{
+          width: 720,
+          height: 720,
+          right: -240,
+          top: -200,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, color-mix(in oklab, var(--accent) 75%, transparent) 0%, transparent 60%)',
+          filter: 'blur(50px)',
+          opacity: 0.22,
+        }}
+      />
+      <div
+        className="absolute pointer-events-none hidden md:block"
+        aria-hidden
+        style={{
+          width: 520,
+          height: 520,
+          left: -200,
+          bottom: -220,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, color-mix(in oklab, var(--accent) 60%, transparent) 0%, transparent 60%)',
+          filter: 'blur(60px)',
+          opacity: 0.12,
+        }}
+      />
+      {/* Subtle dot grid */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        aria-hidden
+        style={{
+          backgroundImage:
+            'radial-gradient(circle, color-mix(in oklab, var(--accent) 55%, transparent) 1px, transparent 1.5px)',
+          backgroundSize: '36px 36px',
+          opacity: 0.05,
+        }}
+      />
+
+      <div className="relative max-w-[1180px] mx-auto px-4 sm:px-7">
+        <div className="zt-mono text-[11px] sm:text-[12px] uppercase tracking-[.14em] text-[var(--accent)] mb-3 sm:mb-4 inline-flex items-center gap-2">
+          <span
+            className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
+            style={{ boxShadow: '0 0 10px var(--accent)' }}
+          />
+          07 &middot; Why ZapText
         </div>
-        <h2 className="text-[clamp(30px,3vw,46px)] font-bold tracking-[-0.025em] leading-[1.08] mb-3 max-w-[820px]">
-          The free WhatsApp AI replies. <span className="zt-serif">ZapText earns.</span>
+        <h2 className="font-bold tracking-[-0.035em] leading-[1.02] text-[clamp(32px,5.5vw,62px)] max-w-[860px] text-balance mb-4 sm:mb-5">
+          Free WhatsApp AI <span className="text-white/40">replies.</span>
+          <br className="hidden sm:block" />{' '}
+          <span className="zt-zap">ZapText earns.</span>
         </h2>
-        <p className="text-[15px] md:text-[17px] text-[var(--ink-2)] max-w-[760px] mb-9 leading-[1.55]">
-          A free in-app AI is great for FAQs. But Indian businesses don&apos;t grow from FAQs &mdash; they grow from <i>booked slots, paid orders, and a customer that doesn&apos;t slip away while you&apos;re asleep</i>. Here&apos;s what changes when your bot has actually been built for the way you do business.
+        <p className="text-[15px] sm:text-[17px] md:text-[19px] text-white/65 max-w-[720px] leading-[1.6] mb-10 sm:mb-14">
+          A free in-app AI is great for FAQs. But Indian kitchens don&apos;t grow from FAQs &mdash; they grow from <i className="zt-serif text-white/85">booked tables, paid orders, and customers that don&apos;t slip away while you&apos;re asleep.</i> Here&apos;s what changes when the bot has actually been built for the way you run service.
         </p>
 
-        <div className="rounded-[18px] border border-[var(--line)] bg-[var(--card)] overflow-hidden">
-          {/* header */}
-          <div className="hidden md:grid grid-cols-[1.4fr_1fr_1.2fr] gap-0 text-[12.5px] uppercase tracking-[.06em] zt-mono text-[var(--mute)] border-b border-[var(--line)]">
-            <div style={{ padding: '14px 22px' }}>What the customer asks</div>
-            <div style={{ padding: '14px 22px', borderLeft: '1px solid var(--line)' }}>Free in-app AI</div>
-            <div style={{ padding: '14px 22px', borderLeft: '1px solid var(--line)', background: 'color-mix(in oklab, var(--accent) 15%, transparent)' }}>
-              ZapText
-            </div>
-          </div>
+        <div className="flex flex-col gap-3.5 sm:gap-4">
           {rows.map((r, i) => (
-            <div
+            <article
               key={i}
-              className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1.2fr] gap-0 border-b border-[var(--line)] last:border-b-0 text-[14px]"
+              className="group rounded-[18px] sm:rounded-[22px] border border-white/10 bg-white/[0.025] hover:bg-white/[0.045] transition-colors overflow-hidden"
             >
-              <div className="px-4 sm:px-[22px] py-4 sm:py-[18px] text-[var(--ink)] font-medium border-b md:border-b-0 border-[var(--line)] bg-[var(--bg-2)] md:bg-transparent">
-                <span className="md:hidden zt-mono text-[10px] uppercase tracking-[.08em] text-[var(--mute)] block mb-1">Scenario</span>
-                {r.scenario}
+              <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-white/10 flex items-start gap-3 sm:gap-4">
+                <span className="zt-mono text-[11px] sm:text-[12px] font-bold tracking-wider text-[var(--accent)] mt-1 flex-shrink-0">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <h3 className="text-[15.5px] sm:text-[18px] md:text-[20px] font-semibold tracking-[-0.015em] leading-[1.35] text-white">
+                  {r.scenario}
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2">
+                <div className="px-5 sm:px-8 py-4 sm:py-6 border-b md:border-b-0 md:border-r border-white/10">
+                  <div className="flex items-center gap-2 mb-2 sm:mb-2.5">
+                    <span className="w-5 h-5 rounded-full bg-white/8 grid place-items-center text-[11px] text-white/55">
+                      ✕
+                    </span>
+                    <span className="zt-mono text-[10px] sm:text-[10.5px] uppercase tracking-[.12em] text-white/45">
+                      Free in-app AI
+                    </span>
+                  </div>
+                  <p
+                    className="text-[13.5px] sm:text-[14.5px] text-white/55 leading-[1.55] m-0"
+                    dangerouslySetInnerHTML={{ __html: r.freeBot }}
+                  />
+                </div>
+                <div
+                  className="px-5 sm:px-8 py-4 sm:py-6"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, color-mix(in oklab, var(--accent) 12%, transparent) 0%, color-mix(in oklab, var(--accent) 4%, transparent) 100%)',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-2 sm:mb-2.5">
+                    <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center text-[11px] font-bold">
+                      ✓
+                    </span>
+                    <span className="zt-mono text-[10px] sm:text-[10.5px] uppercase tracking-[.12em] text-[var(--accent)] font-semibold">
+                      ZapText
+                    </span>
+                  </div>
+                  <p
+                    className="text-[13.5px] sm:text-[14.5px] text-white leading-[1.55] m-0"
+                    dangerouslySetInnerHTML={{ __html: r.zapText }}
+                  />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-10 sm:mt-14 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          {pillars.map((p) => (
+            <div
+              key={p.title}
+              className="rounded-[16px] border border-white/10 bg-white/[0.025] px-5 sm:px-6 py-5 sm:py-6"
+            >
+              <div className="zt-mono text-[10.5px] uppercase tracking-[.1em] text-[var(--accent)] mb-2 font-semibold">
+                {p.title}
               </div>
               <div
-                className="px-4 sm:px-[22px] py-4 sm:py-[18px] text-[var(--ink-2)] leading-[1.5] border-b md:border-b-0 md:border-l border-[var(--line)]"
-              >
-                <span className="md:hidden zt-mono text-[10px] uppercase tracking-[.08em] text-[var(--mute)] block mb-1">Free in-app AI</span>
-                <span dangerouslySetInnerHTML={{ __html: r.freeBot }} />
-              </div>
-              <div
-                style={{ background: 'color-mix(in oklab, var(--accent) 8%, transparent)' }}
-                className="px-4 sm:px-[22px] py-4 sm:py-[18px] text-[var(--ink)] leading-[1.5] md:border-l border-[var(--line)]"
-              >
-                <span className="md:hidden zt-mono text-[10px] uppercase tracking-[.08em] text-[var(--mute)] block mb-1">ZapText</span>
-                <span dangerouslySetInnerHTML={{ __html: r.zapText }} />
-              </div>
+                className="text-[13.5px] sm:text-[14.5px] text-white/70 leading-[1.6]"
+                dangerouslySetInnerHTML={{ __html: p.body }}
+              />
             </div>
           ))}
         </div>
 
-        <div className="mt-7 grid md:grid-cols-3 gap-4">
-          <div
-            className="rounded-[14px] border border-[var(--line)] bg-[var(--card)]"
-            style={{ padding: '18px 20px' }}
-          >
-            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
-              Restaurant compliance built-in
-            </div>
-            <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              FSSAI Reg 2.4.6 (lic + allergen + veg-non-veg display), GSTIN on invoices, Jain badges, CCPA pre-cart surge disclosure, DPDPA marketing opt-in &mdash; all baked into the bot + menu page. <b>Your kitchen + WhatsApp number stay clean.</b>
-            </div>
-          </div>
-          <div
-            className="rounded-[14px] border border-[var(--line)] bg-[var(--card)]"
-            style={{ padding: '18px 20px' }}
-          >
-            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
-              One number. Many outlets.
-            </div>
-            <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              Add an outlet, generate that outlet&apos;s table QRs, invite a manager &mdash; all from one dashboard. Bot routes orders by QR scan, customer location, or branch picker. Cloud-kitchen multi-brand pattern supported. <b>One WhatsApp number, never re-printed.</b>
-            </div>
-          </div>
-          <div
-            className="rounded-[14px] border border-[var(--line)] bg-[var(--card)]"
-            style={{ padding: '18px 20px' }}
-          >
-            <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] mb-1.5">
-              Built for Indian customers
-            </div>
-            <div className="text-[14px] text-[var(--ink-2)] leading-[1.55]">
-              Voice notes in Hinglish / Punjabi / Tamil / Bengali. Half / Full pricing parsed automatically. Mithai by weight, kebab by piece, cake by inch. Surge for rain / peak / festival itemised. <b>The details a generic bot will never see.</b>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-9 flex flex-wrap items-center gap-3">
+        <div className="mt-10 sm:mt-14 flex flex-wrap items-center gap-3">
           <Link
             href="/sign-up"
-            className="inline-flex items-center gap-2 px-6 py-[14px] rounded-[12px] bg-[var(--ink)] text-[var(--background)] font-semibold text-[14px] hover:-translate-y-px transition"
+            className="inline-flex items-center gap-2 px-6 sm:px-7 py-[13px] sm:py-[15px] rounded-[12px] bg-[var(--accent)] text-[var(--accent-2)] font-semibold text-[14px] sm:text-[15px] hover:-translate-y-px transition"
           >
             Try free for 100 replies <span>→</span>
           </Link>
           <Link
             href="/compare"
-            className="inline-flex items-center gap-2 px-6 py-[14px] rounded-[12px] border border-[var(--ink)] bg-transparent font-semibold text-[14px] hover:-translate-y-px transition"
+            className="inline-flex items-center gap-2 px-6 sm:px-7 py-[13px] sm:py-[15px] rounded-[12px] border border-white/20 text-white font-semibold text-[14px] sm:text-[15px] hover:bg-white/5 hover:-translate-y-px transition"
           >
             See full comparison
           </Link>
-          <span className="text-[12px] text-[var(--mute)] zt-mono">
-            // your first paid booking is the proof
+          <span className="text-[12px] text-white/40 zt-mono w-full sm:w-auto mt-1 sm:mt-0">
+            // your first paid order is the proof
           </span>
         </div>
       </div>

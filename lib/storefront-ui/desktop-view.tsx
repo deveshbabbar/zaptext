@@ -15,6 +15,7 @@ import {
   VegDot,
   storefrontThemeStyle,
 } from './atoms';
+import { InfoModal } from './info-modal';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -97,6 +98,7 @@ export function DesktopView(props: DesktopViewProps) {
   const [activeCat, setActiveCat] = useState<string | null>(null);
 
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone || '');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -291,6 +293,8 @@ export function DesktopView(props: DesktopViewProps) {
         businessName={businessName} city={city} brandLogoUrl={brandLogoUrl}
         cartCount={itemCount} query={query} setQuery={setQuery}
         onJumpToCart={() => document.getElementById('zt-cart-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        onOpenInfo={() => setShowInfo(true)}
+        phone={phone}
       />
       <Hero
         businessName={businessName} tagline={tagline} city={city}
@@ -332,6 +336,22 @@ export function DesktopView(props: DesktopViewProps) {
         />
       </div>
 
+      <InfoModal
+        open={showInfo}
+        onClose={() => setShowInfo(false)}
+        businessName={businessName}
+        tagline={tagline}
+        city={city}
+        address={address}
+        phone={phone}
+        workingHours={workingHours}
+        cuisineType={cuisineType}
+        deliveryRadius={deliveryRadius}
+        minimumOrder={minimumOrder}
+        fssaiLicenseNumber={fssaiLicenseNumber}
+        gstin={gstin}
+      />
+
       {showCheckout && (
         <CheckoutModal
           itemCount={itemCount}
@@ -363,9 +383,11 @@ export function DesktopView(props: DesktopViewProps) {
 // ═══════════════════════════════════════ TOP BAR
 function TopBar({
   businessName, city, brandLogoUrl, cartCount, query, setQuery, onJumpToCart,
+  onOpenInfo, phone,
 }: {
   businessName: string; city?: string; brandLogoUrl?: string; cartCount: number;
   query: string; setQuery: (v: string) => void; onJumpToCart: () => void;
+  onOpenInfo: () => void; phone?: string;
 }) {
   return (
     <header style={{
@@ -424,6 +446,14 @@ function TopBar({
         <div style={{ flex: 1 }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button type="button" onClick={onOpenInfo} style={navBtn}>
+            <I.info /> Info
+          </button>
+          {phone && (
+            <a href={`tel:${phone}`} style={{ ...navBtn, textDecoration: 'none' }}>
+              <I.phone /> Call
+            </a>
+          )}
           <button type="button" onClick={onJumpToCart} style={{ ...navBtn, position: 'relative' }}>
             <I.bag /> Cart
             {cartCount > 0 && (

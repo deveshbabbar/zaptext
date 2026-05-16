@@ -15,6 +15,7 @@ import {
   storefrontThemeStyle,
 } from './atoms';
 import type { FlatItem, DesktopViewProps } from './desktop-view';
+import { InfoModal } from './info-modal';
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
 
@@ -59,6 +60,7 @@ export function MobileView(props: MobileViewProps) {
   const [activeCat, setActiveCat] = useState<string | null>(null);
 
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone || '');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -261,7 +263,8 @@ export function MobileView(props: MobileViewProps) {
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <button type="button" style={iconBtnLight} aria-label="Restaurant info">
+            <button type="button" style={iconBtnLight} aria-label="Restaurant info"
+              onClick={() => setShowInfo(true)}>
               <I.info />
             </button>
             <div style={{ fontSize: 11, opacity: .85, fontWeight: 500, letterSpacing: .4 }}>
@@ -467,6 +470,22 @@ export function MobileView(props: MobileViewProps) {
           <CartBar count={itemCount} total={subtotal}
             onTap={() => setShowCheckout(true)} />
         )}
+
+        <InfoModal
+          open={showInfo}
+          onClose={() => setShowInfo(false)}
+          businessName={businessName}
+          tagline={tagline}
+          city={city}
+          address={address}
+          phone={props.phone}
+          workingHours={workingHours}
+          cuisineType={cuisineType}
+          deliveryRadius={deliveryRadius}
+          minimumOrder={minimumOrder}
+          fssaiLicenseNumber={props.fssaiLicenseNumber}
+          gstin={props.gstin}
+        />
 
         {showCheckout && (
           <MobileCheckoutSheet

@@ -52,3 +52,21 @@ next-env.d.ts
 
 # Generated artifacts
 graphify-out/
+
+# Storefront design-system reference files at repo root. These are the
+# vanilla-React prototypes (menu-screen.jsx, desktop-app.jsx, etc.) the
+# design tool dropped in — we consult them while porting markup verbatim
+# into lib/storefront-ui/, but they're not Next.js routes and must not
+# deploy. Production code lives in lib/storefront-ui/.
+/app.jsx
+/components.jsx
+/desktop-app.jsx
+/desktop-modals.jsx
+/desktop.html
+/index.html
+/ios-frame.jsx
+/menu-data.js
+/menu-screen.jsx
+/other-screens.jsx
+/tweaks-panel.jsx
+/uploads/

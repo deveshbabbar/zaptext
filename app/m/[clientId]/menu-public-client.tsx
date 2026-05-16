@@ -186,6 +186,45 @@ function inferQty(raw: string, itemNameLower: string): number {
   return n;
 }
 
+// Tiny pill-style toggle for the search/filter bar. Active state uses
+// the accent color sparingly so the bar doesn't compete with the menu
+// content below. Defined as a local helper so it doesn't leak out of
+// the storefront page module — Phase 2 component extraction will
+// hoist it to its own file alongside the other storefront components.
+function FilterChip({
+  active,
+  onClick,
+  accent,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  accent: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        padding: '6px 14px',
+        borderRadius: 999,
+        background: active ? accent + '22' : 'var(--zt-surface)',
+        border: `1px solid ${active ? accent : 'var(--zt-border)'}`,
+        color: active ? accent : 'var(--zt-text)',
+        fontSize: 12.5,
+        fontWeight: active ? 700 : 500,
+        cursor: 'pointer',
+        letterSpacing: '.01em',
+        transition: 'border-color .15s, color .15s, background .15s',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function MenuPublicClient({
   businessName,
   clientId,
@@ -286,14 +325,47 @@ export function MenuPublicClient({
   const [submitted, setSubmitted] = useState<{ orderId: string; total: number; mode: OrderMode } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Filter + search state. All three combine — `vegOnly` AND `bestsellersOnly`
+  // AND `searchQuery` are applied together. Filters reset to empty defaults
+  // on mount so the customer always sees the full menu first.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [vegOnly, setVegOnly] = useState(false);
+  const [bestsellersOnly, setBestsellersOnly] = useState(false);
+
+  // Group menu items by category. Recomputed when filters change so the
+  // category list itself shrinks if a filter eliminates everything in a
+  // section (e.g. veg-only on an all-non-veg starters category drops
+  // the entire "Starters" header from the page).
   const grouped = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     const map = new Map<string, FlatItem[]>();
     for (const it of items) {
+      if (vegOnly && !it.isVeg) continue;
+      if (bestsellersOnly && !it.isBestseller) continue;
+      if (q) {
+        const haystack = `${it.name} ${it.description} ${it.category}`.toLowerCase();
+        if (!haystack.includes(q)) continue;
+      }
       const list = map.get(it.category) || [];
       list.push(it);
       map.set(it.category, list);
     }
     return [...map.entries()];
+  }, [items, searchQuery, vegOnly, bestsellersOnly]);
+
+  // Stable slug per category for in-page anchors. The category nav bar
+  // uses `#cat-<slug>` to scroll to each section.
+  function catSlug(cat: string): string {
+    return cat.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cat';
+  }
+
+  // Original (un-filtered) grouped list — used by the category nav so
+  // empty categories still appear (greyed out) instead of vanishing
+  // when filters strip them, which would shift the nav layout.
+  const allCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) set.add(it.category);
+    return [...set];
   }, [items]);
 
   function splitKey(key: string): { itemId: string; variant: string | null } {
@@ -483,9 +555,12 @@ export function MenuPublicClient({
             style={{
               position: 'relative',
               width: '100%',
-              aspectRatio: '3 / 1',
-              minHeight: 220,
-              maxHeight: LAYOUT.heroMaxHeight,
+              // Fluid height that stops growing on big screens. Mobile
+              // gets ~220px, tablet ~260px, desktop caps at 340px so
+              // the hero never eats half the viewport on a 1080p+
+              // monitor. Removed the aspect-ratio that was causing
+              // the 640px hero on widescreen displays.
+              height: 'clamp(200px, 22vw, 340px)',
               backgroundImage: heroBackground,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
@@ -602,14 +677,13 @@ export function MenuPublicClient({
 
       <main
         style={{
-          // Phase 1: keep card backgrounds light for now (full dark
-          // surface refactor lands in Phase 2). We force the text color
-          // back to dark espresso here so the cream cascade from the
-          // root theme wrapper doesn't leak onto white cards and become
-          // unreadable. The hero + cart bar above/below set their own
-          // colours explicitly so they stay cream-on-dark.
+          // Phase 2: full dark migration. Removed the text-colour
+          // override from Phase 1 — items, cards, inputs all now sit
+          // on the dark page surface with cream text inherited from
+          // the theme wrapper. Cards use --zt-surface (slightly lifted
+          // from the page bg) so they read as separated panels rather
+          // than blending into the background.
           padding: 'clamp(16px, 3vw, 28px) clamp(14px, 3vw, 28px)',
-          color: '#1A1410',
           maxWidth: 720,
           margin: '0 auto',
           width: '100%',
@@ -715,17 +789,258 @@ export function MenuPublicClient({
           );
         })()}
 
+        {/* Search + filter bar. Sticky beneath the hero so it stays
+            within thumb reach while scrolling a long menu. */}
+        {items.length > 0 && (
+          <div
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 4,
+              margin: '0 -16px 14px',
+              padding: '12px 16px 10px',
+              background: 'var(--zt-bg)',
+              borderBottom: '1px solid var(--zt-border)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 14,
+                  pointerEvents: 'none',
+                  color: 'var(--zt-text-muted)',
+                  fontSize: 14,
+                }}
+                aria-hidden
+              >
+                🔍
+              </span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search dishes…"
+                aria-label="Search the menu"
+                style={{
+                  width: '100%',
+                  padding: '10px 14px 10px 38px',
+                  background: 'var(--zt-surface)',
+                  border: '1px solid var(--zt-border)',
+                  borderRadius: 12,
+                  color: 'var(--zt-text)',
+                  fontSize: 14,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                  style={{
+                    position: 'absolute',
+                    right: 10,
+                    background: 'var(--zt-surface-alt)',
+                    border: 'none',
+                    color: 'var(--zt-text-muted)',
+                    width: 22,
+                    height: 22,
+                    borderRadius: 999,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <FilterChip
+                active={vegOnly}
+                onClick={() => setVegOnly(!vegOnly)}
+                accent="#22C55E"
+              >
+                🟢 Veg only
+              </FilterChip>
+              <FilterChip
+                active={bestsellersOnly}
+                onClick={() => setBestsellersOnly(!bestsellersOnly)}
+                accent={accent}
+              >
+                ⭐ Bestsellers
+              </FilterChip>
+              {(vegOnly || bestsellersOnly || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => { setVegOnly(false); setBestsellersOnly(false); setSearchQuery(''); }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 999,
+                    background: 'transparent',
+                    border: '1px solid var(--zt-border)',
+                    color: 'var(--zt-text-muted)',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Category jump-nav — horizontal scroll on every viewport.
+            Categories from the un-filtered list so the nav layout doesn't
+            jump around when filters narrow the menu. Tapping a chip jumps
+            to that section via in-page anchor. */}
+        {allCategories.length > 1 && (
+          <nav
+            aria-label="Jump to category"
+            style={{
+              display: 'flex',
+              gap: 8,
+              overflowX: 'auto',
+              padding: '4px 0 10px',
+              margin: '0 -16px 6px',
+              paddingLeft: 16,
+              paddingRight: 16,
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+            }}
+          >
+            {allCategories.map((cat) => {
+              const slug = catSlug(cat);
+              const stillShown = grouped.some(([c]) => c === cat);
+              return (
+                <a
+                  key={cat}
+                  href={`#cat-${slug}`}
+                  aria-disabled={!stillShown}
+                  style={{
+                    flexShrink: 0,
+                    padding: '7px 14px',
+                    borderRadius: 999,
+                    background: 'var(--zt-surface)',
+                    border: '1px solid var(--zt-border)',
+                    color: stillShown ? 'var(--zt-text)' : 'var(--zt-text-dim)',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                    opacity: stillShown ? 1 : 0.45,
+                    pointerEvents: stillShown ? 'auto' : 'none',
+                    scrollSnapAlign: 'start',
+                  }}
+                >
+                  {cat}
+                </a>
+              );
+            })}
+          </nav>
+        )}
+
         {grouped.length === 0 ? (
-          <p style={{ color: '#888', padding: 16 }}>
-            Menu loading… If this stays empty, the restaurant hasn&apos;t configured items yet.
-            <br /><br />
-            Menu load ho raha hai… Agar khaali rahe, restaurant ne abhi items add nahi kiye.
-          </p>
+          <div
+            style={{
+              padding: '32px 16px',
+              textAlign: 'center',
+              background: 'var(--zt-surface)',
+              border: '1px dashed var(--zt-border)',
+              borderRadius: 14,
+              color: 'var(--zt-text-muted)',
+            }}
+          >
+            {items.length === 0 ? (
+              <>
+                <p style={{ margin: 0, fontSize: 14 }}>
+                  Menu loading… If this stays empty, the restaurant hasn&apos;t configured items yet.
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--zt-text-dim)' }}>
+                  Menu load ho raha hai… Agar khaali rahe, restaurant ne abhi items add nahi kiye.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: 0, fontSize: 15, color: 'var(--zt-text)' }}>No matching dishes</p>
+                <p style={{ margin: '6px 0 12px', fontSize: 13 }}>
+                  Try a different search term or remove filters.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setVegOnly(false); setBestsellersOnly(false); setSearchQuery(''); }}
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: 999,
+                    background: accent,
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear filters
+                </button>
+              </>
+            )}
+          </div>
         ) : (
           grouped.map(([cat, list]) => (
-            <section key={cat} style={{ margin: '12px 0' }}>
-              <h2 style={{ fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, color: '#999', margin: '12px 0 6px' }}>{cat}</h2>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            <section
+              key={cat}
+              id={`cat-${catSlug(cat)}`}
+              style={{ margin: '18px 0', scrollMarginTop: 80 }}
+            >
+              <h2
+                style={{
+                  fontFamily: "'Playfair Display', Georgia, serif",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: '-0.01em',
+                  color: 'var(--zt-text)',
+                  margin: '8px 0 12px',
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 10,
+                }}
+              >
+                {cat}
+                <span
+                  style={{
+                    fontFamily: 'inherit',
+                    fontSize: 12,
+                    fontWeight: 400,
+                    color: 'var(--zt-text-dim)',
+                    letterSpacing: 0,
+                  }}
+                >
+                  {list.length} item{list.length === 1 ? '' : 's'}
+                </span>
+              </h2>
+              <ul
+                style={{
+                  listStyle: 'none',
+                  padding: 0,
+                  margin: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
                 {list.map((it) => {
                   const hasVariants = it.sizes.length > 0;
                   const singleQty = hasVariants ? 0 : cart[it.id] || 0;
@@ -733,22 +1048,84 @@ export function MenuPublicClient({
                     ? it.sizes.map((s) => ({ size: s, qty: cart[`${it.id}|${s.label}`] || 0 }))
                     : [];
                   const totalQty = hasVariants ? variantQtys.reduce((n, v) => n + v.qty, 0) : singleQty;
+                  const inCart = totalQty > 0;
                   return (
-                    <li key={it.id} style={{ padding: '10px 0', borderBottom: '1px solid #f3f3f3' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <li
+                      key={it.id}
+                      style={{
+                        padding: 14,
+                        borderRadius: 14,
+                        background: 'var(--zt-surface)',
+                        border: `1px solid ${inCart ? accent + '55' : 'var(--zt-border)'}`,
+                        boxShadow: inCart ? `0 0 0 1px ${accent}55` : 'none',
+                        transition: 'border-color .15s, box-shadow .15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ width: 10, height: 10, border: `2px solid ${it.isVeg ? '#1a9b3a' : '#c0392b'}`, borderRadius: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <span style={{ width: 4, height: 4, borderRadius: 99, background: it.isVeg ? '#1a9b3a' : '#c0392b' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                            <span
+                              style={{
+                                width: 12,
+                                height: 12,
+                                border: `2px solid ${it.isVeg ? '#22C55E' : '#F87171'}`,
+                                borderRadius: 3,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                              title={it.isVeg ? 'Veg' : 'Non-veg'}
+                            >
+                              <span
+                                style={{
+                                  width: 5,
+                                  height: 5,
+                                  borderRadius: 99,
+                                  background: it.isVeg ? '#22C55E' : '#F87171',
+                                }}
+                              />
                             </span>
-                            <span style={{ fontWeight: 600 }}>{it.name}</span>
-                            {it.isBestseller && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 99, background: '#fff4d6', color: '#8a6d00' }}>BESTSELLER</span>}
-                            {totalQty > 0 && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 99, background: '#111', color: '#fff' }}>{totalQty} in cart</span>}
+                            <span style={{ fontWeight: 600, color: 'var(--zt-text)', fontSize: 15 }}>{it.name}</span>
+                            {it.isBestseller && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  padding: '2px 8px',
+                                  borderRadius: 99,
+                                  background: accent + '22',
+                                  color: accent,
+                                  fontWeight: 700,
+                                  letterSpacing: '.05em',
+                                  border: `1px solid ${accent}44`,
+                                }}
+                              >
+                                ⭐ BESTSELLER
+                              </span>
+                            )}
+                            {inCart && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  padding: '2px 8px',
+                                  borderRadius: 99,
+                                  background: accent,
+                                  color: '#fff',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {totalQty} in cart
+                              </span>
+                            )}
                           </div>
-                          {it.description && <p style={{ fontSize: 12, color: '#666', margin: '2px 0 0' }}>{it.description}</p>}
+                          {it.description && (
+                            <p style={{ fontSize: 13, color: 'var(--zt-text-muted)', margin: '0 0 6px', lineHeight: 1.45 }}>
+                              {it.description}
+                            </p>
+                          )}
                           {it.allergens.length > 0 && (
                             <div
-                              style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}
+                              style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}
                               aria-label="Contains allergens"
                             >
                               {it.allergens.map((a) => (
@@ -756,10 +1133,11 @@ export function MenuPublicClient({
                                   key={a}
                                   style={{
                                     fontSize: 10,
-                                    padding: '1px 6px',
+                                    padding: '2px 7px',
                                     borderRadius: 99,
-                                    background: '#fff4e5',
-                                    color: '#a05a00',
+                                    background: 'rgba(251,191,36,.12)',
+                                    color: '#FBBF24',
+                                    border: '1px solid rgba(251,191,36,.25)',
                                     fontWeight: 500,
                                   }}
                                   title="Contains allergen"
@@ -769,39 +1147,160 @@ export function MenuPublicClient({
                               ))}
                             </div>
                           )}
-                          {!hasVariants && <p style={{ fontSize: 13, fontWeight: 500, margin: '4px 0 0' }}>{it.price || '—'}</p>}
+                          {!hasVariants && (
+                            <p
+                              style={{
+                                fontSize: 15,
+                                fontWeight: 700,
+                                margin: '8px 0 0',
+                                color: 'var(--zt-text)',
+                              }}
+                            >
+                              {it.price || '—'}
+                            </p>
+                          )}
                         </div>
                         {!hasVariants && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                             {singleQty === 0 ? (
-                              <button onClick={() => bump(it.id, 1)} style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid #111', background: '#fff', fontWeight: 600 }}>Add</button>
+                              <button
+                                onClick={() => bump(it.id, 1)}
+                                style={{
+                                  padding: '8px 18px',
+                                  borderRadius: 999,
+                                  border: `1.5px solid ${accent}`,
+                                  background: 'transparent',
+                                  color: accent,
+                                  fontWeight: 700,
+                                  fontSize: 13,
+                                  cursor: 'pointer',
+                                  letterSpacing: '.02em',
+                                }}
+                              >
+                                ADD
+                              </button>
                             ) : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 99, background: '#111', color: '#fff' }}>
-                                <button onClick={() => bump(it.id, -1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>−</button>
-                                <span style={{ minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{singleQty}</span>
-                                <button onClick={() => bump(it.id, 1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>+</button>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  padding: '4px',
+                                  borderRadius: 999,
+                                  background: accent,
+                                  color: '#fff',
+                                }}
+                              >
+                                <button
+                                  onClick={() => bump(it.id, -1)}
+                                  aria-label="Decrease"
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#fff',
+                                    fontSize: 18,
+                                    lineHeight: 1,
+                                    cursor: 'pointer',
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  −
+                                </button>
+                                <span style={{ minWidth: 18, textAlign: 'center', fontWeight: 700, fontSize: 14 }}>
+                                  {singleQty}
+                                </span>
+                                <button
+                                  onClick={() => bump(it.id, 1)}
+                                  aria-label="Increase"
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#fff',
+                                    fontSize: 18,
+                                    lineHeight: 1,
+                                    cursor: 'pointer',
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  +
+                                </button>
                               </div>
                             )}
                           </div>
                         )}
                       </div>
                       {hasVariants && (
-                        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {variantQtys.map(({ size, qty }) => {
                             const key = `${it.id}|${size.label}`;
                             return (
-                              <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 8px', borderRadius: 8, background: '#f7f7f7' }}>
-                                <div style={{ fontSize: 13 }}>
-                                  <span style={{ fontWeight: 500 }}>{size.label}</span>
-                                  <span style={{ marginLeft: 8, color: '#444' }}>₹{size.price}</span>
+                              <div
+                                key={key}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 8,
+                                  padding: '8px 12px',
+                                  borderRadius: 10,
+                                  background: 'var(--zt-surface-alt)',
+                                  border: '1px solid var(--zt-border)',
+                                }}
+                              >
+                                <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <span style={{ fontWeight: 600, color: 'var(--zt-text)' }}>{size.label}</span>
+                                  <span style={{ color: 'var(--zt-text-muted)', fontWeight: 500 }}>₹{size.price}</span>
                                 </div>
                                 {qty === 0 ? (
-                                  <button onClick={() => bump(key, 1)} style={{ padding: '4px 12px', borderRadius: 99, border: '1px solid #111', background: '#fff', fontWeight: 600, fontSize: 12 }}>Add</button>
+                                  <button
+                                    onClick={() => bump(key, 1)}
+                                    style={{
+                                      padding: '5px 14px',
+                                      borderRadius: 999,
+                                      border: `1.5px solid ${accent}`,
+                                      background: 'transparent',
+                                      color: accent,
+                                      fontWeight: 700,
+                                      fontSize: 12,
+                                      cursor: 'pointer',
+                                      letterSpacing: '.02em',
+                                    }}
+                                  >
+                                    ADD
+                                  </button>
                                 ) : (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px', borderRadius: 99, background: '#111', color: '#fff' }}>
-                                    <button onClick={() => bump(key, -1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 16, lineHeight: 1, cursor: 'pointer' }}>−</button>
-                                    <span style={{ minWidth: 14, textAlign: 'center', fontWeight: 600, fontSize: 13 }}>{qty}</span>
-                                    <button onClick={() => bump(key, 1)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 16, lineHeight: 1, cursor: 'pointer' }}>+</button>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      padding: 3,
+                                      borderRadius: 999,
+                                      background: accent,
+                                      color: '#fff',
+                                    }}
+                                  >
+                                    <button
+                                      onClick={() => bump(key, -1)}
+                                      aria-label="Decrease"
+                                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: 16, lineHeight: 1, cursor: 'pointer', width: 22, height: 22, borderRadius: 999 }}
+                                    >
+                                      −
+                                    </button>
+                                    <span style={{ minWidth: 14, textAlign: 'center', fontWeight: 700, fontSize: 13 }}>
+                                      {qty}
+                                    </span>
+                                    <button
+                                      onClick={() => bump(key, 1)}
+                                      aria-label="Increase"
+                                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: 16, lineHeight: 1, cursor: 'pointer', width: 22, height: 22, borderRadius: 999 }}
+                                    >
+                                      +
+                                    </button>
                                   </div>
                                 )}
                               </div>

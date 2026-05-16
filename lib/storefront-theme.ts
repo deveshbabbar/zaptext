@@ -167,10 +167,12 @@ export function heroGradient(brandColor: string | undefined): string {
 
 // Container max-width tokens. Mobile is unconstrained (page is full-
 // bleed); we cap content width on tablet + desktop so menu/cart sit at
-// readable line lengths instead of stretching across 4K monitors.
+// readable line lengths instead of stretching across 4K monitors. 960
+// fits a single-column menu (≤720px content) plus future right-side
+// cart sidebar (≤240px) with breathing room. Phase 2 onward.
 export const LAYOUT = {
-  contentMaxWidth: 1280,
+  contentMaxWidth: 960,
   contentPaddingMobile: 16,
   contentPaddingDesktop: 24,
-  heroMaxHeight: 480, // cover photos taller than this get cropped
+  heroMaxHeight: 340, // hero never grows past this even on 4K screens
 } as const;

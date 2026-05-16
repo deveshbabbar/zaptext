@@ -12,7 +12,8 @@
 // the bot included it in the link).
 
 import { notFound } from 'next/navigation';
-import { getClientById } from '@/lib/db/clients';
+import { headers } from 'next/headers';
+import { getClientByIdOrSlug } from '@/lib/db/clients';
 import { getOutletsForClient } from '@/lib/db/outlets';
 import { getRecentOrderForCustomer } from '@/lib/db/restaurant-dine-in';
 import { MenuPublicClient } from './menu-public-client';
@@ -78,8 +79,24 @@ export default async function PublicMenuPage({
   const prefillLat = Number.isFinite(latNum) && Math.abs(latNum) <= 90 ? latNum : null;
   const prefillLng = Number.isFinite(lngNum) && Math.abs(lngNum) <= 180 ? lngNum : null;
 
-  const client = await getClientById(clientId).catch(() => null);
+  // Accepts either the opaque client_id (legacy /m links from the bot) or
+  // the human-readable slug (storefront subdomain rewrites from middleware).
+  const client = await getClientByIdOrSlug(clientId).catch(() => null);
   if (!client || client.type !== 'restaurant') notFound();
+
+  // Storefront-enabled gate. The middleware sets `x-storefront-host: 1` on
+  // every subdomain rewrite so we can tell the difference between:
+  //   (a) "customer arrived via <slug>.zaptext.shop" — public discovery,
+  //       must be opted-in by the owner via storefront_enabled
+  //   (b) "customer arrived via the /m/<id> link the bot sent them in chat"
+  //       — already trusted (bot only emits the link to known opted-in
+  //       customers), so storefront_enabled is irrelevant
+  // Without this branch, anyone who guessed a slug could browse a menu
+  // the owner hasn't published yet.
+  const h = await headers();
+  if (h.get('x-storefront-host') === '1' && !client.storefront_enabled) {
+    notFound();
+  }
 
   // Double-tap / spam guard. When the link carries a phone (?p=…)
   // AND that phone has placed a non-cancelled order in the last

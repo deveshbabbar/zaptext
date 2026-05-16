@@ -55,6 +55,20 @@ export const clients = pgTable(
     // trainers raise this to 120 or 240 without changing global behaviour.
     // Range guard is enforced at the API boundary (clamp to [30, 240]).
     stale_booking_minutes: integer('stale_booking_minutes'),
+    // Storefront subdomain (Phase 4-S). Empty until the owner enables the
+    // storefront; non-empty values must be DNS-safe (a-z, 0-9, hyphen) and
+    // are globally unique via the partial index below. Powers the
+    // <slug>.zaptext.shop public ordering page.
+    slug: varchar('slug', { length: 80 }).notNull().default(''),
+    // JSON array of serviceable delivery pincodes, stored as text to match
+    // the existing "JSON-in-text" pattern used by table_sessions and
+    // grocery categories. Empty '[]' = no pincode gating (storefront
+    // accepts orders from anywhere).
+    service_pincodes: text('service_pincodes').notNull().default('[]'),
+    // Storefront opt-in toggle. Owner must flip ON from settings before
+    // the subdomain rewrite serves real orders — prevents accidental
+    // exposure of half-configured menus.
+    storefront_enabled: boolean('storefront_enabled').notNull().default(false),
   },
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every
@@ -68,6 +82,12 @@ export const clients = pgTable(
       .where(sql`${t.phone_number_id} <> ''`),
     ownerUserIdIdx: index('clients_owner_user_id_idx').on(t.owner_user_id),
     statusIdx: index('clients_status_idx').on(t.status),
+    // Storefront subdomain lookup. Same partial-unique pattern as
+    // phone_number_id — empty strings are allowed (pre-storefront bots),
+    // any non-empty slug is globally unique.
+    slugIdx: uniqueIndex('clients_slug_unique')
+      .on(t.slug)
+      .where(sql`${t.slug} <> ''`),
   })
 );
 

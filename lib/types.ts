@@ -1715,6 +1715,16 @@ export interface ClientRow {
   // (minutes). Null/undefined means use the platform default (60).
   // Clamped to [30, 240] at the API boundary.
   stale_booking_minutes?: number | null;
+  // Storefront subdomain — DNS-safe slug used at <slug>.zaptext.shop.
+  // Empty/undefined = storefront not configured yet.
+  slug?: string;
+  // JSON array of serviceable pincodes (parsed from text). Empty array
+  // string '[]' means the storefront accepts orders from any pincode.
+  service_pincodes?: string;
+  // Owner-controlled storefront enable toggle. False/undefined = the
+  // subdomain returns 404 even if a slug is set, so accidental DNS
+  // hits never expose a half-configured menu.
+  storefront_enabled?: boolean;
 }
 
 export interface ConversationRow {

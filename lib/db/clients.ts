@@ -50,6 +50,9 @@ function dbRowToClient(row: DbClientRow): ClientRow {
     contact_number: row.contact_number ?? '',
     opt_in_accepted: row.opt_in_accepted,
     stale_booking_minutes: row.stale_booking_minutes,
+    slug: row.slug ?? '',
+    service_pincodes: row.service_pincodes ?? '[]',
+    storefront_enabled: row.storefront_enabled ?? false,
   };
 }
 
@@ -83,6 +86,36 @@ export async function getClientByPhoneNumberId(phoneNumberId: string): Promise<C
     .where(eq(clientsTable.phone_number_id, phoneNumberId))
     .limit(1);
   return rows[0] ? dbRowToClient(rows[0]) : null;
+}
+
+// Storefront subdomain lookup. The middleware extracts `<slug>` from a host
+// like `bigchillicafe.zaptext.shop` and the public ordering page calls this
+// helper to resolve it to a client row. Normalises the input to lowercase
+// since DNS labels are case-insensitive but our slug column is stored
+// lowercase by convention (enforced at the settings API boundary).
+export async function getClientBySlug(slug: string): Promise<ClientRow | null> {
+  const s = (slug || '').trim().toLowerCase();
+  if (!s) return null;
+  const rows = await db
+    .select()
+    .from(clientsTable)
+    .where(eq(clientsTable.slug, s))
+    .limit(1);
+  return rows[0] ? dbRowToClient(rows[0]) : null;
+}
+
+// Convenience for routes that receive a path segment which may be either the
+// opaque `client_id` (legacy /m links sent by the bot) or the human-readable
+// `slug` (storefront subdomain rewrites). Tries id first because that's the
+// hot path for existing chat-triggered links; falls back to slug for fresh
+// storefront traffic. Order matters: client_ids are UUID-ish and won't
+// collide with slugs in practice, but if a slug ever did equal a client_id,
+// the id wins (consistent with legacy behaviour).
+export async function getClientByIdOrSlug(idOrSlug: string): Promise<ClientRow | null> {
+  if (!idOrSlug) return null;
+  const byId = await getClientById(idOrSlug);
+  if (byId) return byId;
+  return getClientBySlug(idOrSlug);
 }
 
 // ─── writes ─────────────────────────────────────────────────────────────
@@ -198,4 +231,24 @@ export async function updateClientFields(clientId: string, fields: Record<string
 
 export async function updateClientField(clientId: string, field: string, value: string): Promise<void> {
   await updateClientFields(clientId, { [field]: value });
+}
+
+// Storefront settings update. Separate from updateClientFields because the
+// latter only accepts string values via its PATCHABLE_FIELDS allowlist;
+// storefront_enabled is a real boolean and service_pincodes goes in as a
+// JSON-encoded text array. Every field is optional — only present keys are
+// applied so the settings UI can do partial saves (e.g. toggle the enable
+// flag without re-sending the slug). Slug uniqueness is enforced by the
+// clients_slug_unique partial index — a duplicate insert will throw and
+// the API layer translates that into a 409.
+export async function updateClientStorefrontSettings(
+  clientId: string,
+  patch: { slug?: string; service_pincodes?: string; storefront_enabled?: boolean }
+): Promise<void> {
+  const set: Record<string, string | boolean> = {};
+  if (typeof patch.slug === 'string') set.slug = patch.slug.trim().toLowerCase();
+  if (typeof patch.service_pincodes === 'string') set.service_pincodes = patch.service_pincodes;
+  if (typeof patch.storefront_enabled === 'boolean') set.storefront_enabled = patch.storefront_enabled;
+  if (Object.keys(set).length === 0) return;
+  await db.update(clientsTable).set(set).where(eq(clientsTable.client_id, clientId));
 }

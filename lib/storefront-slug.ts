@@ -26,6 +26,17 @@ export const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set([
   'preview',
   'dev',
   'test',
+  // Clerk's satellite hostnames. The hosted Clerk instance for
+  // zaptext.shop lives at clerk.zaptext.shop and account-management
+  // flows route through accounts.zaptext.shop. If the storefront
+  // middleware rewrites these to /m/<slug>, Clerk's handshake never
+  // completes — every authed page on www.zaptext.shop 404s instead
+  // of refreshing the session. Adding auth + oauth as defensive
+  // entries against future Clerk URL patterns or other auth providers.
+  'clerk',
+  'accounts',
+  'auth',
+  'oauth',
 ]);
 
 // DNS-label rules: lowercase alphanumeric + hyphens, must start with an

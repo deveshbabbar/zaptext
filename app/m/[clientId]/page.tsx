@@ -17,6 +17,22 @@ import { getClientByIdOrSlug } from '@/lib/db/clients';
 import { getOutletsForClient } from '@/lib/db/outlets';
 import { getRecentOrderForCustomer } from '@/lib/db/restaurant-dine-in';
 import { MenuPublicClient } from './menu-public-client';
+import { PincodeGate } from './pincode-gate';
+
+// 6-digit Indian pincode validator — same shape used by the storefront
+// settings API. Defensive parse: malformed JSON or non-array contents
+// degrade to "no gating" rather than crashing the page.
+const PINCODE_REGEX = /^[1-8]\d{5}$/;
+function parseServicePincodes(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x): x is string => typeof x === 'string' && PINCODE_REGEX.test(x));
+  } catch {
+    return [];
+  }
+}
 
 interface MenuItem {
   name: string;
@@ -295,51 +311,64 @@ export default async function PublicMenuPage({
     });
   });
 
+  const servicePincodes = parseServicePincodes(client.service_pincodes);
+  // Storage key: prefer the human-readable slug when available so a
+  // customer who later visits the same restaurant via the subdomain
+  // doesn't get re-prompted. Falls back to client_id for bots that
+  // haven't picked a slug yet.
+  const pincodeStorageKey = client.slug || client.client_id;
+
   return (
-    <MenuPublicClient
+    <PincodeGate
+      storageKey={pincodeStorageKey}
       businessName={client.business_name}
-      clientId={clientId}
-      items={flatItems}
-      brandLogoUrl={brandLogoUrl}
-      brandColor={brandColor}
-      tagline={tagline}
-      prefillPhone={prefillPhone}
-      prefillQuery={prefillQuery}
-      prefillLat={prefillLat}
-      prefillLng={prefillLng}
-      bypassRecentOrderGuard={bypassRecent}
-      deliveryAvailable={deliveryAvailable}
-      dineInEnabled={dineInEnabled}
-      takeawayEnabled={takeawayEnabled}
-      compliance={{
-        fssaiLicenseNumber,
-        fssaiExpiryDate,
-        gstin,
-        jainCertified,
-        pureVeg,
-        sharedKitchenWithNonVeg,
-        calorieDisclosureRequired,
-      }}
-      pricing={{
-        rainSurchargePercent,
-        peakHourSurchargePercent,
-        festivalSurchargePercent,
-        deliveryCharges,
-        packagingChargesPerOrder,
-        packagingChargesPerItem,
-        minimumOrder,
-        deliveryRadius,
-      }}
-      outletMarkers={(await getOutletsForClient(clientId).catch(() => []))
-        .filter((o) => o.isActive && typeof o.latitude === 'number' && typeof o.longitude === 'number')
-        .map((o) => ({
-          id: o.id,
-          slug: o.slug,
-          name: o.name,
-          latitude: o.latitude as number,
-          longitude: o.longitude as number,
-          deliveryRadiusKm: o.deliveryRadiusKm,
-        }))}
-    />
+      servicePincodes={servicePincodes}
+    >
+      <MenuPublicClient
+        businessName={client.business_name}
+        clientId={clientId}
+        items={flatItems}
+        brandLogoUrl={brandLogoUrl}
+        brandColor={brandColor}
+        tagline={tagline}
+        prefillPhone={prefillPhone}
+        prefillQuery={prefillQuery}
+        prefillLat={prefillLat}
+        prefillLng={prefillLng}
+        bypassRecentOrderGuard={bypassRecent}
+        deliveryAvailable={deliveryAvailable}
+        dineInEnabled={dineInEnabled}
+        takeawayEnabled={takeawayEnabled}
+        compliance={{
+          fssaiLicenseNumber,
+          fssaiExpiryDate,
+          gstin,
+          jainCertified,
+          pureVeg,
+          sharedKitchenWithNonVeg,
+          calorieDisclosureRequired,
+        }}
+        pricing={{
+          rainSurchargePercent,
+          peakHourSurchargePercent,
+          festivalSurchargePercent,
+          deliveryCharges,
+          packagingChargesPerOrder,
+          packagingChargesPerItem,
+          minimumOrder,
+          deliveryRadius,
+        }}
+        outletMarkers={(await getOutletsForClient(clientId).catch(() => []))
+          .filter((o) => o.isActive && typeof o.latitude === 'number' && typeof o.longitude === 'number')
+          .map((o) => ({
+            id: o.id,
+            slug: o.slug,
+            name: o.name,
+            latitude: o.latitude as number,
+            longitude: o.longitude as number,
+            deliveryRadiusKm: o.deliveryRadiusKm,
+          }))}
+      />
+    </PincodeGate>
   );
 }

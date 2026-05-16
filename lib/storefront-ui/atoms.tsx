@@ -22,34 +22,34 @@ type IconStyle = CSSProperties;
 // ─────────────────────────── Icons (24-px viewBox, stroke-based)
 
 export const I = {
-  search: (s: IconStyle = {}) => (
+  search: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
     </svg>
   ),
-  back: (s: IconStyle = {}) => (
+  back: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="m15 18-6-6 6-6" />
     </svg>
   ),
-  close: (s: IconStyle = {}) => (
+  close: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   ),
-  star: (s: IconStyle = {}) => (
+  star: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={s}>
       <path d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l6.91-1.01z" />
     </svg>
   ),
-  info: (s: IconStyle = {}) => (
+  info: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 16v-5M12 8h.01" />
     </svg>
   ),
-  share: (s: IconStyle = {}) => (
+  share: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="18" cy="5" r="3" />
       <circle cx="6" cy="12" r="3" />
@@ -57,92 +57,92 @@ export const I = {
       <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
     </svg>
   ),
-  chevron: (s: IconStyle = {}) => (
+  chevron: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="m9 18 6-6-6-6" />
     </svg>
   ),
-  chevronDown: (s: IconStyle = {}) => (
+  chevronDown: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="m6 9 6 6 6-6" />
     </svg>
   ),
-  plus: (s: IconStyle = {}) => (
+  plus: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" style={s}>
       <path d="M12 5v14M5 12h14" />
     </svg>
   ),
-  minus: (s: IconStyle = {}) => (
+  minus: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" style={s}>
       <path d="M5 12h14" />
     </svg>
   ),
-  cart: (s: IconStyle = {}) => (
+  cart: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="9" cy="21" r="1" />
       <circle cx="20" cy="21" r="1" />
       <path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" />
     </svg>
   ),
-  bag: (s: IconStyle = {}) => (
+  bag: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
       <path d="M3 6h18" />
       <path d="M16 10a4 4 0 0 1-8 0" />
     </svg>
   ),
-  scooter: (s: IconStyle = {}) => (
+  scooter: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="5" cy="17" r="3" />
       <circle cx="19" cy="17" r="3" />
       <path d="M14 17H8M14 7h3l2 5-2 5M3 7h8l3 6" />
     </svg>
   ),
-  table: (s: IconStyle = {}) => (
+  table: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M3 8h18M5 8v10M19 8v10M3 12h2M19 12h2" />
     </svg>
   ),
-  whatsapp: (s: IconStyle = {}) => (
+  whatsapp: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={s}>
       <path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.2-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.1-1.2-.5-2.3-1.5-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6.1-.1.3-.3.4-.5.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.2-.3-.3-.6-.4Z" />
       <path d="M20.5 3.5A11.9 11.9 0 0 0 12 0C5.4 0 0 5.4 0 12c0 2.1.6 4.1 1.6 5.9L0 24l6.3-1.6a12 12 0 0 0 5.7 1.4c6.6 0 12-5.4 12-12 0-3.2-1.2-6.2-3.5-8.3ZM12 21.8c-1.8 0-3.6-.5-5.1-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.7 9.7 0 0 1 2.2 12c0-5.4 4.4-9.8 9.8-9.8 2.6 0 5.1 1 6.9 2.9a9.7 9.7 0 0 1 2.9 6.9c0 5.4-4.4 9.8-9.8 9.8Z" />
     </svg>
   ),
-  spice: (s: IconStyle = {}) => (
+  spice: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={s}>
       <path d="M11 2c0 4 3 6 3 9 0 1-1 2-3 2s-3-1-3-2C8 8 11 6 11 2Z" />
       <path d="M12 12c0 4 1 7 4 10-4 0-9-2-9-7 0-2 2-3 5-3Z" />
     </svg>
   ),
-  clock: (s: IconStyle = {}) => (
+  clock: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
     </svg>
   ),
-  pin: (s: IconStyle = {}) => (
+  pin: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
       <circle cx="12" cy="10" r="3" />
     </svg>
   ),
-  check: (s: IconStyle = {}) => (
+  check: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M20 6 9 17l-5-5" />
     </svg>
   ),
-  phone: (s: IconStyle = {}) => (
+  phone: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.5 19.5 0 0 1 5 13a19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 3.9 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8.1 9.6a16 16 0 0 0 6.3 6.3l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2.1Z" />
     </svg>
   ),
-  filter: (s: IconStyle = {}) => (
+  filter: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M4 6h16M7 12h10M10 18h4" />
     </svg>
   ),
-  tag: (s: IconStyle = {}) => (
+  tag: ({ s }: { s?: IconStyle } = {}) => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M20.5 12.5 12 21l-9-9V3h9Z" />
       <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" />

@@ -64,3 +64,49 @@ export function suggestSlug(input: string): string {
 export function storefrontUrlFor(slug: string): string {
   return `https://${slug}.${APP_DOMAIN}`;
 }
+
+// ─── Bot menu-link emission ─────────────────────────────────────────────
+//
+// Decides which URL the WhatsApp bot should send when a customer asks for
+// the menu. There are two surfaces today and we want the bot to prefer the
+// "nice" one when the owner has opted in:
+//
+//   1. <slug>.zaptext.shop                  (storefront subdomain — opted-in)
+//   2. https://www.zaptext.shop/m/<clientId> (legacy bot link — always works)
+//
+// Subdomain URL is only safe to emit when BOTH:
+//   - the client has a non-empty `slug` value (i.e. a DNS name is reserved)
+//   - the client has `storefront_enabled = true` (owner flipped the toggle)
+//
+// If either condition is missing the page would 404 (the subdomain gate in
+// /m/[clientId]/page.tsx returns notFound when the request arrived via
+// x-storefront-host and storefront_enabled is false), and we'd rather send
+// a working legacy link than a broken pretty one.
+//
+// The `appOrigin` parameter is the configured NEXT_PUBLIC_APP_URL — passed
+// in instead of read from env here so this helper stays env-free + testable.
+
+export interface MenuLinkClient {
+  client_id: string;
+  slug?: string | null;
+  storefront_enabled?: boolean | null;
+}
+
+export interface MenuLinkOptions {
+  /** Site origin for the legacy /m/<clientId> fallback. Strip trailing slash. */
+  appOrigin: string;
+  /** Optional query params appended to the URL (`?p=...&q=...&new=1`). */
+  query?: URLSearchParams;
+}
+
+export function buildPublicMenuUrl(client: MenuLinkClient, opts: MenuLinkOptions): string {
+  const qs = opts.query?.toString() || '';
+  const suffix = qs ? `?${qs}` : '';
+  const slug = (client.slug || '').trim().toLowerCase();
+  const enabled = Boolean(client.storefront_enabled);
+  if (slug && enabled && isValidSlug(slug) && !slugIsReserved(slug)) {
+    return `${storefrontUrlFor(slug)}/${suffix}`;
+  }
+  const origin = opts.appOrigin.replace(/\/+$/, '');
+  return `${origin}/m/${client.client_id}${suffix}`;
+}

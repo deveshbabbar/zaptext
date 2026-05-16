@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest, type NextFetchEvent } from 'next/server';
 import { APP_DOMAIN, RESERVED_SUBDOMAINS } from '@/lib/storefront-slug';
 
 const isPublicRoute = createRouteMatcher([
@@ -59,7 +59,21 @@ function detectStorefrontSlug(req: NextRequest): string | null {
   return sub;
 }
 
-export default clerkMiddleware(async (auth, req) => {
+// Clerk handler — runs only when the request is NOT a storefront subdomain.
+// Wrapping it as a named handler lets the outer middleware short-circuit
+// subdomain traffic BEFORE Clerk does any session work. Previously the
+// subdomain detection ran INSIDE clerkMiddleware, which meant Clerk still
+// initialised its handshake state on storefront hosts and bounced visitors
+// through clerk.zaptext.shop (a satellite domain that doesn't exist),
+// ending in a generic 404. Hoisting the subdomain check above Clerk fully
+// removes that auth path for public storefronts.
+const clerkHandler = clerkMiddleware(async (auth, req) => {
+  if (!isPublicRoute(req)) {
+    await auth.protect();
+  }
+});
+
+export default async function middleware(req: NextRequest, event: NextFetchEvent) {
   const slug = detectStorefrontSlug(req);
   if (slug) {
     const url = req.nextUrl.clone();
@@ -79,9 +93,6 @@ export default clerkMiddleware(async (auth, req) => {
       // through unchanged so internal redirects don't double-prefix.
       url.pathname = `/m/${slug}${path}`;
     }
-    // Storefront is public — bypass Clerk's auth.protect() entirely. The
-    // /m(.*) prefix is already listed in isPublicRoute so a follow-up
-    // request hitting the rewritten path also stays unauth.
     // Attach an internal header so the rewritten page can distinguish
     // "arrived via subdomain" from "arrived via legacy /m/<id> bot link"
     // and apply the storefront_enabled gate only to the former.
@@ -89,10 +100,8 @@ export default clerkMiddleware(async (auth, req) => {
     requestHeaders.set(STOREFRONT_HOST_HEADER, '1');
     return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
   }
-  if (!isPublicRoute(req)) {
-    await auth.protect();
-  }
-});
+  return clerkHandler(req, event);
+}
 
 export const config = {
   matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],

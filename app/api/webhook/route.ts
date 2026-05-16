@@ -25,6 +25,7 @@ import {
   getPendingPayment,
   clearPendingPayment,
 } from '@/lib/payments';
+import { buildPublicMenuUrl } from '@/lib/storefront-slug';
 import {
   getActiveInventory,
   isItemAvailableNow,
@@ -574,7 +575,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       if (phoneDigits) params.set('p', phoneDigits);
       params.set('lat', String(msg.locationLat));
       params.set('lng', String(msg.locationLng));
-      const menuUrl = `${origin}/m/${client.client_id}?${params.toString()}`;
+      const menuUrl = buildPublicMenuUrl(client, { appOrigin: origin, query: params });
 
       // Try to compute the assigned outlet so the customer sees an
       // immediate "Your order will be prepared at <outlet>" line.
@@ -647,7 +648,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         const params = new URLSearchParams();
         if (phoneDigits) params.set('p', phoneDigits);
         params.set('new', '1');
-        const menuUrl = `${origin}/m/${client.client_id}?${params.toString()}`;
+        const menuUrl = buildPublicMenuUrl(client, { appOrigin: origin, query: params });
         const dupeReply =
           `You just placed an order with us — the kitchen is on it.\n\n` +
           `Need to add items? Just reply here and we'll update the order.\n` +
@@ -663,7 +664,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         });
         continue;
       }
-      const menuUrl = `${origin}/m/${client.client_id}${phoneDigits ? `?p=${phoneDigits}` : ''}`;
+      const menuUrl = buildPublicMenuUrl(client, {
+        appOrigin: origin,
+        query: phoneDigits ? new URLSearchParams({ p: phoneDigits }) : undefined,
+      });
       const reply =
         `Yahaan se menu dekho aur order karo 👇\n${menuUrl}\n\n` +
         `Tap items → pick delivery / takeaway / dine-in → place order. Confirmation WhatsApp pe aa jayegi.`;
@@ -702,7 +706,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
           if (last) {
             const itemsLine = last.items.map((it) => `• ${it.qty}× ${it.name}`).join('\n');
             const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.zaptext.shop';
-            const menuUrl = `${origin}/m/${client.client_id}?p=${customerPhone}`;
+            const menuUrl = buildPublicMenuUrl(client, {
+              appOrigin: origin,
+              query: new URLSearchParams({ p: customerPhone }),
+            });
             const reply = [
               `Last time you ordered:`,
               itemsLine,
@@ -1341,8 +1348,7 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
       // well under WhatsApp's link-preview length tolerance.
       const trimmed = (msg.text || '').trim();
       if (trimmed.length >= 15) params.set('q', trimmed.slice(0, 200));
-      const qs = params.toString();
-      const menuUrl = `${origin}/m/${client.client_id}${qs ? `?${qs}` : ''}`;
+      const menuUrl = buildPublicMenuUrl(client, { appOrigin: origin, query: params });
       finalResponse = finalResponse.replace(/\[MENU_LINK\]/g, menuUrl);
     }
 

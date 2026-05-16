@@ -582,6 +582,50 @@ export function tplPaymentFailed(p: { name: string; plan: string; reason?: strin
   return { subject: `Payment failed — action needed`, html: wrap('Payment Failed', body, `${process.env.NEXT_PUBLIC_APP_URL}/client/subscription`, 'Update Payment') };
 }
 
+// ─── TEAM-MEMBER INVITE ───
+
+// Sent to the email address an owner adds in Team Members → Invite/Swap.
+// The invitee signs in to ZapText with this exact email (Clerk passwordless
+// or Google) and ZapText auto-promotes their row from 'invited' → 'active'
+// on first successful login (see findActiveMembershipForEmail in
+// lib/db/team-members.ts). The CTA points at /sign-in so they land in
+// Clerk's auth flow immediately.
+export function tplTeamInvite(p: {
+  inviteeEmail: string;
+  businessName: string;
+  outletName: string;
+  invitedByEmail: string;
+  role: 'outlet_manager' | 'staff';
+}) {
+  const roleLabel = p.role === 'outlet_manager' ? 'Outlet manager' : 'Staff';
+  const body = `
+    <p>Hi,</p>
+    <p><strong>${esc(p.invitedByEmail)}</strong> has invited you to manage
+    <strong>${esc(p.outletName)}</strong> on the <strong>${esc(p.businessName)}</strong>
+    ZapText dashboard as <strong>${esc(roleLabel)}</strong>.</p>
+    ${infoBox([
+      { label: 'Business', value: p.businessName },
+      { label: 'Outlet', value: p.outletName },
+      { label: 'Role', value: roleLabel },
+      { label: 'Your login email', value: p.inviteeEmail },
+    ])}
+    <p>Click the button below to sign in with <strong>${esc(p.inviteeEmail)}</strong>.
+    Your access activates automatically on first sign-in.</p>
+    <p style="color:#5a6b5d;font-size:13px;margin-top:18px;">If you weren't
+    expecting this invite, you can safely ignore this email — no account is
+    created until you sign in.</p>
+  `;
+  return {
+    subject: `You're invited to manage ${p.outletName} on ZapText`,
+    html: wrap(
+      'Team invite',
+      body,
+      `${process.env.NEXT_PUBLIC_APP_URL || 'https://zaptext.shop'}/sign-in`,
+      'Sign in to ZapText'
+    ),
+  };
+}
+
 // ─── Helper: send via Brevo with template ───
 
 export async function sendTemplate(

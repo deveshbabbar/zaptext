@@ -157,7 +157,7 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           <Label htmlFor="businessName">Business Name *</Label>
           <Input
             id="businessName"
-            placeholder="e.g., Dr. Sharma Clinic"
+            placeholder="e.g., Rohit's Biryani"
             value={businessNameRaw}
             onChange={(e) => onChange('businessName', e.target.value)}
           />
@@ -200,7 +200,7 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
           <Label htmlFor="ownerName">Owner / Contact Name *</Label>
           <Input
             id="ownerName"
-            placeholder="e.g., Dr. Rajesh Sharma"
+            placeholder="e.g., Rohit Sharma"
             value={(data.ownerName as string) || ''}
             onChange={(e) => onChange('ownerName', e.target.value)}
           />
@@ -320,7 +320,7 @@ export function CommonFieldsForm({ data, onChange }: CommonFieldsProps) {
         <Label htmlFor="welcomeMessage">Custom Welcome Message (optional)</Label>
         <Textarea
           id="welcomeMessage"
-          placeholder="Leave blank for AI-generated welcome. e.g., Namaste! Dr. Sharma Clinic mein aapka swagat hai. Main aapki kaise madad kar sakta hoon?"
+          placeholder="Leave blank for AI-generated welcome. e.g., Welcome to Rohit's Biryani! How can I help you today?"
           value={(data.welcomeMessage as string) || ''}
           onChange={(e) => onChange('welcomeMessage', e.target.value)}
           rows={2}

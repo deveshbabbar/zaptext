@@ -750,10 +750,7 @@ function FAQSection() {
                   +
                 </div>
               </summary>
-              <div
-                className="zt-faq-answer text-[var(--ink-2)] text-[15.5px] leading-[1.55] max-w-[720px] overflow-hidden transition-all"
-                style={{ maxHeight: 0 }}
-              >
+              <div className="zt-faq-answer text-[var(--ink-2)] text-[15.5px] leading-[1.55] max-w-[720px] overflow-hidden transition-all">
                 {f.a}
               </div>
             </details>
@@ -851,8 +848,6 @@ function Footer() {
             links={[
               { h: "/about", l: "About" },
               { h: "/contact", l: "Contact" },
-              { h: "#", l: "Careers" },
-              { h: "#", l: "Press" },
             ]}
           />
           <FootCol

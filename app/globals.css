@@ -258,8 +258,13 @@
   color: var(--background);
   transform: rotate(45deg);
 }
+/* Answer container starts collapsed and animates open. Base rule lives
+   in CSS (not inline) so the [open] override actually wins specificity. */
+.zt-faq .zt-faq-answer {
+  max-height: 0;
+}
 .zt-faq[open] .zt-faq-answer {
-  max-height: 320px;
+  max-height: 1600px;
   margin-top: 12px;
 }
 

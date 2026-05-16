@@ -21,6 +21,31 @@ import {
   swapOutletManagerEmail,
   type TeamMemberRole,
 } from '@/lib/db/team-members';
+import { getOutletById } from '@/lib/db/outlets';
+import { sendTemplate, tplTeamInvite } from '@/lib/email';
+
+// Best-effort invite email — never blocks the API response. If ZeptoMail
+// is down or the env keys are missing, the DB row still exists and the
+// owner can resend manually. The team-members-client UI currently claims
+// "Invite sent — waiting for first sign-in"; this is what actually makes
+// that claim true.
+async function dispatchInviteEmail(args: {
+  inviteeEmail: string;
+  businessName: string;
+  outletName: string;
+  invitedByEmail: string;
+  role: TeamMemberRole;
+}): Promise<void> {
+  try {
+    const tpl = tplTeamInvite(args);
+    const res = await sendTemplate(args.inviteeEmail, tpl);
+    if (!res.success) {
+      console.error('[team-invite] email send failed:', res.error);
+    }
+  } catch (err) {
+    console.error('[team-invite] email send threw:', err);
+  }
+}
 
 function validEmail(s: string): boolean {
   return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -71,6 +96,14 @@ export async function POST(request: NextRequest) {
       outletId: body.outletId,
       invitedByEmail: user.email,
     });
+    const outlet = await getOutletById(user.activeBot.client_id, body.outletId);
+    await dispatchInviteEmail({
+      inviteeEmail: created.email,
+      businessName: user.activeBot.business_name || 'your restaurant',
+      outletName: outlet?.name || body.outletId,
+      invitedByEmail: user.email,
+      role,
+    });
     return NextResponse.json({ ok: true, member: created });
   } catch (err) {
     return NextResponse.json(
@@ -110,6 +143,14 @@ export async function PATCH(request: NextRequest) {
       newEmail: body.newEmail!,
       role,
       invitedByEmail: user.email,
+    });
+    const outlet = await getOutletById(user.activeBot.client_id, body.outletId);
+    await dispatchInviteEmail({
+      inviteeEmail: created.email,
+      businessName: user.activeBot.business_name || 'your restaurant',
+      outletName: outlet?.name || body.outletId,
+      invitedByEmail: user.email,
+      role,
     });
     return NextResponse.json({ ok: true, member: created });
   } catch (err) {

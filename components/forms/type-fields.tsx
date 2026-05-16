@@ -580,17 +580,12 @@ function RestaurantForm({ data, onChange }: { data: Record<string, unknown>; onC
           <div>
             <Label>Delivery partners</Label>
             <div className="flex gap-2 mt-1 flex-wrap">
+              {/* Aggregator integrations (Zomato / Swiggy / Dunzo etc.)
+                  aren't wired up yet — own-rider is the only mode the
+                  bot can route to today. The other partners will be
+                  re-added once each integration ships. */}
               {[
                 { v: 'own_rider', l: '🛵 Own rider' },
-                { v: 'zomato', l: 'Zomato' },
-                { v: 'swiggy', l: 'Swiggy' },
-                { v: 'dunzo', l: 'Dunzo' },
-                { v: 'shadowfax', l: 'Shadowfax' },
-                { v: 'borzo', l: 'Borzo' },
-                { v: 'porter', l: 'Porter' },
-                { v: 'rapido', l: 'Rapido' },
-                { v: 'wefast', l: 'WeFast' },
-                { v: 'pidge', l: 'Pidge' },
               ].map((o) => {
                 const active = deliveryPartners.includes(o.v);
                 return (

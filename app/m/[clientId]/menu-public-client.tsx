@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { themeCssVars, heroGradient, resolveAccent, LAYOUT } from '@/lib/storefront-theme';
 
 // MapLibre lives inside MapPicker — touches `window`, so we lazy-load
 // client-side only. SSR returns nothing for this slot; the loading
@@ -102,6 +103,11 @@ interface Props {
    *  without branding still look fine. */
   coverImageUrl?: string;
   tagline?: string;
+  /** Hero meta pills — surfaced under the restaurant name in the hero.
+   *  All optional; missing values just drop their pill. */
+  city?: string;
+  cuisineType?: string;
+  workingHours?: string;
   prefillPhone?: string;
   deliveryAvailable?: boolean;
   dineInEnabled?: boolean;
@@ -188,6 +194,9 @@ export function MenuPublicClient({
   brandColor,
   coverImageUrl,
   tagline,
+  city,
+  cuisineType,
+  workingHours,
   prefillPhone = '',
   deliveryAvailable = true,
   dineInEnabled = true,
@@ -421,114 +430,192 @@ export function MenuPublicClient({
     boxSizing: 'border-box',
   };
 
+  // Theme-provider wrapper: paints the page dark, exposes CSS vars to
+  // every child, and removes the legacy 540px mobile-only cap so the
+  // storefront actually works on desktop. Children sit inside a centred
+  // content shell (max 960px until Phase 2 introduces the 2-column
+  // menu+cart grid).
+  const themeWrap = themeCssVars(brandColor);
+
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', paddingBottom: cartLines.length > 0 ? 140 : 32, maxWidth: 540, margin: '0 auto' }}>
-      {coverImageUrl ? (
-        // Wide hero banner — DotPe-style. The dark gradient on top keeps
-        // overlaid text readable regardless of how busy the photo is.
-        // Logo + name + tagline sit at the bottom-left so they don't
-        // compete with the cart icon area.
-        <header
-          style={{
-            position: 'relative',
-            width: '100%',
-            // Aspect-ratio sized banner — looks good on every viewport
-            // because the height scales with width. 3:1 is the sweet
-            // spot for restaurant cover photos on mobile.
-            aspectRatio: '3 / 1',
-            minHeight: 160,
-            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.10) 35%, rgba(0,0,0,0.65)), url(${coverImageUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            color: '#fff',
-          }}
-        >
-          <div
+    <div style={{ ...themeWrap, paddingBottom: cartLines.length > 0 ? 140 : 32 }}>
+      <div
+        style={{
+          maxWidth: LAYOUT.contentMaxWidth,
+          margin: '0 auto',
+          padding: 0,
+        }}
+      >
+      {/*
+        Hero — Phase 1 dark-theme overhaul. Three modes:
+          (a) cover image set → full-bleed photo banner with dark
+              gradient overlay so meta pills + name read cleanly
+              regardless of how busy the photo is
+          (b) brand color set + no cover → solid gradient hero in
+              the owner's accent so the page still has a strong
+              visual identity even without a photo
+          (c) nothing set → subtle dark hero with the letter avatar
+              so the page never looks broken / empty
+        All three render the SAME meta-pill row below the name
+        (cuisine · city · open status · tagline) so the layout is
+        consistent across owners with different branding depth.
+      */}
+      {(() => {
+        const heroAccent = resolveAccent(brandColor);
+        const heroBackground = coverImageUrl
+          ? `${heroGradient(brandColor)}, url(${coverImageUrl}) center/cover`
+          : `linear-gradient(135deg, ${heroAccent} 0%, ${heroAccent}88 50%, rgba(0,0,0,0.6) 100%)`;
+        const pillStyle: React.CSSProperties = {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          padding: '4px 10px',
+          background: 'rgba(255,255,255,0.16)',
+          borderRadius: 999,
+          fontSize: 12,
+          color: '#fff',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          fontWeight: 500,
+        };
+        return (
+          <header
             style={{
-              position: 'absolute',
-              left: 16,
-              right: 16,
-              bottom: 14,
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: 12,
+              position: 'relative',
+              width: '100%',
+              aspectRatio: '3 / 1',
+              minHeight: 220,
+              maxHeight: LAYOUT.heroMaxHeight,
+              backgroundImage: heroBackground,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              color: '#fff',
+              overflow: 'hidden',
             }}
           >
-            {brandLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={brandLogoUrl}
-                alt={businessName}
-                style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 12,
-                  objectFit: 'cover',
-                  border: '2px solid #fff',
-                  background: '#fff',
-                  flexShrink: 0,
-                  boxShadow: '0 4px 14px rgba(0,0,0,.25)',
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 12,
-                  background: '#fff',
-                  color: accent,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 800,
-                  fontSize: 22,
-                  flexShrink: 0,
-                  border: '2px solid #fff',
-                  boxShadow: '0 4px 14px rgba(0,0,0,.25)',
-                }}
-              >
-                {businessName.slice(0, 1).toUpperCase()}
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                padding: 'clamp(20px, 4vw, 36px) clamp(16px, 4vw, 36px)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                gap: 14,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14 }}>
+                {brandLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={brandLogoUrl}
+                    alt={businessName}
+                    style={{
+                      width: 'clamp(56px, 9vw, 78px)',
+                      height: 'clamp(56px, 9vw, 78px)',
+                      borderRadius: 14,
+                      objectFit: 'cover',
+                      background: '#fff',
+                      border: '3px solid rgba(255,255,255,0.95)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,.35)',
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 'clamp(56px, 9vw, 78px)',
+                      height: 'clamp(56px, 9vw, 78px)',
+                      borderRadius: 14,
+                      background: '#fff',
+                      color: heroAccent,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      fontSize: 'clamp(26px, 5vw, 36px)',
+                      flexShrink: 0,
+                      boxShadow: '0 8px 24px rgba(0,0,0,.35)',
+                    }}
+                  >
+                    {businessName.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ minWidth: 0, flex: 1, textShadow: '0 2px 8px rgba(0,0,0,.5)' }}>
+                  <h1
+                    style={{
+                      // Mix sans for compactness on mobile + a touch of
+                      // serif personality on desktop via fluid sizing.
+                      fontFamily:
+                        "'Playfair Display', Georgia, 'Times New Roman', serif",
+                      fontSize: 'clamp(26px, 4vw, 40px)',
+                      margin: 0,
+                      fontWeight: 700,
+                      letterSpacing: '-0.015em',
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {businessName}
+                  </h1>
+                  {tagline && (
+                    <p
+                      style={{
+                        fontSize: 'clamp(13px, 1.4vw, 15px)',
+                        margin: '6px 0 0',
+                        opacity: 0.95,
+                        fontWeight: 400,
+                        maxWidth: 540,
+                      }}
+                    >
+                      {tagline}
+                    </p>
+                  )}
+                </div>
               </div>
-            )}
-            <div style={{ minWidth: 0, flex: 1, textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>
-              <h1
-                style={{
-                  fontSize: 22,
-                  margin: 0,
-                  fontWeight: 700,
-                  letterSpacing: '-0.01em',
-                  lineHeight: 1.15,
-                }}
-              >
-                {businessName}
-              </h1>
-              {tagline && (
-                <p style={{ fontSize: 13, margin: '3px 0 0', opacity: 0.95 }}>{tagline}</p>
+              {/* Meta pill row — cuisine, city, status, hours. Each
+                  pill renders only if its source value is present. */}
+              {(cuisineType || city || workingHours || deliveryAvailable) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {cuisineType && <span style={pillStyle}>🍽️ {cuisineType}</span>}
+                  {city && <span style={pillStyle}>📍 {city}</span>}
+                  {workingHours && (
+                    <span style={pillStyle}>
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: 999,
+                          background: '#22C55E',
+                          boxShadow: '0 0 0 3px rgba(34,197,94,.25)',
+                        }}
+                      />
+                      Open · {workingHours}
+                    </span>
+                  )}
+                  {deliveryAvailable && <span style={pillStyle}>🛵 Delivery available</span>}
+                </div>
               )}
             </div>
-          </div>
-        </header>
-      ) : (
-        <header style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 5, display: 'flex', alignItems: 'center', gap: 12 }}>
-          {brandLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={brandLogoUrl} alt={businessName} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
-          ) : (
-            <div style={{ width: 44, height: 44, borderRadius: 10, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>
-              {businessName.slice(0, 1).toUpperCase()}
-            </div>
-          )}
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 style={{ fontSize: 19, margin: 0, fontWeight: 700, letterSpacing: '-0.01em' }}>{businessName}</h1>
-            <p style={{ fontSize: 12.5, color: '#666', margin: '2px 0 0' }}>
-              {tagline || 'Tap items to add / Items tap karke add kariye'}
-            </p>
-          </div>
-        </header>
-      )}
+          </header>
+        );
+      })()}
 
-      <main style={{ padding: '8px 12px' }}>
+      <main
+        style={{
+          // Phase 1: keep card backgrounds light for now (full dark
+          // surface refactor lands in Phase 2). We force the text color
+          // back to dark espresso here so the cream cascade from the
+          // root theme wrapper doesn't leak onto white cards and become
+          // unreadable. The hero + cart bar above/below set their own
+          // colours explicitly so they stay cream-on-dark.
+          padding: 'clamp(16px, 3vw, 28px) clamp(14px, 3vw, 28px)',
+          color: '#1A1410',
+          maxWidth: 720,
+          margin: '0 auto',
+          width: '100%',
+          boxSizing: 'border-box',
+        }}
+      >
         {prefillCount > 0 && (
           <div
             style={{
@@ -1046,20 +1133,64 @@ export function MenuPublicClient({
       </main>
 
       {cartLines.length > 0 && (
-        <footer style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: 12, background: '#fff', borderTop: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 12, maxWidth: 540, margin: '0 auto' }}>
+        <footer
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: '14px clamp(16px, 4vw, 24px)',
+            background: 'var(--zt-surface)',
+            borderTop: '1px solid var(--zt-border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            color: 'var(--zt-text)',
+            boxShadow: '0 -8px 24px rgba(0,0,0,.45)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              maxWidth: LAYOUT.contentMaxWidth,
+              margin: '0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              width: '100%',
+            }}
+          >
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: '#666' }}>{cartLines.reduce((s, l) => s + l.qty, 0)} item{cartLines.reduce((s, l) => s + l.qty, 0) === 1 ? '' : 's'}</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>₹{total.toFixed(0)}</div>
+            <div style={{ fontSize: 12, color: 'var(--zt-text-muted)', letterSpacing: '.02em' }}>
+              {cartLines.reduce((s, l) => s + l.qty, 0)} item{cartLines.reduce((s, l) => s + l.qty, 0) === 1 ? '' : 's'}
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--zt-text)' }}>₹{total.toFixed(0)}</div>
           </div>
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            style={{ padding: '12px 22px', borderRadius: 99, background: submitting ? '#888' : accent, color: '#fff', border: 'none', fontWeight: 700, fontSize: 15 }}
+            style={{
+              padding: '14px 26px',
+              borderRadius: 99,
+              background: submitting ? 'var(--zt-text-dim)' : accent,
+              color: '#fff',
+              border: 'none',
+              fontWeight: 700,
+              fontSize: 15,
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              boxShadow: submitting ? 'none' : `0 4px 16px ${accent}55`,
+              transition: 'transform .12s ease',
+            }}
           >
-            {submitting ? 'Sending…' : 'Place order / Order place'}
+            {submitting ? 'Sending…' : 'Place order'}
           </button>
+          </div>
         </footer>
       )}
+      </div>
     </div>
   );
 }

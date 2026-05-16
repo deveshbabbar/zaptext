@@ -21,6 +21,7 @@ interface Branding {
   brandLogoUrl: string;
   brandColor: string;
   tagline: string;
+  palette: string;
 }
 
 interface StorefrontState {
@@ -34,7 +35,22 @@ interface StorefrontState {
   branding: Branding;
 }
 
-const EMPTY_BRANDING: Branding = { coverImageUrl: '', brandLogoUrl: '', brandColor: '', tagline: '' };
+const EMPTY_BRANDING: Branding = {
+  coverImageUrl: '', brandLogoUrl: '', brandColor: '', tagline: '', palette: '',
+};
+
+// Five palettes — keys + display labels + the primary swatch shown in the
+// picker. Single source of truth on the API side
+// (app/api/client/restaurant/storefront/route.ts::ALLOWED_PALETTES) +
+// the storefront paint (lib/storefront-ui/atoms.tsx::PALETTES) — both
+// must include exactly these five.
+const PALETTE_OPTIONS: Array<{ key: string; label: string; primary: string; dark: string; soft: string }> = [
+  { key: 'sage',       label: 'Sage',       primary: '#5C7A4F', dark: '#3F5736', soft: '#E7EFE1' },
+  { key: 'forest',     label: 'Forest',     primary: '#2F5D3A', dark: '#1F3D26', soft: '#DCE9DA' },
+  { key: 'olive',      label: 'Olive',      primary: '#7A8540', dark: '#54592D', soft: '#EFF0DE' },
+  { key: 'charcoal',   label: 'Charcoal',   primary: '#3D4744', dark: '#1F2421', soft: '#E5E5E1' },
+  { key: 'terracotta', label: 'Terracotta', primary: '#B5664A', dark: '#7A3F2A', soft: '#F3E2D4' },
+];
 
 interface SaveError {
   error?: string;
@@ -204,9 +220,15 @@ export function StorefrontForm() {
   const pincodesDirty = JSON.stringify(pincodes) !== JSON.stringify(state.servicePincodes);
   const brandingDirty = JSON.stringify(branding) !== JSON.stringify(state.branding);
   const canEnable = !!state.slug;
-  const previewAccent = branding.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(branding.brandColor)
-    ? branding.brandColor
-    : '#111';
+  // Preview accent drives the palette colour shown in the live preview
+  // tile (and the place-order button mock-up). Resolves the owner's
+  // selected palette to its primary hex; sage by default. brandColor
+  // is no longer used by the storefront paint but the field is still in
+  // the UI for owners who haven't switched workflows yet — its value
+  // doesn't affect the preview.
+  const selectedPalette = PALETTE_OPTIONS.find((p) => p.key === branding.palette);
+  const previewAccent = (selectedPalette ?? PALETTE_OPTIONS[0]).primary;
+  const previewDark = (selectedPalette ?? PALETTE_OPTIONS[0]).dark;
 
   return (
     <div className="space-y-5">
@@ -353,6 +375,59 @@ export function StorefrontForm() {
               <p className="text-[11px] text-muted-foreground mt-1">{branding.tagline.length}/120</p>
             </div>
             <div>
+              <Label>Palette</Label>
+              <p className="text-[11px] text-muted-foreground mt-1 mb-2">
+                Choose the colour scheme for your storefront. Applies to the hero, cart bar, place-order button, and accents.
+              </p>
+              <div
+                role="radiogroup"
+                aria-label="Storefront palette"
+                className="flex flex-wrap gap-2"
+              >
+                {PALETTE_OPTIONS.map((p) => {
+                  const isActive = (branding.palette || 'sage') === p.key;
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      onClick={() => updateBranding('palette', p.key)}
+                      disabled={saving}
+                      title={p.label}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 12px 6px 6px',
+                        borderRadius: 999,
+                        border: `1.5px solid ${isActive ? p.primary : 'var(--line)'}`,
+                        background: isActive ? p.soft : 'var(--card)',
+                        color: 'var(--ink)',
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        transition: 'border-color .15s, background .15s',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 999,
+                          background: `linear-gradient(135deg, ${p.primary}, ${p.dark})`,
+                          border: `1.5px solid ${isActive ? '#fff' : 'transparent'}`,
+                          boxShadow: isActive ? `0 0 0 1.5px ${p.primary}` : 'none',
+                        }}
+                        aria-hidden
+                      />
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
               <Label htmlFor="brand-color">Brand color</Label>
               <div className="flex items-center gap-2">
                 <input
@@ -417,7 +492,7 @@ export function StorefrontForm() {
                   height: 140,
                   backgroundImage: branding.coverImageUrl
                     ? `linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.55)), url(${branding.coverImageUrl})`
-                    : `linear-gradient(135deg, ${previewAccent}, ${previewAccent}cc)`,
+                    : `linear-gradient(180deg, ${previewAccent} 0%, ${previewDark} 100%)`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}

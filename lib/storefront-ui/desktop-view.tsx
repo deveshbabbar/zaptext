@@ -39,6 +39,9 @@ export interface DesktopViewProps {
   tagline?: string;
   brandColor?: string;
   brandLogoUrl?: string;
+  /** Storefront palette name — sage / forest / olive / charcoal /
+   *  terracotta. Unknown / empty falls back to sage. */
+  palette?: string;
   city?: string;
   cuisineType?: string;
   workingHours?: string;
@@ -77,7 +80,7 @@ function splitKey(key: string): { itemId: string; variant: string | null } {
 
 export function DesktopView(props: DesktopViewProps) {
   const {
-    clientId, businessName, tagline, brandColor, brandLogoUrl,
+    clientId, businessName, tagline, brandColor, brandLogoUrl, palette,
     city, cuisineType, workingHours, phone, address, deliveryRadius, minimumOrder,
     fssaiLicenseNumber, gstin,
     deliveryAvailable, takeawayEnabled, dineInEnabled,
@@ -252,7 +255,7 @@ export function DesktopView(props: DesktopViewProps) {
 
   if (submitted) {
     return (
-      <div style={{ ...storefrontThemeStyle(brandColor), padding: '80px 32px' }}>
+      <div style={{ ...storefrontThemeStyle(brandColor, palette), padding: '80px 32px' }}>
         <div style={{
           maxWidth: 480, margin: '0 auto', textAlign: 'center',
           background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
@@ -288,7 +291,7 @@ export function DesktopView(props: DesktopViewProps) {
   }
 
   return (
-    <div style={storefrontThemeStyle(brandColor)}>
+    <div style={storefrontThemeStyle(brandColor, palette)}>
       <TopBar
         businessName={businessName} city={city} brandLogoUrl={brandLogoUrl}
         cartCount={itemCount} query={query} setQuery={setQuery}

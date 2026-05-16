@@ -59,9 +59,19 @@ interface Branding {
   brandLogoUrl: string;
   brandColor: string;
   tagline: string;
+  /** One of the 5 storefront palettes (sage / forest / olive / charcoal
+   *  / terracotta). Empty string = use the default sage at render time. */
+  palette: string;
 }
 
-const EMPTY_BRANDING: Branding = { coverImageUrl: '', brandLogoUrl: '', brandColor: '', tagline: '' };
+const EMPTY_BRANDING: Branding = {
+  coverImageUrl: '', brandLogoUrl: '', brandColor: '', tagline: '', palette: '',
+};
+
+// Allowed palette names — matches PALETTES keys in lib/storefront-ui/atoms.tsx.
+// Keep these two lists in sync; if the design adds a sixth palette, add it
+// in both places. Empty string is also accepted (= clears to sage default).
+const ALLOWED_PALETTES = new Set(['sage', 'forest', 'olive', 'charcoal', 'terracotta']);
 
 // Hex colour shapes accepted: #RGB / #RRGGBB / #RRGGBBAA. We lowercase
 // before validation since the input element may emit uppercase.
@@ -87,11 +97,15 @@ function parseKb(raw: string): Record<string, unknown> {
 }
 
 function brandingFromKb(kb: Record<string, unknown>): Branding {
+  const rawPalette = typeof kb.palette === 'string' ? kb.palette.trim().toLowerCase() : '';
   return {
     coverImageUrl: typeof kb.coverImageUrl === 'string' ? kb.coverImageUrl : '',
     brandLogoUrl: typeof kb.brandLogoUrl === 'string' ? kb.brandLogoUrl : '',
     brandColor: typeof kb.brandColor === 'string' ? kb.brandColor : '',
     tagline: typeof kb.tagline === 'string' ? kb.tagline : '',
+    // Only surface a palette name if it's one we recognise — protects the
+    // UI from stale / typo values that might have made it into kb.
+    palette: ALLOWED_PALETTES.has(rawPalette) ? rawPalette : '',
   };
 }
 
@@ -121,6 +135,15 @@ function sanitizeBranding(input: Partial<Record<keyof Branding, unknown>>): Part
     const v = typeof input.tagline === 'string' ? input.tagline.trim() : '';
     if (v.length > 120) throw new Error('Tagline is too long (max 120 chars)');
     out.tagline = v;
+  }
+  if ('palette' in input) {
+    const v = typeof input.palette === 'string' ? input.palette.trim().toLowerCase() : '';
+    // Empty string is allowed (= clear to default sage). Anything else
+    // must be one of the 5 known palette names.
+    if (v && !ALLOWED_PALETTES.has(v)) {
+      throw new Error('Palette must be one of: sage, forest, olive, charcoal, terracotta');
+    }
+    out.palette = v;
   }
   return out;
 }

@@ -39,7 +39,7 @@ function splitKey(key: string): { itemId: string; variant: string | null } {
 
 export function MobileView(props: MobileViewProps) {
   const {
-    clientId, businessName, tagline, brandLogoUrl,
+    clientId, businessName, tagline, brandLogoUrl, palette,
     city, cuisineType, workingHours, address,
     deliveryRadius, minimumOrder,
     deliveryAvailable, takeawayEnabled, dineInEnabled,
@@ -212,7 +212,7 @@ export function MobileView(props: MobileViewProps) {
 
   if (submitted) {
     return (
-      <div style={{ ...storefrontThemeStyle(undefined), padding: '60px 20px', textAlign: 'center' }}>
+      <div style={{ ...storefrontThemeStyle(undefined, palette), padding: '60px 20px', textAlign: 'center' }}>
         <div style={{
           maxWidth: 380, margin: '0 auto',
           background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
@@ -249,7 +249,7 @@ export function MobileView(props: MobileViewProps) {
   }
 
   return (
-    <div style={storefrontThemeStyle(undefined)}>
+    <div style={storefrontThemeStyle(undefined, palette)}>
       <div ref={scrollerRef} style={{
         position: 'relative', display: 'flex', flexDirection: 'column',
         minHeight: '100vh', maxWidth: 540, margin: '0 auto',

@@ -405,35 +405,59 @@ export function BillRow({
 // ─────────────────────────── Root theme CSS variables
 //
 // Spread the return of this onto the root storefront <div>; every child
-// component reads var(--zt-*). Owner-provided brandColor overrides the
-// default sage primary. Default palette = Sage (matches the design files).
+// component reads var(--zt-*). Owner picks one of 5 named palettes (see
+// PALETTES below) — the design files specify exactly these five and no
+// more. Free-form brandColor is ignored (was an earlier exploration);
+// owners pick a palette by name in /client/restaurant/storefront.
 
-const SAGE: [string, string, string] = ['#5C7A4F', '#3F5736', '#E7EFE1'];
+// Named palettes from desktop-app.jsx::D_PALETTES + app.jsx::PALETTES in
+// the design files at the repo root. Each tuple is [primary, dark, soft]:
+//   - primary is the main accent (gradient start, CTAs, active states)
+//   - dark   is the gradient end + hover / pressed states
+//   - soft   is the wash colour for active filter chips + faint surfaces
+// Sage is the default — matches what we've been shipping since D1.
+export const PALETTES: Record<string, readonly [string, string, string]> = {
+  sage:        ['#5C7A4F', '#3F5736', '#E7EFE1'],
+  forest:      ['#2F5D3A', '#1F3D26', '#DCE9DA'],
+  olive:       ['#7A8540', '#54592D', '#EFF0DE'],
+  charcoal:    ['#3D4744', '#1F2421', '#E5E5E1'],
+  terracotta:  ['#B5664A', '#7A3F2A', '#F3E2D4'],
+};
 
-function isValidHex(h: string): boolean {
-  return /^#[0-9a-f]{3,8}$/i.test(h);
+// Friendly display labels for the settings UI palette picker — keep the
+// keys above stable (they're persisted to knowledge_base_json) while the
+// labels can evolve without a migration.
+export const PALETTE_LABELS: Record<string, string> = {
+  sage: 'Sage',
+  forest: 'Forest',
+  olive: 'Olive',
+  charcoal: 'Charcoal',
+  terracotta: 'Terracotta',
+};
+
+export type PaletteName = keyof typeof PALETTES;
+
+// Resolve a palette name to its colour tuple. Any unknown / undefined
+// input falls back to sage so a typo or stale value can never break the
+// storefront paint.
+function resolvePalette(name: string | undefined): readonly [string, string, string] {
+  if (!name) return PALETTES.sage;
+  const v = name.trim().toLowerCase();
+  return PALETTES[v] ?? PALETTES.sage;
 }
 
-// Light-tint a brand color for primary-soft surfaces by appending a low
-// alpha — relies on the surface underneath being white. Falls back to the
-// sage soft (#E7EFE1) when the brand color is missing or malformed.
-function softTint(base: string | undefined): string {
-  if (!base || !isValidHex(base)) return SAGE[2];
-  const m6 = base.match(/^#([0-9a-f]{6})$/i);
-  if (m6) return `${base}1F`;
-  return SAGE[2];
+// Public lookup: components outside atoms.tsx use this when they need
+// raw hex values (the settings page previews the chosen palette before
+// the owner hits save).
+export function getPaletteColors(name: string | undefined): readonly [string, string, string] {
+  return resolvePalette(name);
 }
 
-// Note: brandColor is intentionally IGNORED in the current build — the
-// design system specifies the sage palette exactly and the owner asked
-// for "bilkul aisa bana do, there should be no changes made in this
-// design." Palette selection (sage / forest / olive / charcoal /
-// terracotta) is a planned D4 task that will let owners pick from a
-// fixed set rather than feed an arbitrary hex.
-export function storefrontThemeStyle(_brandColor: string | undefined): CSSProperties {
-  const primary = SAGE[0];
-  const primaryDark = SAGE[1];
-  const primarySoft = SAGE[2];
+export function storefrontThemeStyle(
+  _brandColor: string | undefined,
+  paletteName?: string,
+): CSSProperties {
+  const [primary, primaryDark, primarySoft] = resolvePalette(paletteName);
   return {
     ['--zt-bg' as string]: '#FAFAF6',
     ['--zt-surface' as string]: '#FFFFFF',

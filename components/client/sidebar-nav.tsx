@@ -102,6 +102,7 @@ const VERTICAL_ITEMS: Record<string, NavItem[]> = {
     { href: '/client/restaurant/tables', icon: '🪑', label: 'Reservations' },
     { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
     { href: '/client/restaurant/outlets', icon: '🏢', label: 'Outlets' },
+    { href: '/client/restaurant/storefront', icon: '🛒', label: 'Storefront' },
     { href: '/client/restaurant/team', icon: '👥', label: 'Team Members' },
   ],
   coaching: [

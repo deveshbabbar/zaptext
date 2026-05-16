@@ -189,6 +189,7 @@ export default async function PublicMenuPage({
   let cuisineType = '';
   let workingHours = '';
   let address = '';
+  let palette = '';
   let deliveryAvailable = true;
   let dineInEnabled = true;
   let takeawayEnabled = true;
@@ -232,6 +233,7 @@ export default async function PublicMenuPage({
     if (typeof kb.cuisineType === 'string') cuisineType = kb.cuisineType;
     if (typeof kb.workingHours === 'string') workingHours = kb.workingHours;
     if (typeof kb.address === 'string') address = kb.address;
+    if (typeof kb.palette === 'string') palette = kb.palette;
     if (typeof kb.fssaiLicenseNumber === 'string') fssaiLicenseNumber = kb.fssaiLicenseNumber;
     if (typeof kb.fssaiExpiryDate === 'string') fssaiExpiryDate = kb.fssaiExpiryDate;
     if (typeof kb.fssaiCentralLicence === 'boolean') fssaiCentralLicence = kb.fssaiCentralLicence;
@@ -355,6 +357,7 @@ export default async function PublicMenuPage({
         workingHours={workingHours}
         phone={client.contact_number || client.whatsapp_number}
         address={address}
+        palette={palette}
         prefillPhone={prefillPhone}
         prefillQuery={prefillQuery}
         prefillLat={prefillLat}

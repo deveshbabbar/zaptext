@@ -84,6 +84,10 @@ interface Props {
   workingHours?: string;
   phone?: string;
   address?: string;
+  /** Owner-chosen storefront palette name. One of sage / forest / olive /
+   *  charcoal / terracotta — anything else (including empty) falls back
+   *  to sage at render time. */
+  palette?: string;
   prefillPhone?: string;
   deliveryAvailable?: boolean;
   dineInEnabled?: boolean;
@@ -111,6 +115,7 @@ export function MenuPublicClient({
   workingHours,
   phone,
   address,
+  palette,
   prefillPhone,
   deliveryAvailable = true,
   dineInEnabled = true,
@@ -146,6 +151,7 @@ export function MenuPublicClient({
     workingHours,
     phone,
     address,
+    palette,
     deliveryRadius: pricing?.deliveryRadius,
     minimumOrder: pricing?.minimumOrder,
     fssaiLicenseNumber: compliance?.fssaiLicenseNumber,

@@ -271,10 +271,18 @@
 /* ─── Mobile responsiveness ─── */
 
 /* Prevent any stray horizontal scroll caused by absolute-positioned
-   landing-page decorations or hero stickers on narrow viewports. */
+   landing-page decorations or hero stickers on narrow viewports.
+   Use `clip` instead of `hidden` so `position: sticky` keeps working
+   on descendants (the storefront's 3-column layout relies on it for
+   the CategorySidebar + CartPanel). Chromium has a long-standing bug
+   where `overflow-x: hidden` on html/body silently disables sticky
+   deep in the tree; `overflow-x: clip` achieves the same visual
+   clipping without creating a scroll container. Browser support:
+   Chrome 90+ / Firefox 81+ / Safari 16+. Older Safari falls back
+   to default visible — minor cosmetic regression at worst. */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Most dashboard pages wrap their content in a `<div style={{padding:'28px 32px 60px'}}>`

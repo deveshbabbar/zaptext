@@ -16,6 +16,7 @@ import {
 } from './atoms';
 import type { FlatItem, DesktopViewProps } from './desktop-view';
 import { InfoModal } from './info-modal';
+import { TrackingScreen } from './tracking-screen';
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
 
@@ -212,39 +213,18 @@ export function MobileView(props: MobileViewProps) {
 
   if (submitted) {
     return (
-      <div style={{ ...storefrontThemeStyle(undefined, palette), padding: '60px 20px', textAlign: 'center' }}>
-        <div style={{
-          maxWidth: 380, margin: '0 auto',
-          background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
-          borderRadius: 18, padding: '36px 24px',
-          boxShadow: '0 12px 32px rgba(40,55,30,.06)',
-        }}>
-          <div style={{ fontSize: 48, marginBottom: 14 }}>✅</div>
-          <h1 style={{
-            fontFamily: 'var(--zt-font-display)', fontSize: 28, margin: 0,
-            color: 'var(--zt-ink)', letterSpacing: -.3,
-          }}>Order placed!</h1>
-          <p style={{ color: 'var(--zt-ink-muted)', margin: '10px 0 6px', fontSize: 13.5 }}>
-            {submitted.mode === 'delivery' ? 'Delivery — coming to you'
-              : submitted.mode === 'dine_in' ? `Dine-in — Table ${tableNumber}`
-              : 'Takeaway — ready for pickup'} · <b style={{ color: 'var(--zt-ink)' }}>₹{submitted.total.toFixed(0)}</b>
-          </p>
-          <p style={{ color: 'var(--zt-ink-muted)', fontSize: 12.5, lineHeight: 1.5, margin: '12px 0 20px' }}>
-            The kitchen has been notified. WhatsApp confirmation with payment instructions is on the way.
-          </p>
-          <button type="button" onClick={() => {
-            setSubmitted(null); setCart({}); setShowCheckout(false);
-            setNotes(''); setDeliveryAddress(''); setTableNumber('');
-          }} style={{
-            padding: '11px 22px', borderRadius: 999,
-            background: 'var(--zt-primary)', color: '#fff',
-            border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}>
-            Order more
-          </button>
-        </div>
-      </div>
+      <TrackingScreen
+        orderId={submitted.orderId}
+        total={submitted.total}
+        mode={submitted.mode}
+        tableNumber={tableNumber}
+        businessName={businessName}
+        palette={palette}
+        onOrderMore={() => {
+          setSubmitted(null); setCart({}); setShowCheckout(false);
+          setNotes(''); setDeliveryAddress(''); setTableNumber('');
+        }}
+      />
     );
   }
 

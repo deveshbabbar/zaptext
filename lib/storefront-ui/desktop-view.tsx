@@ -303,7 +303,15 @@ export function DesktopView(props: DesktopViewProps) {
       <div style={{
         maxWidth: 1320, margin: '0 auto', padding: '32px',
         display: 'grid', gridTemplateColumns: '220px 1fr 380px', gap: 32,
-        alignItems: 'flex-start',
+        // CRITICAL: `alignItems: 'start'` (the CSS Grid value, not the
+        // flex-only 'flex-start') stops grid tracks from stretching the
+        // sidebar + cart panel to the tallest column's height. Without
+        // this, the sticky <aside> elements get sized to the entire
+        // menu column's height, and `position: sticky` silently does
+        // nothing because there's no scroll-room left inside their own
+        // track. Pair with `alignSelf: 'start'` on each sticky aside
+        // below for double safety across browsers.
+        alignItems: 'start',
       }}>
         <CategorySidebar
           categories={allCategories} activeCat={activeCat} grouped={grouped}
@@ -579,7 +587,10 @@ function CategorySidebar({
 }) {
   const countByCat = new Map(grouped.map((g) => [g.cat, g.items.length]));
   return (
-    <aside style={{ position: 'sticky', top: 90 }}>
+    // alignSelf: 'start' prevents the grid track from stretching this
+    // aside to the menu column's height, which would otherwise make
+    // position: sticky a no-op. top: 90 = TopBar height + breathing room.
+    <aside style={{ position: 'sticky', top: 90, alignSelf: 'start' }}>
       <div style={{
         fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
         letterSpacing: .8, textTransform: 'uppercase', marginBottom: 12, padding: '0 12px',
@@ -804,7 +815,10 @@ function CartPanel({
   bump: (k: string, d: number) => void; onCheckout: () => void;
 }) {
   return (
-    <aside id="zt-cart-anchor" style={{ position: 'sticky', top: 90 }}>
+    // Same sticky rules as CategorySidebar: position + top + alignSelf
+    // together. Without alignSelf: 'start' the grid stretches this card
+    // to the menu column's height and sticky stops working.
+    <aside id="zt-cart-anchor" style={{ position: 'sticky', top: 90, alignSelf: 'start' }}>
       <div style={{
         background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
         borderRadius: 16, overflow: 'hidden',

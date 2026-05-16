@@ -8,6 +8,7 @@ import { PLANS, TRIAL_MESSAGE_LIMIT, isTrialPlan } from '@/lib/plans';
 import { getOutboundCountForOwner } from '@/lib/db/conversations';
 import { findActiveMembershipForEmail } from '@/lib/db/team-members';
 import { getClientById } from '@/lib/db/clients';
+import { getOutletById } from '@/lib/db/outlets';
 import Link from 'next/link';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
 import { AppShell } from '@/components/app/app-shell';
@@ -20,9 +21,13 @@ export default async function ClientLayout({ children }: { children: React.React
   // should still see the restaurant nav (read-only-ish, owner-only
   // pages gated server-side). We synthesise an effective bot type so
   // VERTICAL_ITEMS lookup works, and pass `isOutletManager` so the
-  // sidebar hides owner-only entries (Outlets, Team Members).
+  // sidebar hides owner-only entries (Outlets, Team Members, Menu,
+  // Specials), the BotSwitcher (they have no bots to switch between),
+  // and the subscription banner (the chain owner pays, not them).
   let isOutletManager = false;
   let effectiveBotType: string | undefined = user.activeBot?.type;
+  let managedBusinessName: string | null = null;
+  let managedOutletName: string | null = null;
   if (!user.activeBot && user.email) {
     try {
       const memberships = await findActiveMembershipForEmail(user.email);
@@ -31,6 +36,9 @@ export default async function ClientLayout({ children }: { children: React.React
         if (ownerBot && ownerBot.type === 'restaurant') {
           isOutletManager = true;
           effectiveBotType = 'restaurant';
+          managedBusinessName = ownerBot.business_name || null;
+          const outlet = await getOutletById(ownerBot.client_id, m.outlet_id).catch(() => null);
+          managedOutletName = outlet?.name || m.outlet_id;
           break;
         }
       }
@@ -48,7 +56,11 @@ export default async function ClientLayout({ children }: { children: React.React
   let trialCapHit = false;
 
   try {
-    const sub = await getActiveSubscription(user.userId);
+    // Outlet managers don't have their own subscription — the chain
+    // owner pays. Skip this query (saves a DB round-trip) and leave
+    // hasActive=false so the owner-only plan banner is not rendered
+    // for them (see the isOutletManager guard below).
+    const sub = isOutletManager ? null : await getActiveSubscription(user.userId);
     if (sub) {
       hasActive = true;
       const plan = PLANS[sub.plan];
@@ -106,20 +118,52 @@ export default async function ClientLayout({ children }: { children: React.React
           </div>
         </Link>
 
-        <BotSwitcher bots={user.allBots} activeBotId={user.activeBot?.client_id || null} />
+        {isOutletManager ? (
+          // Outlet manager "context card" replaces the BotSwitcher +
+          // subscription banner. Tells them at a glance which chain
+          // and outlet they're working in — and reads as "manager UX"
+          // rather than the owner "no plan / create bot" mess.
+          <div
+            className="mx-2 mb-3.5 rounded-[12px] border"
+            style={{
+              padding: '12px 14px',
+              background: 'color-mix(in oklab, var(--accent) 12%, transparent)',
+              borderColor: 'color-mix(in oklab, var(--accent) 28%, transparent)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[10px] grid place-items-center text-[20px] flex-shrink-0 bg-amber-100">
+                🍽️
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[.08em] text-white/55">
+                  Outlet manager
+                </div>
+                <div className="text-[14px] font-bold text-sidebar-foreground truncate leading-tight">
+                  {managedOutletName || 'Outlet'}
+                </div>
+                <div className="text-[10.5px] text-white/55 truncate mt-0.5">
+                  {managedBusinessName || 'Restaurant chain'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <BotSwitcher bots={user.allBots} activeBotId={user.activeBot?.client_id || null} />
 
-        <div
-          className="rounded-[12px] mb-3.5 mt-2 mx-2"
-          style={{
-            padding: '10px 12px',
-            background: hasActive
-              ? 'color-mix(in oklab, var(--accent) 14%, transparent)'
-              : 'color-mix(in oklab, #E89A1C 14%, transparent)',
-            border: hasActive
-              ? '1px solid color-mix(in oklab, var(--accent) 30%, transparent)'
-              : '1px solid color-mix(in oklab, #E89A1C 40%, transparent)',
-          }}
-        >
+            <div
+              className="rounded-[12px] mb-3.5 mt-2 mx-2"
+              style={{
+                padding: '10px 12px',
+                background: hasActive
+                  ? 'color-mix(in oklab, var(--accent) 14%, transparent)'
+                  : 'color-mix(in oklab, #E89A1C 14%, transparent)',
+                border: hasActive
+                  ? '1px solid color-mix(in oklab, var(--accent) 30%, transparent)'
+                  : '1px solid color-mix(in oklab, #E89A1C 40%, transparent)',
+              }}
+            >
           <div className="flex justify-between text-[12px]">
             <b className={`${hasActive ? (isTrial ? 'text-[#ffb54a]' : 'text-[var(--accent)]') : 'text-[#ffb54a]'} tracking-[-0.01em]`}>
               {hasActive
@@ -168,7 +212,9 @@ export default async function ClientLayout({ children }: { children: React.React
           ) : (
             <div className="text-[10.5px] text-[#ffb54a] mt-1">Subscribe to create bots</div>
           )}
-        </div>
+            </div>
+          </>
+        )}
 
         <SidebarNav isTrial={isTrial} activeBotType={effectiveBotType} isOutletManager={isOutletManager} />
 

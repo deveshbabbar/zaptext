@@ -14,10 +14,15 @@ export default function SignUpPage() {
     <AuthShell mode="signup">
       <SignUp
         signInUrl="/sign-in"
-        // After sign-up, drop the user straight into the bot creation
-        // flow. Without this they land on `/` and see public marketing,
-        // losing momentum during the highest-intent moment.
-        fallbackRedirectUrl="/client/create-bot"
+        // After sign-up, send them to /client/dashboard which figures
+        // out where they actually belong:
+        //   - bot owner with a bot → dashboard
+        //   - bot owner with no bot → /client/create-bot (onboarding)
+        //   - invited outlet manager → /client/restaurant (skip onboarding!)
+        // The earlier hard-coded /client/create-bot dropped invited
+        // managers into the bot-creation wizard, which is wrong — they
+        // don't create bots, they just sign in to manage one.
+        fallbackRedirectUrl="/client/dashboard"
         appearance={{
           elements: {
             rootBox: 'w-full',

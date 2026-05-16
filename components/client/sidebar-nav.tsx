@@ -76,10 +76,16 @@ interface SidebarNavProps {
 }
 
 // Restaurant nav items that only the chain OWNER should see. Outlet
-// managers don't manage outlet configs or team membership.
+// managers don't manage outlet configs, team membership, the chain-wide
+// menu, or chain-wide specials. The pages themselves redirect outlet
+// managers back to /client/restaurant (owner-only at the server) —
+// listing them in the sidebar produced a "link does nothing" UX where
+// clicking Menu silently bounced back to the overview.
 const OWNER_ONLY_RESTAURANT_HREFS: ReadonlySet<string> = new Set([
   '/client/restaurant/outlets',
   '/client/restaurant/team',
+  '/client/restaurant/menu',
+  '/client/restaurant/specials',
 ]);
 
 // Vertical-specific workspace links. These are MERGED into the Workspace

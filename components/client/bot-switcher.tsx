@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { ClientRow, BusinessType } from '@/lib/types';
 
@@ -68,6 +69,25 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
   const [switchingTo, setSwitchingTo] = useState<ClientRow | null>(null);
   const [switchStartedAt, setSwitchStartedAt] = useState<number>(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Gate the portal render until after first client mount — createPortal
+  // needs document.body which doesn't exist during SSR. Without this,
+  // hydration errors throw on first paint.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // Lock body scroll while the switching overlay is visible — user
+  // reported being able to scroll the sidebar mid-switch, which felt
+  // broken. Restore the previous overflow value on unmount or when
+  // the overlay closes.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!switchingTo) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [switchingTo]);
 
   const active = bots.find((b) => b.client_id === activeBotId) || bots[0] || null;
   const showOverlay = !!switchingTo;
@@ -256,11 +276,19 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
         )}
       </div>
 
-      {/* Switch overlay — full-screen blur with destination bot info */}
-      {showOverlay && switchingTo && (
+      {/* Switch overlay — portalled to document.body so it escapes
+          the sidebar's `transform` stacking context (the off-canvas
+          drawer animation in app-shell.tsx puts `transform` on the
+          sidebar wrapper, which by CSS spec creates a new containing
+          block for `position: fixed` descendants — without the
+          portal, this overlay was sized to the sidebar, not the
+          viewport). Portal mounts only after first client tick. */}
+      {mounted && showOverlay && switchingTo && createPortal(
         <div
-          className="fixed inset-0 z-50 grid place-items-center"
+          className="fixed inset-0 grid place-items-center"
           style={{
+            top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 9998,
             background: 'rgba(20, 19, 15, 0.55)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
@@ -297,7 +325,8 @@ export function BotSwitcher({ bots, activeBotId }: Props) {
               Loading bot data…
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

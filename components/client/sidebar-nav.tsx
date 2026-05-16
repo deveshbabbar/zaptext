@@ -59,9 +59,26 @@ const LOCKED_FOR_TRIAL: ReadonlySet<string> = new Set([
   '/client/calendar',
 ]);
 
-function isActive(currentPath: string, href: string): boolean {
-  if (currentPath === href) return true;
-  return currentPath.startsWith(`${href}/`);
+// Find the SINGLE item in `items` whose href best matches `currentPath`.
+// Exact match wins; otherwise the longest prefix-matching href wins.
+// Returns null when no item matches (e.g. on a page that isn't in this
+// section). Avoiding the previous bug where multiple items lit up at
+// once — e.g. on /client/restaurant/tables, both /client/restaurant
+// (overview, prefix-match) AND /client/restaurant/tables (exact-match)
+// were highlighted. Now only the most-specific item wins per section.
+function bestMatchHref(currentPath: string, items: NavItem[]): string | null {
+  let bestHref: string | null = null;
+  let bestLen = -1;
+  for (const item of items) {
+    const matches =
+      currentPath === item.href ||
+      currentPath.startsWith(`${item.href}/`);
+    if (matches && item.href.length > bestLen) {
+      bestHref = item.href;
+      bestLen = item.href.length;
+    }
+  }
+  return bestHref;
 }
 
 interface SidebarNavProps {
@@ -185,6 +202,13 @@ function buildSections(activeBotType?: string, isOutletManager = false): NavSect
 export function SidebarNav({ isTrial = false, activeBotType, isOutletManager = false }: SidebarNavProps) {
   const pathname = usePathname() || '';
   const sections = buildSections(activeBotType, isOutletManager);
+  // Pre-compute the SINGLE active href per section — only that item
+  // gets highlighted, even if multiple items in the same section
+  // technically prefix-match the current URL.
+  const activeHrefPerSection: Record<string, string | null> = {};
+  for (const section of sections) {
+    activeHrefPerSection[section.title] = bestMatchHref(pathname, section.items);
+  }
   return (
     <>
       {sections.map((section) => (
@@ -197,7 +221,7 @@ export function SidebarNav({ isTrial = false, activeBotType, isOutletManager = f
           </div>
           <nav className="flex flex-col gap-px">
             {section.items.map((item) => {
-              const active = isActive(pathname, item.href);
+              const active = activeHrefPerSection[section.title] === item.href;
               const locked = isTrial && LOCKED_FOR_TRIAL.has(item.href);
               const targetHref = locked ? '/client/subscription#upgrade' : item.href;
               const colourCls = locked

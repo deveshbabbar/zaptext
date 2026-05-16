@@ -143,6 +143,35 @@ export async function hasRecentInboundMessage(
   return rows.some((r) => r.ts.getTime() < excludeMs);
 }
 
+// Returns true if a welcome-menu interactive list was already sent to this
+// customer in the last `days` window. The welcome-menu outbound is logged
+// with the literal "[welcome-menu]" prefix on the message column, so we
+// can detect prior sends without a separate audit table. Used by the
+// webhook as a defensive guard so the menu cannot re-fire mid-conversation
+// (the previous design relied solely on hasRecentInboundMessage, which can
+// fail when two inbounds share a wall-clock millisecond — both checks then
+// report "no prior inbound" and the menu would be sent twice).
+export async function hasRecentWelcomeMenuSent(
+  clientId: string,
+  customerPhone: string,
+  days: number
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({ id: conversationsTable.id, message: conversationsTable.message })
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.client_id, clientId),
+        eq(conversationsTable.customer_phone, customerPhone),
+        eq(conversationsTable.direction, 'outgoing'),
+        gte(conversationsTable.timestamp, cutoff)
+      )
+    )
+    .limit(50);
+  return rows.some((r) => typeof r.message === 'string' && r.message.startsWith('[welcome-menu]'));
+}
+
 export async function getClientConversations(clientId: string): Promise<ConversationRow[]> {
   const rows = await db
     .select()

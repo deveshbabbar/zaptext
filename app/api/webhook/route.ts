@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { template_submissions } from '@/lib/db/schema';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import type { ClientConfig } from '@/lib/types';
-import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage, getOutboundCountThisMonth, getOutboundCountForOwner } from '@/lib/google-sheets';
+import { getClientByPhoneNumberId, getConversationHistory, addConversationMessage, updateAnalytics, updateClientField, hasRecentInboundMessage, hasRecentWelcomeMenuSent, getOutboundCountThisMonth, getOutboundCountForOwner } from '@/lib/google-sheets';
 import { getWelcomeMenu } from '@/lib/welcome-menu';
 import { getActiveSubscription, isTrialPlan, TRIAL_MESSAGE_LIMIT } from '@/lib/subscription';
 import { resolvePlanKey } from '@/lib/plans';
@@ -431,6 +431,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // bot still replies correctly. Falls back to a polite "please type"
     // message if transcription fails (no GEMINI_API_KEY, network error,
     // unintelligible audio, etc.).
+    let inboundAlreadyLogged = false;
     if (msg.type === 'audio' && msg.audioId) {
       let transcript = '';
       try {
@@ -459,6 +460,12 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
           message: `🎙️ ${transcript}`,
           message_type: 'audio',
         });
+        // Mark inbound as logged so the fall-through "Log incoming message"
+        // step below doesn't double-insert the same turn as text. Without
+        // this flag the operator UI showed every voice note twice (once as
+        // 🎙️ audio, once as plain text) and the conversation history fed
+        // back to the AI duplicated the customer's last turn.
+        inboundAlreadyLogged = true;
         // Fall through — the rest of the loop body now handles msg.text
         // exactly as it would for a typed message.
       } else {
@@ -513,15 +520,19 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       continue;
     }
 
-    // Log incoming message
-    await addConversationMessage({
-      timestamp,
-      client_id: client.client_id,
-      customer_phone: customerPhone,
-      direction: 'incoming',
-      message: msg.text,
-      message_type: 'text',
-    });
+    // Log incoming message (skip if the voice-note branch above already
+    // logged this turn — otherwise the same customer turn shows up twice
+    // in the operator UI and in the prompt's conversation history).
+    if (!inboundAlreadyLogged) {
+      await addConversationMessage({
+        timestamp,
+        client_id: client.client_id,
+        customer_phone: customerPhone,
+        direction: 'incoming',
+        message: msg.text,
+        message_type: 'text',
+      });
+    }
 
     // ─── Marketing opt-out keyword detector ───────────────────────────
     // DPDPA §6 + Meta opt-out: every business message recipient must be
@@ -801,9 +812,19 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // title and msg.interactiveListId = the row id.
     const incomingTs = new Date(timestamp);
     if (!isListReplyTap) {
-      const isFirstContact = !(await hasRecentInboundMessage(
-        client.client_id, customerPhone, 7, incomingTs
-      ));
+      // Two-layer first-contact check:
+      //   (a) hasRecentInboundMessage — primary signal. Fails open if two
+      //       inbound rows share a wall-clock timestamp (rare but observed
+      //       on bursty / replayed webhooks).
+      //   (b) hasRecentWelcomeMenuSent — defensive guard. Even if (a)
+      //       mis-detects, the menu won't re-fire if we already sent one
+      //       to this customer in the last 7 days. Prevents the
+      //       "option chooser opens again on every message" bug.
+      const [hasPriorInbound, alreadySentMenu] = await Promise.all([
+        hasRecentInboundMessage(client.client_id, customerPhone, 7, incomingTs),
+        hasRecentWelcomeMenuSent(client.client_id, customerPhone, 7).catch(() => false),
+      ]);
+      const isFirstContact = !hasPriorInbound && !alreadySentMenu;
       if (isFirstContact) {
         // DPDPA 2023 §6 evidence: the customer's first inbound message
         // in our 7-day window opens the 24-h customer service window
@@ -949,20 +970,59 @@ PAYMENT INSTRUCTIONS:
             minute: '2-digit',
             hour12: false,
           }).format(now);
+          // Zomato / Swiggy convention (verified Nov 2026 across their apps):
+          //   stock 0                                  → "Sold out" / "Currently unavailable"
+          //   0 < stock ≤ low_stock_threshold (or ≤ 5) → "Only N left" / "Few left" (urgency cue)
+          //   stock > threshold                        → no badge (just available — exposing
+          //                                              large exact counts feels weird to a
+          //                                              customer; "23 left" reads as inventory
+          //                                              software, not a menu)
+          //   time-windowed                            → "Available HH:MM–HH:MM"
+          // We mirror this in the prompt so the AI can speak the same way the
+          // customer is used to hearing from food/grocery apps.
+          const lowDefault = 5;
           const lines = active.map((i) => {
-            if (i.stock === 0) return `- ${i.name}: OUT OF STOCK (do not accept orders)`;
             const priceBit = i.price > 0 ? ` · ₹${i.price}` : '';
             const availableNow = isItemAvailableNow(i, now);
             const windowNote = formatAvailabilityHuman(i);
-            if (!availableNow) {
-              return `- ${i.name}: NOT AVAILABLE RIGHT NOW (only ${windowNote}; do not accept orders now)`;
+            // Items with tracks_stock=false ignore the stock counter (services,
+            // unlimited-prep menu items, etc.). Treat them as "available" so the
+            // AI doesn't accidentally refuse them.
+            const tracksStock = i.tracks_stock !== false;
+
+            if (tracksStock && i.stock === 0) {
+              return `- ${i.name}${priceBit}: SOLD OUT — tell the customer "Sorry, abhi ${i.name} sold out hai" and suggest an alternative.`;
             }
-            const winSuffix = windowNote === 'always available' ? '' : ` (${windowNote})`;
-            return `- ${i.name}: ${i.stock} available${priceBit}${winSuffix}`;
+            if (!availableNow) {
+              return `- ${i.name}${priceBit}: UNAVAILABLE NOW (only ${windowNote}) — say "${i.name} abhi available nahi hai, ${windowNote} ke beech milta hai".`;
+            }
+            const threshold = i.low_stock_threshold && i.low_stock_threshold > 0
+              ? i.low_stock_threshold
+              : lowDefault;
+            const winSuffix = windowNote === 'always available' ? '' : ` · ${windowNote}`;
+            if (tracksStock && i.stock > 0 && i.stock <= threshold) {
+              // Low-stock urgency cue — mirror Zomato's "Only N left" badge.
+              const urgency = i.stock === 1
+                ? `LAST ONE LEFT — say "bas 1 hi bacha hai, jaldi karein"`
+                : `ONLY ${i.stock} LEFT — say "sirf ${i.stock} bache hain, jaldi karein"`;
+              return `- ${i.name}${priceBit}${winSuffix} :: ${urgency}.`;
+            }
+            // Normal availability — DON'T mention the exact stock count to the
+            // customer (Zomato/Swiggy never say "23 plates left"). Internally we
+            // still track it for the [ORDER:] reservation; the AI just confirms
+            // "available" / "in stock".
+            return `- ${i.name}${priceBit}${winSuffix} :: available (tracking stock internally${tracksStock ? `: ${i.stock}` : ': untracked'} — do NOT mention this number to the customer).`;
           });
           stockBlock =
             `\nCURRENT IST TIME: ${istNow}` +
-            `\nLIVE STOCK (respect quantities AND time windows — do not order items marked NOT AVAILABLE RIGHT NOW):\n${lines.join('\n')}\n`;
+            `\nLIVE STOCK — Zomato/Swiggy-style availability rules:` +
+            `\n  • SOLD OUT items: refuse the order politely and suggest an alternative from the available list.` +
+            `\n  • ONLY N LEFT (low-stock): proactively tell the customer ("sirf 2 bache hain, jaldi karein") so they don't get disappointed mid-order. This is what Swiggy / Zomato do.` +
+            `\n  • UNAVAILABLE NOW (time-windowed): name the exact window the item returns ("breakfast 7–11 AM milta hai").` +
+            `\n  • Normal availability: just say it's available. NEVER quote large exact stock counts to a customer — "23 left" sounds like a warehouse, not a menu.` +
+            `\n  • When the customer asks "is X available?" — answer in 1 short line using the rules above, in the customer's language.` +
+            `\n  • For VOICE NOTES the customer sends: reply in the SAME conversational style — do NOT switch to a numbered list, just say "haan, butter chicken available hai, ₹449" naturally.` +
+            `\nITEMS:\n${lines.join('\n')}\n`;
         }
       } catch {
         // ignore
@@ -1080,6 +1140,30 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         ? (JSON.parse(client.knowledge_base_json) as ClientConfig)
         : null;
       if (kb && (kb as { type?: string }).type) {
+        // Hydrate the KB with client-row fields so the prompt generator
+        // never interpolates `undefined` into the WELCOME MESSAGE TEMPLATE
+        // or the "AI WhatsApp assistant for ${businessName}" header.
+        //
+        // The seed/demo path (and some legacy bots) stores knowledge_base_json
+        // without businessName/ownerName/welcomeMessage — those live on the
+        // clients table column instead. Without this hydration the runtime
+        // prompt literally contained "Welcome to undefined!" and the LLM
+        // dutifully echoed that to customers.
+        const hydratable = kb as unknown as Record<string, unknown>;
+        const safeBusinessName = (client.business_name || '').trim() || 'our business';
+        if (!hydratable.businessName) hydratable.businessName = safeBusinessName;
+        if (!hydratable.ownerName) hydratable.ownerName = client.owner_name || '';
+        if (!hydratable.whatsappNumber) hydratable.whatsappNumber = client.whatsapp_number || '';
+        if (!hydratable.contactNumber) hydratable.contactNumber = client.contact_number || '';
+        if (!hydratable.city) hydratable.city = client.city || '';
+        if (!hydratable.address) hydratable.address = (hydratable.address as string) || (hydratable.location as string) || '';
+        if (!hydratable.workingHours) hydratable.workingHours = (hydratable.businessHours as string) || '';
+        if (!hydratable.welcomeMessage) {
+          hydratable.welcomeMessage = `Welcome to ${safeBusinessName}! How can I help you today?`;
+        }
+        if (!Array.isArray(hydratable.languages) || (hydratable.languages as unknown[]).length === 0) {
+          hydratable.languages = ['English'];
+        }
         // Scrub gym-only `personalTraining.trainerInfo` when no active staff:
         // this is a free-text field that owners may have populated with a
         // specific trainer's name/credentials when adding them. Removing the

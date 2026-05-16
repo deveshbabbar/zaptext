@@ -51,11 +51,21 @@ function buildBasePrompt(config: ClientConfig): string {
   // the owner's personal phone captured during onboarding. Fall back to
   // whatsappNumber only when contactNumber wasn't captured (legacy bots).
   const ownerCallNumber = config.contactNumber?.trim() || config.whatsappNumber;
-  return `You are the AI WhatsApp assistant for ${config.businessName}.
-Owner: ${config.ownerName}
-Location: ${config.address}, ${config.city}
-Working Hours: ${config.workingHours}
-Contact: ${ownerCallNumber}
+  // Defensive: webhook hydrates these, but legacy KB / direct callers may pass
+  // partial objects. NEVER let the literal string "undefined" leak into the
+  // WELCOME MESSAGE TEMPLATE or the assistant header — the LLM will echo it
+  // verbatim to the customer ("Hello, welcome to undefined!").
+  const safeBusinessName = (config.businessName || '').trim() || 'our team';
+  const safeOwner = (config.ownerName || '').trim() || 'the owner';
+  const locParts = [config.address, config.city].filter((p) => typeof p === 'string' && p.trim());
+  const safeLocation = locParts.length > 0 ? locParts.join(', ') : 'India';
+  const safeHours = (config.workingHours || '').trim() || 'open most days — check with us';
+  const safeContact = (ownerCallNumber || '').trim() || 'available on WhatsApp';
+  return `You are the AI WhatsApp assistant for ${safeBusinessName}.
+Owner: ${safeOwner}
+Location: ${safeLocation}
+Working Hours: ${safeHours}
+Contact: ${safeContact}
 
 LANGUAGE RULES (CRITICAL — follow strictly, do not improvise):
 
@@ -166,10 +176,10 @@ PERSONALITY:
 - Use emojis naturally but not excessively (1-2 per message max).
 - Address customers respectfully (aap, ji, sir/ma'am as appropriate).
 
-${config.welcomeMessage ? `WELCOME MESSAGE TEMPLATE: "${config.welcomeMessage}"
+${config.welcomeMessage && !/\bundefined\b/i.test(config.welcomeMessage) ? `WELCOME MESSAGE TEMPLATE: "${config.welcomeMessage}"
 - When a customer messages for the first time (no prior conversation history), open with this welcome.
 - TRANSLATE the welcome into the PRIMARY language above before sending. The template captures the *meaning* — match the tone/wording of the customer's language, not the literal English (or whichever language the template happens to be in).
-- Keep the brand name and any phone numbers/UPI IDs unchanged. Translate only the natural-language parts.` : `WELCOME MESSAGE: When a customer messages for the first time, greet them warmly in the PRIMARY language above. Mention "${config.businessName}" by name, and ask how you can help. Keep it under 2 short lines.`}
+- Keep the brand name and any phone numbers/UPI IDs unchanged. Translate only the natural-language parts.` : `WELCOME MESSAGE: When a customer messages for the first time, greet them warmly in the PRIMARY language above. Mention "${safeBusinessName}" by name, and ask how you can help. Keep it under 2 short lines. NEVER use the literal word "undefined" — if any detail is missing, just leave it out instead of typing it.`}
 
 ${config.additionalInfo ? `ADDITIONAL CONTEXT: ${config.additionalInfo}` : ''}`;
 }

@@ -27,6 +27,7 @@ export {
   addConversationMessage,
   getClientConversations,
   hasRecentInboundMessage,
+  hasRecentWelcomeMenuSent,
   getOutboundCountThisMonth,
   getOutboundCountForOwner,
 } from './db/conversations';

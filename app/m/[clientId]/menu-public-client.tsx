@@ -96,6 +96,11 @@ interface Props {
   items: FlatItem[];
   brandLogoUrl?: string;
   brandColor?: string;
+  /** Wide hero image rendered at the top of the storefront. When set,
+   *  it replaces the minimal sticky header with a DotPe-style banner.
+   *  When empty, falls back to the compact header so dashboards
+   *  without branding still look fine. */
+  coverImageUrl?: string;
   tagline?: string;
   prefillPhone?: string;
   deliveryAvailable?: boolean;
@@ -181,6 +186,7 @@ export function MenuPublicClient({
   items,
   brandLogoUrl,
   brandColor,
+  coverImageUrl,
   tagline,
   prefillPhone = '',
   deliveryAvailable = true,
@@ -417,22 +423,110 @@ export function MenuPublicClient({
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', paddingBottom: cartLines.length > 0 ? 140 : 32, maxWidth: 540, margin: '0 auto' }}>
-      <header style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 5, display: 'flex', alignItems: 'center', gap: 12 }}>
-        {brandLogoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={brandLogoUrl} alt={businessName} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 44, height: 44, borderRadius: 10, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>
-            {businessName.slice(0, 1).toUpperCase()}
+      {coverImageUrl ? (
+        // Wide hero banner — DotPe-style. The dark gradient on top keeps
+        // overlaid text readable regardless of how busy the photo is.
+        // Logo + name + tagline sit at the bottom-left so they don't
+        // compete with the cart icon area.
+        <header
+          style={{
+            position: 'relative',
+            width: '100%',
+            // Aspect-ratio sized banner — looks good on every viewport
+            // because the height scales with width. 3:1 is the sweet
+            // spot for restaurant cover photos on mobile.
+            aspectRatio: '3 / 1',
+            minHeight: 160,
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.10) 35%, rgba(0,0,0,0.65)), url(${coverImageUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            color: '#fff',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 16,
+              right: 16,
+              bottom: 14,
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 12,
+            }}
+          >
+            {brandLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={brandLogoUrl}
+                alt={businessName}
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 12,
+                  objectFit: 'cover',
+                  border: '2px solid #fff',
+                  background: '#fff',
+                  flexShrink: 0,
+                  boxShadow: '0 4px 14px rgba(0,0,0,.25)',
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 12,
+                  background: '#fff',
+                  color: accent,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  fontSize: 22,
+                  flexShrink: 0,
+                  border: '2px solid #fff',
+                  boxShadow: '0 4px 14px rgba(0,0,0,.25)',
+                }}
+              >
+                {businessName.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div style={{ minWidth: 0, flex: 1, textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>
+              <h1
+                style={{
+                  fontSize: 22,
+                  margin: 0,
+                  fontWeight: 700,
+                  letterSpacing: '-0.01em',
+                  lineHeight: 1.15,
+                }}
+              >
+                {businessName}
+              </h1>
+              {tagline && (
+                <p style={{ fontSize: 13, margin: '3px 0 0', opacity: 0.95 }}>{tagline}</p>
+              )}
+            </div>
           </div>
-        )}
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h1 style={{ fontSize: 19, margin: 0, fontWeight: 700, letterSpacing: '-0.01em' }}>{businessName}</h1>
-          <p style={{ fontSize: 12.5, color: '#666', margin: '2px 0 0' }}>
-            {tagline || 'Tap items to add / Items tap karke add kariye'}
-          </p>
-        </div>
-      </header>
+        </header>
+      ) : (
+        <header style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 5, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {brandLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={brandLogoUrl} alt={businessName} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>
+              {businessName.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h1 style={{ fontSize: 19, margin: 0, fontWeight: 700, letterSpacing: '-0.01em' }}>{businessName}</h1>
+            <p style={{ fontSize: 12.5, color: '#666', margin: '2px 0 0' }}>
+              {tagline || 'Tap items to add / Items tap karke add kariye'}
+            </p>
+          </div>
+        </header>
+      )}
 
       <main style={{ padding: '8px 12px' }}>
         {prefillCount > 0 && (

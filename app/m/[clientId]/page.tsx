@@ -184,6 +184,7 @@ export default async function PublicMenuPage({
   let menu: MenuCategory[] = [];
   let brandLogoUrl = '';
   let brandColor = '';
+  let coverImageUrl = '';
   let tagline = '';
   let deliveryAvailable = true;
   let dineInEnabled = true;
@@ -223,6 +224,7 @@ export default async function PublicMenuPage({
     if (Array.isArray(kb.menuCategories)) menu = kb.menuCategories as MenuCategory[];
     if (typeof kb.brandLogoUrl === 'string') brandLogoUrl = kb.brandLogoUrl;
     if (typeof kb.brandColor === 'string') brandColor = kb.brandColor;
+    if (typeof kb.coverImageUrl === 'string') coverImageUrl = kb.coverImageUrl;
     if (typeof kb.tagline === 'string') tagline = kb.tagline;
     if (typeof kb.fssaiLicenseNumber === 'string') fssaiLicenseNumber = kb.fssaiLicenseNumber;
     if (typeof kb.fssaiExpiryDate === 'string') fssaiExpiryDate = kb.fssaiExpiryDate;
@@ -330,6 +332,7 @@ export default async function PublicMenuPage({
         items={flatItems}
         brandLogoUrl={brandLogoUrl}
         brandColor={brandColor}
+        coverImageUrl={coverImageUrl}
         tagline={tagline}
         prefillPhone={prefillPhone}
         prefillQuery={prefillQuery}

@@ -22,6 +22,7 @@ import { requireClientWithBots } from '@/lib/auth';
 import {
   getClientById,
   getClientBySlug,
+  updateClientFields,
   updateClientStorefrontSettings,
 } from '@/lib/db/clients';
 import {
@@ -47,6 +48,83 @@ function parsePincodes(raw: string): string[] {
   }
 }
 
+// --- Branding ---------------------------------------------------------------
+// Branding fields live inside knowledge_base_json (where brandLogoUrl,
+// brandColor, tagline already lived for the bot prompt + the existing
+// /m page header). We surface them through the storefront API so the
+// owner can edit them in one place alongside the public-URL settings.
+
+interface Branding {
+  coverImageUrl: string;
+  brandLogoUrl: string;
+  brandColor: string;
+  tagline: string;
+}
+
+const EMPTY_BRANDING: Branding = { coverImageUrl: '', brandLogoUrl: '', brandColor: '', tagline: '' };
+
+// Hex colour shapes accepted: #RGB / #RRGGBB / #RRGGBBAA. We lowercase
+// before validation since the input element may emit uppercase.
+const HEX_COLOR_REGEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/;
+
+function isHttpUrl(v: string): boolean {
+  if (!v) return false;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function parseKb(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function brandingFromKb(kb: Record<string, unknown>): Branding {
+  return {
+    coverImageUrl: typeof kb.coverImageUrl === 'string' ? kb.coverImageUrl : '',
+    brandLogoUrl: typeof kb.brandLogoUrl === 'string' ? kb.brandLogoUrl : '',
+    brandColor: typeof kb.brandColor === 'string' ? kb.brandColor : '',
+    tagline: typeof kb.tagline === 'string' ? kb.tagline : '',
+  };
+}
+
+// Sanitise + validate a partial Branding update from the request body.
+// Returns the cleaned slice ready to merge into kb; throws Error with
+// a user-facing message if any field is malformed (caller turns it into a 400).
+function sanitizeBranding(input: Partial<Record<keyof Branding, unknown>>): Partial<Branding> {
+  const out: Partial<Branding> = {};
+  if ('coverImageUrl' in input) {
+    const v = typeof input.coverImageUrl === 'string' ? input.coverImageUrl.trim() : '';
+    if (v && !isHttpUrl(v)) throw new Error('Cover image must be an http(s) URL');
+    if (v.length > 500) throw new Error('Cover image URL is too long (max 500 chars)');
+    out.coverImageUrl = v;
+  }
+  if ('brandLogoUrl' in input) {
+    const v = typeof input.brandLogoUrl === 'string' ? input.brandLogoUrl.trim() : '';
+    if (v && !isHttpUrl(v)) throw new Error('Logo must be an http(s) URL');
+    if (v.length > 500) throw new Error('Logo URL is too long (max 500 chars)');
+    out.brandLogoUrl = v;
+  }
+  if ('brandColor' in input) {
+    const v = typeof input.brandColor === 'string' ? input.brandColor.trim().toLowerCase() : '';
+    if (v && !HEX_COLOR_REGEX.test(v)) throw new Error('Brand color must be a hex code like #b8336a');
+    out.brandColor = v;
+  }
+  if ('tagline' in input) {
+    const v = typeof input.tagline === 'string' ? input.tagline.trim() : '';
+    if (v.length > 120) throw new Error('Tagline is too long (max 120 chars)');
+    out.tagline = v;
+  }
+  return out;
+}
+
 interface StorefrontResponse {
   ok: true;
   businessName: string;
@@ -56,11 +134,13 @@ interface StorefrontResponse {
   storefrontEnabled: boolean;
   publicUrl: string;
   appDomain: string;
+  branding: Branding;
 }
 
 async function loadCurrent(clientId: string, businessName: string): Promise<StorefrontResponse> {
   const c = await getClientById(clientId);
   const slug = c?.slug || '';
+  const kb = parseKb(c?.knowledge_base_json || '');
   return {
     ok: true,
     businessName,
@@ -70,6 +150,7 @@ async function loadCurrent(clientId: string, businessName: string): Promise<Stor
     storefrontEnabled: Boolean(c?.storefront_enabled),
     publicUrl: slug ? storefrontUrlFor(slug) : '',
     appDomain: APP_DOMAIN,
+    branding: c ? brandingFromKb(kb) : EMPTY_BRANDING,
   };
 }
 
@@ -86,6 +167,7 @@ interface PatchInput {
   slug?: string;
   service_pincodes?: string[];
   storefront_enabled?: boolean;
+  branding?: Partial<Branding>;
 }
 
 export async function PATCH(request: NextRequest) {
@@ -156,6 +238,23 @@ export async function PATCH(request: NextRequest) {
     patch.storefront_enabled = body.storefront_enabled;
   }
 
+  // --- Branding (merges into knowledge_base_json) -------------------------
+  // Brand fields share kb storage with the existing bot-prompt config
+  // (the prompt generator reads brandColor / brandLogoUrl / tagline too).
+  // We merge instead of overwriting kb so any unrelated bot config the
+  // owner has set elsewhere stays intact.
+  let brandingPatch: Partial<Branding> | null = null;
+  if (body.branding && typeof body.branding === 'object' && !Array.isArray(body.branding)) {
+    try {
+      brandingPatch = sanitizeBranding(body.branding as Partial<Record<keyof Branding, unknown>>);
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: 'INVALID_BRANDING', message: e instanceof Error ? e.message : 'Invalid branding field' },
+        { status: 400 }
+      );
+    }
+  }
+
   // Last-ditch race guard: the DB partial-unique index catches a duplicate
   // slug that slipped past the pre-check (two owners hitting save at the
   // same time). Translate the driver error into the same 409 response.
@@ -171,6 +270,21 @@ export async function PATCH(request: NextRequest) {
     }
     console.error('[storefront PATCH] update failed:', e);
     return NextResponse.json({ ok: false, error: 'INTERNAL' }, { status: 500 });
+  }
+
+  // Apply branding AFTER the slug write so a partial failure (slug saved
+  // but branding rejected) is unlikely — though if it ever happens, the
+  // 400 below leaves the slug already persisted, which is harmless.
+  if (brandingPatch && Object.keys(brandingPatch).length > 0) {
+    try {
+      const current = await getClientById(clientId);
+      const kb = parseKb(current?.knowledge_base_json || '');
+      const nextKb = { ...kb, ...brandingPatch };
+      await updateClientFields(clientId, { knowledge_base_json: JSON.stringify(nextKb) });
+    } catch (e) {
+      console.error('[storefront PATCH] branding update failed:', e);
+      return NextResponse.json({ ok: false, error: 'INTERNAL' }, { status: 500 });
+    }
   }
 
   const data = await loadCurrent(clientId, user.activeBot.business_name);

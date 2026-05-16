@@ -16,6 +16,13 @@ import { Panel, Pill } from '@/components/app/primitives';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+interface Branding {
+  coverImageUrl: string;
+  brandLogoUrl: string;
+  brandColor: string;
+  tagline: string;
+}
+
 interface StorefrontState {
   businessName: string;
   slug: string;
@@ -24,7 +31,10 @@ interface StorefrontState {
   storefrontEnabled: boolean;
   publicUrl: string;
   appDomain: string;
+  branding: Branding;
 }
+
+const EMPTY_BRANDING: Branding = { coverImageUrl: '', brandLogoUrl: '', brandColor: '', tagline: '' };
 
 interface SaveError {
   error?: string;
@@ -43,6 +53,7 @@ export function StorefrontForm() {
   const [slugDraft, setSlugDraft] = useState('');
   const [pincodeInput, setPincodeInput] = useState('');
   const [pincodes, setPincodes] = useState<string[]>([]);
+  const [branding, setBranding] = useState<Branding>(EMPTY_BRANDING);
 
   useEffect(() => {
     (async () => {
@@ -53,6 +64,7 @@ export function StorefrontForm() {
         setState(data);
         setSlugDraft(data.slug);
         setPincodes(data.servicePincodes);
+        setBranding(data.branding || EMPTY_BRANDING);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Could not load storefront settings');
       } finally {
@@ -61,7 +73,12 @@ export function StorefrontForm() {
     })();
   }, []);
 
-  async function patch(body: { slug?: string; service_pincodes?: string[]; storefront_enabled?: boolean }) {
+  async function patch(body: {
+    slug?: string;
+    service_pincodes?: string[];
+    storefront_enabled?: boolean;
+    branding?: Partial<Branding>;
+  }) {
     setSaving(true);
     try {
       const res = await fetch('/api/client/restaurant/storefront', {
@@ -76,10 +93,24 @@ export function StorefrontForm() {
       setState(data);
       setSlugDraft(data.slug);
       setPincodes(data.servicePincodes);
+      setBranding(data.branding || EMPTY_BRANDING);
       return data;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSaveBranding() {
+    try {
+      await patch({ branding });
+      toast.success('Branding saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    }
+  }
+
+  function updateBranding<K extends keyof Branding>(key: K, value: Branding[K]) {
+    setBranding((prev) => ({ ...prev, [key]: value }));
   }
 
   // --- Slug actions -------------------------------------------------------
@@ -171,7 +202,11 @@ export function StorefrontForm() {
 
   const slugDirty = slugDraft.trim().toLowerCase() !== state.slug;
   const pincodesDirty = JSON.stringify(pincodes) !== JSON.stringify(state.servicePincodes);
+  const brandingDirty = JSON.stringify(branding) !== JSON.stringify(state.branding);
   const canEnable = !!state.slug;
+  const previewAccent = branding.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(branding.brandColor)
+    ? branding.brandColor
+    : '#111';
 
   return (
     <div className="space-y-5">
@@ -269,6 +304,194 @@ export function StorefrontForm() {
             Heads-up — changing your subdomain breaks any QR codes / flyers / Instagram bio links pointing at the old URL.
             Pick a slug you're happy with up-front.
           </p>
+        </div>
+      </Panel>
+
+      {/* ─── Brand & appearance ────────────────────────────────────────── */}
+      <Panel
+        title="Brand & appearance"
+        sub="How your storefront looks to customers — cover photo, logo, tagline, and brand color. Same values are also used by your WhatsApp bot when it sends menu links."
+      >
+        <div className="grid lg:grid-cols-[1fr_minmax(0,360px)] gap-5">
+          {/* Form fields */}
+          <div className="space-y-3.5">
+            <div>
+              <Label htmlFor="brand-cover">Cover image URL</Label>
+              <Input
+                id="brand-cover"
+                value={branding.coverImageUrl}
+                onChange={(e) => updateBranding('coverImageUrl', e.target.value)}
+                placeholder="https://… (a wide photo of your dishes / interior)"
+                disabled={saving}
+                maxLength={500}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Recommended: 1600×600 (or wider). Upload to imgur / cloudinary and paste the direct image link.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="brand-logo">Logo URL</Label>
+              <Input
+                id="brand-logo"
+                value={branding.brandLogoUrl}
+                onChange={(e) => updateBranding('brandLogoUrl', e.target.value)}
+                placeholder="https://… (square logo, 256×256 or larger)"
+                disabled={saving}
+                maxLength={500}
+              />
+            </div>
+            <div>
+              <Label htmlFor="brand-tagline">Tagline</Label>
+              <Input
+                id="brand-tagline"
+                value={branding.tagline}
+                onChange={(e) => updateBranding('tagline', e.target.value)}
+                placeholder="One line — e.g. North Indian comfort food, since 2014"
+                disabled={saving}
+                maxLength={120}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">{branding.tagline.length}/120</p>
+            </div>
+            <div>
+              <Label htmlFor="brand-color">Brand color</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="brand-color"
+                  type="color"
+                  value={
+                    branding.brandColor && /^#[0-9a-fA-F]{6,8}$/.test(branding.brandColor)
+                      ? branding.brandColor.slice(0, 7)
+                      : '#111111'
+                  }
+                  onChange={(e) => updateBranding('brandColor', e.target.value.toLowerCase())}
+                  disabled={saving}
+                  className="h-9 w-12 cursor-pointer rounded border border-[var(--line)] bg-background"
+                  aria-label="Pick brand color"
+                />
+                <Input
+                  value={branding.brandColor}
+                  onChange={(e) => updateBranding('brandColor', e.target.value.toLowerCase())}
+                  placeholder="#b8336a"
+                  className="h-9 w-[140px] font-mono"
+                  disabled={saving}
+                  maxLength={9}
+                />
+                {branding.brandColor && (
+                  <button
+                    type="button"
+                    className="text-xs underline text-muted-foreground hover:text-foreground"
+                    onClick={() => updateBranding('brandColor', '')}
+                    disabled={saving}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Used for the place-order button, accents, and the cover gradient.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <Pill variant="ink" onClick={handleSaveBranding} disabled={saving || !brandingDirty}>
+                {saving ? 'Saving…' : 'Save branding'}
+              </Pill>
+              {brandingDirty && <span className="text-xs text-amber-600">Unsaved changes</span>}
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Preview</p>
+            <div
+              style={{
+                width: '100%',
+                borderRadius: 14,
+                overflow: 'hidden',
+                border: '1px solid var(--line)',
+                background: '#fff',
+              }}
+            >
+              <div
+                style={{
+                  position: 'relative',
+                  height: 140,
+                  backgroundImage: branding.coverImageUrl
+                    ? `linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.55)), url(${branding.coverImageUrl})`
+                    : `linear-gradient(135deg, ${previewAccent}, ${previewAccent}cc)`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 14,
+                    bottom: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  {branding.brandLogoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={branding.brandLogoUrl}
+                      alt=""
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 10,
+                        objectFit: 'cover',
+                        border: '2px solid #fff',
+                        background: '#fff',
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 10,
+                        background: '#fff',
+                        color: previewAccent,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 800,
+                        fontSize: 22,
+                        border: '2px solid #fff',
+                      }}
+                    >
+                      {state.businessName.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{ color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.15 }}>
+                      {state.businessName}
+                    </div>
+                    <div style={{ fontSize: 11.5, opacity: 0.92 }}>
+                      {branding.tagline || 'Tap items to add'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 12, color: '#666' }}>1 item · ₹240</div>
+                <div
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: 999,
+                    background: previewAccent,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Place order
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </Panel>
 

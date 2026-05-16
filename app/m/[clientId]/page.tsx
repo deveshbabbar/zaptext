@@ -188,6 +188,7 @@ export default async function PublicMenuPage({
   let tagline = '';
   let cuisineType = '';
   let workingHours = '';
+  let address = '';
   let deliveryAvailable = true;
   let dineInEnabled = true;
   let takeawayEnabled = true;
@@ -230,6 +231,7 @@ export default async function PublicMenuPage({
     if (typeof kb.tagline === 'string') tagline = kb.tagline;
     if (typeof kb.cuisineType === 'string') cuisineType = kb.cuisineType;
     if (typeof kb.workingHours === 'string') workingHours = kb.workingHours;
+    if (typeof kb.address === 'string') address = kb.address;
     if (typeof kb.fssaiLicenseNumber === 'string') fssaiLicenseNumber = kb.fssaiLicenseNumber;
     if (typeof kb.fssaiExpiryDate === 'string') fssaiExpiryDate = kb.fssaiExpiryDate;
     if (typeof kb.fssaiCentralLicence === 'boolean') fssaiCentralLicence = kb.fssaiCentralLicence;
@@ -325,11 +327,21 @@ export default async function PublicMenuPage({
   const pincodeStorageKey = client.slug || client.client_id;
 
   return (
-    <PincodeGate
-      storageKey={pincodeStorageKey}
-      businessName={client.business_name}
-      servicePincodes={servicePincodes}
-    >
+    <>
+      {/* Google Fonts for the storefront design system — Instrument Serif
+          (display) + Plus Jakarta Sans (body). Next.js App Router hoists
+          these <link> tags into <head> automatically. */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      />
+      <PincodeGate
+        storageKey={pincodeStorageKey}
+        businessName={client.business_name}
+        servicePincodes={servicePincodes}
+      >
       <MenuPublicClient
         businessName={client.business_name}
         clientId={clientId}
@@ -341,6 +353,8 @@ export default async function PublicMenuPage({
         city={client.city}
         cuisineType={cuisineType}
         workingHours={workingHours}
+        phone={client.contact_number || client.whatsapp_number}
+        address={address}
         prefillPhone={prefillPhone}
         prefillQuery={prefillQuery}
         prefillLat={prefillLat}
@@ -379,6 +393,7 @@ export default async function PublicMenuPage({
             deliveryRadiusKm: o.deliveryRadiusKm,
           }))}
       />
-    </PincodeGate>
+      </PincodeGate>
+    </>
   );
 }

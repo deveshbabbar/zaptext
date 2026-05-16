@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { themeCssVars, heroGradient, resolveAccent, LAYOUT } from '@/lib/storefront-theme';
+import { DesktopView } from '@/lib/storefront-ui/desktop-view';
 
 // MapLibre lives inside MapPicker — touches `window`, so we lazy-load
 // client-side only. SSR returns nothing for this slot; the loading
@@ -108,6 +109,9 @@ interface Props {
   city?: string;
   cuisineType?: string;
   workingHours?: string;
+  /** Used by the new desktop-view footer + sidebar quick-facts. */
+  phone?: string;
+  address?: string;
   prefillPhone?: string;
   deliveryAvailable?: boolean;
   dineInEnabled?: boolean;
@@ -236,6 +240,8 @@ export function MenuPublicClient({
   city,
   cuisineType,
   workingHours,
+  phone,
+  address,
   prefillPhone = '',
   deliveryAvailable = true,
   dineInEnabled = true,
@@ -501,6 +507,48 @@ export function MenuPublicClient({
     fontSize: 14,
     boxSizing: 'border-box',
   };
+
+  // Viewport-aware split. On desktop (≥1024px) we render the new
+  // storefront-ui design verbatim from the owner-installed design
+  // system. SSR defaults to false (mobile) so the initial paint is
+  // the mobile shell; the effect upgrades to desktop client-side.
+  // Mobile keeps the existing render below until D2 swaps it for the
+  // matching mobile-view layout.
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const apply = () => setIsDesktop(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  if (isDesktop) {
+    return (
+      <DesktopView
+        clientId={clientId}
+        businessName={businessName}
+        tagline={tagline}
+        brandColor={brandColor}
+        brandLogoUrl={brandLogoUrl}
+        city={city}
+        cuisineType={cuisineType}
+        workingHours={workingHours}
+        phone={phone}
+        address={address}
+        deliveryRadius={pricing?.deliveryRadius}
+        minimumOrder={pricing?.minimumOrder}
+        fssaiLicenseNumber={compliance?.fssaiLicenseNumber}
+        gstin={compliance?.gstin}
+        deliveryAvailable={deliveryAvailable}
+        takeawayEnabled={takeawayEnabled}
+        dineInEnabled={dineInEnabled}
+        items={items}
+        prefillPhone={prefillPhone}
+      />
+    );
+  }
 
   // Theme-provider wrapper: paints the page dark, exposes CSS vars to
   // every child, and removes the legacy 540px mobile-only cap so the

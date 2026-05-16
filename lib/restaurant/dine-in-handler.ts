@@ -91,7 +91,14 @@ export interface DineInResult {
 }
 
 function tablePublicMenuUrl(clientId: string, tableNumber: string, sessionId: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || '';
+  // NEXT_PUBLIC_APP_URL is baked at build time. If the build was made
+  // before the env var was set on Vercel, it'll be undefined here and
+  // we'd emit a RELATIVE path like "/m/abc/1/xyz" — WhatsApp doesn't
+  // auto-link relative paths, so the menu link arrives as un-tappable
+  // text and the customer can't open the menu. Hard fallback to the
+  // production origin matches the pattern in app/api/webhook/route.ts.
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://zaptext.shop';
   return `${base}/m/${clientId}/${encodeURIComponent(tableNumber)}/${sessionId}`;
 }
 

@@ -1,93 +1,28 @@
-"use client";
+// Server-rendered landing shell. The four client islands — Navbar
+// (mobile menu state), PhoneChat (animated playback), PricingSection
+// (billing-period toggle), and the lazy-loaded below-fold widgets —
+// live in their own files. Everything else here is pure markup that
+// renders on the server and ships zero JS for that content.
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-import { PLANS, DURATIONS, type DurationKey } from "@/lib/plans";
-
-// Below-the-fold widgets are lazy-loaded so the hero + pricing render
-// before the JS for these heavier interactive components is parsed.
-// All three either touch window, read cookies, or hold their own
-// state — none of them affects SSR'd HTML.
-const ROICalculator = dynamic(
-  () => import("@/components/landing/roi-calculator").then((m) => m.ROICalculator),
-  { ssr: false, loading: () => null }
-);
-const WhatsAppDemoWidget = dynamic(
-  () => import("@/components/landing/whatsapp-demo-widget").then((m) => m.WhatsAppDemoWidget),
-  { ssr: false, loading: () => null }
-);
-const ReferralCapture = dynamic(
-  () => import("@/components/landing/referral-capture").then((m) => m.ReferralCapture),
-  { ssr: false, loading: () => null }
-);
+import { Navbar } from "./navbar";
+import { PhoneChat } from "./phone-chat";
+import { PricingSection } from "./pricing-section";
+import {
+  ReferralCaptureLazy,
+  ROICalculatorLazy,
+  WhatsAppDemoWidgetLazy,
+} from "./lazy-widgets";
+import {
+  Check,
+  FeatCard,
+  FootCol,
+  Mark,
+  QStat,
+  SectionHead,
+} from "./_shared";
 
 // ─────────────────────────── DATA ───────────────────────────
-
-type ChatMsg = { who: "in" | "out"; t: string; time?: string; typing?: boolean };
-// Restaurant-only landing for now. Other verticals (salon / coaching /
-// gym / realestate / tiffin / grocery / ecommerce) will be re-added
-// once each vertical is shipped end-to-end. Keeping the type narrowed
-// to a single key keeps every downstream component (PhoneChat) honest.
-type BizKey = "restaurant";
-type Biz = {
-  emoji: string;
-  label: string;
-  name?: string;
-  avatar?: string;
-  tagline: string;
-  longDesc: string;
-  stats: { n: string; l: string }[];
-  faqs: { q: string }[];
-  chat: ChatMsg[];
-};
-
-const BIZ: Record<BizKey, Biz> = {
-  restaurant: {
-    emoji: "🍽️",
-    label: "Restaurant",
-    name: "Rohit's Biryani · Bot",
-    avatar: "R",
-    tagline: "Kitchens, cafes, cloud kitchens & bakeries",
-    longDesc:
-      "Takes orders, shares the live menu, handles delivery lookups, pushes daily specials, and pings you only when a human needs to step in.",
-    stats: [
-      { n: "4.2m", l: "avg order time" },
-      { n: "87%", l: "cart completion" },
-      { n: "₹312", l: "avg ticket" },
-    ],
-    faqs: [
-      { q: "Menu dikhao" },
-      { q: "Delivery available hai?" },
-      { q: "Minimum order kitna hai?" },
-      { q: "Payment kaise karein?" },
-      { q: "Koi offer chal raha hai?" },
-    ],
-    chat: [
-      { who: "in", t: "Bhaiya menu dikhao please", time: "7:42 PM" },
-      {
-        who: "out",
-        t: "Namaste 👋 Aaj ke specials —<br/><b>• Hyderabadi Dum Biryani</b> ₹280<br/><b>• Chicken 65</b> ₹240<br/><b>• Veg Pulao</b> ₹180<br/><br/>Full menu bhejun?",
-        time: "7:42 PM",
-        typing: true,
-      },
-      { who: "in", t: "Haan bhejo, 2 biryani order karna hai", time: "7:43 PM" },
-      {
-        who: "out",
-        t: "Done boss. 2× Dum Biryani = <b>₹560</b>. Delivery address last time ka use karun (Koramangala 5th Block)?",
-        time: "7:43 PM",
-        typing: true,
-      },
-      { who: "in", t: "Haan same address", time: "7:43 PM" },
-      {
-        who: "out",
-        t: "Order placed ✓ ETA <b>32 min</b>. UPI link: pay.zpt.shop/a9x2<br/>Track: wa.me/track/8821",
-        time: "7:44 PM",
-        typing: true,
-      },
-    ],
-  },
-};
 
 const MARQUEE_ITEMS = [
   "Menu dikhao",
@@ -149,127 +84,26 @@ const FAQS = [
   },
 ];
 
-const PLAN_ORDER: Array<{ key: keyof typeof PLANS; tag: string }> = [
-  { key: "trial", tag: "Try without paying" },
-  { key: "starter", tag: "Solo shops, 1 number" },
-  { key: "growth", tag: "Multi-location · most popular" },
-  { key: "scale", tag: "Multi-bot · API access" },
-  { key: "enterprise", tag: "Chains · white-label · SLA" },
-];
-
-// ─────────────────────────── COMPONENT ───────────────────────────
+// ─────────────────────────── PAGE ───────────────────────────
 
 export default function LandingPage() {
-  // Restaurant-only landing for now. The multi-vertical BizSection +
-  // MiniPhone industry-switcher block is removed from the render
-  // order (functions kept in this file commented out below would
-  // bloat it — they're simply deleted in the same commit). Other
-  // verticals get re-added section-by-section as each ships.
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
-      <ReferralCapture />
+      <ReferralCaptureLazy />
       <Navbar />
       <Hero />
       <Marquee />
       <HowItWorks />
       <Features />
-      <Pricing />
-      <ROICalculator />
+      <PricingSection />
+      <ROICalculatorLazy />
       <Testimonial />
       <FAQSection />
       <WhyNotFreeBot />
       <BigCTA />
       <Footer />
-      <WhatsAppDemoWidget />
+      <WhatsAppDemoWidgetLazy />
     </div>
-  );
-}
-
-// ─── Navbar ───
-function Navbar() {
-  const [open, setOpen] = useState(false);
-  const links = [
-    { h: "#why-zaptext", l: "Why ZapText" },
-    { h: "#how", l: "How it works" },
-    { h: "#features", l: "Features" },
-    { h: "#pricing", l: "Pricing" },
-    { h: "#faq", l: "FAQs" },
-  ];
-  return (
-    <nav className="sticky top-0 z-50 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--background)_80%,transparent)] backdrop-blur-md">
-      <div className="max-w-[1280px] mx-auto px-4 sm:px-7 h-[60px] sm:h-[68px] flex items-center justify-between gap-2">
-        <Link href="/" className="flex items-center gap-2.5 font-bold text-[17px] sm:text-[18px] tracking-tight">
-          <Mark />
-          <span>
-            ZapText
-            <sup className="text-[var(--mute)] font-medium text-[10px] ml-1">.shop</sup>
-          </span>
-        </Link>
-        <div className="hidden md:flex gap-8 text-[14px] text-[var(--ink-2)]">
-          {links.map((it) => (
-            <a key={it.h} href={it.h} className="opacity-75 hover:opacity-100 transition">{it.l}</a>
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <Link href="/sign-in" className="hidden sm:inline-flex px-3 sm:px-4 py-2 sm:py-2.5 text-[13px] sm:text-[14px] font-semibold text-[var(--ink-2)] hover:text-[var(--ink)] transition">
-            Sign in
-          </Link>
-          <Link href="/sign-up" className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-[var(--ink)] text-[var(--background)] font-semibold text-[13px] sm:text-[14px] hover:-translate-y-px transition">
-            <span className="hidden sm:inline">Get started</span>
-            <span className="sm:hidden">Sign up</span>
-            <span aria-hidden>→</span>
-          </Link>
-          <button
-            type="button"
-            aria-label={open ? "Close menu" : "Open menu"}
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            className="md:hidden w-10 h-10 inline-flex items-center justify-center rounded-md hover:bg-[var(--bg-2)]"
-          >
-            {open ? (
-              <span className="text-[22px] leading-none">×</span>
-            ) : (
-              <span className="flex flex-col gap-[5px]">
-                <span className="block w-5 h-[2px] bg-[var(--ink)] rounded-sm" />
-                <span className="block w-5 h-[2px] bg-[var(--ink)] rounded-sm" />
-                <span className="block w-5 h-[2px] bg-[var(--ink)] rounded-sm" />
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
-      {open && (
-        <div className="md:hidden border-t border-[var(--line)] bg-[var(--background)]">
-          <div className="max-w-[1280px] mx-auto px-4 sm:px-7 py-3 flex flex-col">
-            {links.map((it) => (
-              <a
-                key={it.h}
-                href={it.h}
-                onClick={() => setOpen(false)}
-                className="py-2.5 text-[15px] text-[var(--ink-2)] hover:text-[var(--ink)] border-b border-[var(--line)] last:border-b-0"
-              >
-                {it.l}
-              </a>
-            ))}
-            <Link
-              href="/sign-in"
-              onClick={() => setOpen(false)}
-              className="py-2.5 mt-1 text-[15px] font-semibold text-[var(--ink)]"
-            >
-              Sign in
-            </Link>
-          </div>
-        </div>
-      )}
-    </nav>
-  );
-}
-
-function Mark() {
-  return (
-    <span className="w-[30px] h-[30px] rounded-[8px] bg-[var(--ink)] text-[var(--accent)] grid place-items-center zt-mono font-bold text-[17px] shadow-[2px_2px_0_0_var(--accent)]">
-      Z
-    </span>
   );
 }
 
@@ -349,65 +183,56 @@ function Hero() {
   );
 }
 
-function Check() {
-  return (
-    <span className="w-[14px] h-[14px] rounded-full bg-[var(--ink)] text-[var(--accent)] inline-grid place-items-center text-[9px]">
-      ✓
-    </span>
-  );
-}
-
 // ─── Why not the free in-app bot ───
-//
-// Honest, calm comparison block aimed at restaurant owners considering
-// the free in-app AI option. We don't bash competitors — we show the
-// gaps that matter to a real Indian kitchen trying to grow on WhatsApp:
-//   - "Takes the order + UPI link" vs "answers questions"
-//   - Multi-outlet routing + table QR
-//   - FSSAI / allergen / surge / DPDPA compliance
-//   - Voice notes in Hindi / Punjabi / Tamil / Bengali
-//   - Manager email swap without losing outlet data
 function WhyNotFreeBot() {
   const rows: Array<{ scenario: string; freeBot: string; zapText: string }> = [
     {
       scenario: 'Customer asks "menu bhejdo" at 11 PM',
       freeBot: 'Pastes a long text menu blob. No way to actually order.',
-      zapText: 'Sends a mobile menu link. Customer taps items, picks Half / Full, chooses delivery / takeaway / dine-in, sends UPI payment. Order lands in your kitchen.',
+      zapText:
+        'Sends a mobile menu link. Customer taps items, picks Half / Full, chooses delivery / takeaway / dine-in, sends UPI payment. Order lands in your kitchen.',
     },
     {
       scenario: 'Customer voice-notes "do paneer butter masala aur ek naan"',
       freeBot: '&ldquo;Sorry, I can only handle text.&rdquo;',
-      zapText: 'Transcribes via Groq Whisper, parses the items, opens the menu page with paneer butter masala + naan already in the cart. Customer just confirms.',
+      zapText:
+        'Transcribes via Groq Whisper, parses the items, opens the menu page with paneer butter masala + naan already in the cart. Customer just confirms.',
     },
     {
       scenario: 'You run 3 outlets — Saket, CP, Gurgaon — and customer is in Hauz Khas',
       freeBot: 'No idea which outlet to route to. Owner manually re-assigns.',
-      zapText: 'Customer shares location, bot computes nearest outlet inside delivery zone, sends the menu link pre-routed. Order auto-lands in Saket\'s queue.',
+      zapText:
+        "Customer shares location, bot computes nearest outlet inside delivery zone, sends the menu link pre-routed. Order auto-lands in Saket's queue.",
     },
     {
       scenario: 'Customer asks "minimum order kitna hai?" with ₹89 in cart',
-      freeBot: 'Doesn\'t know. Owner ends up arguing on chat.',
-      zapText: 'Min-order is configured per outlet (Rs.200). Submit endpoint rejects the ₹89 delivery order with "add ₹111 more or switch to takeaway".',
+      freeBot: "Doesn't know. Owner ends up arguing on chat.",
+      zapText:
+        'Min-order is configured per outlet (Rs.200). Submit endpoint rejects the ₹89 delivery order with "add ₹111 more or switch to takeaway".',
     },
     {
       scenario: 'Customer asks "FSSAI number kya hai?" — auditor is looking',
-      freeBot: 'Doesn\'t have it. You scramble.',
-      zapText: 'FSSAI lic + expiry + jain certs render on every order confirmation + on the public menu page. Reg 2.4.6 compliant out of the box.',
+      freeBot: "Doesn't have it. You scramble.",
+      zapText:
+        'FSSAI lic + expiry + jain certs render on every order confirmation + on the public menu page. Reg 2.4.6 compliant out of the box.',
     },
     {
       scenario: 'Customer with peanut allergy asks about kheer',
       freeBot: 'Generic reply. Liability is yours.',
-      zapText: 'Per-item allergen tags (8 FSSAI allergens) tagged at menu setup. Bot reads them out. Customer can also flag allergies — bot hard-warns at checkout.',
+      zapText:
+        'Per-item allergen tags (8 FSSAI allergens) tagged at menu setup. Bot reads them out. Customer can also flag allergies — bot hard-warns at checkout.',
     },
     {
       scenario: 'Rain hits, you want +15% surge on delivery',
       freeBot: 'Not supported. You change menu prices manually.',
-      zapText: 'Surge bands configured once. Page banner shows "Rain +15% may apply" BEFORE add-to-cart (CCPA Dark Patterns compliant). Surcharge auto-applies, breakdown shown at checkout.',
+      zapText:
+        'Surge bands configured once. Page banner shows "Rain +15% may apply" BEFORE add-to-cart (CCPA Dark Patterns compliant). Surcharge auto-applies, breakdown shown at checkout.',
     },
     {
-      scenario: 'Saket\'s manager Rohit quits, Suresh joins',
+      scenario: "Saket's manager Rohit quits, Suresh joins",
       freeBot: 'Owner re-enters everything. Past orders lost or visible to wrong manager.',
-      zapText: 'Settings → Team Members → swap email. Rohit\'s access revoked, Suresh invited. All Saket orders / table data / customer history stays bound to the outlet, not the email.',
+      zapText:
+        "Settings → Team Members → swap email. Rohit's access revoked, Suresh invited. All Saket orders / table data / customer history stays bound to the outlet, not the email.",
     },
   ];
 
@@ -431,7 +256,6 @@ function WhyNotFreeBot() {
       id="why-zaptext"
       className="relative overflow-hidden bg-[var(--ink)] text-[var(--background)] py-16 sm:py-24 md:py-[120px]"
     >
-      {/* Accent corner glow */}
       <div
         className="absolute pointer-events-none"
         aria-hidden
@@ -462,7 +286,6 @@ function WhyNotFreeBot() {
           opacity: 0.12,
         }}
       />
-      {/* Subtle dot grid */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden
@@ -476,19 +299,17 @@ function WhyNotFreeBot() {
 
       <div className="relative max-w-[1180px] mx-auto px-4 sm:px-7">
         <div className="zt-mono text-[11px] sm:text-[12px] uppercase tracking-[.14em] text-[var(--accent)] mb-3 sm:mb-4 inline-flex items-center gap-2">
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
-            style={{ boxShadow: '0 0 10px var(--accent)' }}
-          />
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" style={{ boxShadow: '0 0 10px var(--accent)' }} />
           07 &middot; Why ZapText
         </div>
         <h2 className="font-bold tracking-[-0.035em] leading-[1.02] text-[clamp(32px,5.5vw,62px)] max-w-[860px] text-balance mb-4 sm:mb-5">
           Free WhatsApp AI <span className="text-white/40">replies.</span>
-          <br className="hidden sm:block" />{' '}
-          <span className="zt-zap">ZapText earns.</span>
+          <br className="hidden sm:block" /> <span className="zt-zap">ZapText earns.</span>
         </h2>
         <p className="text-[15px] sm:text-[17px] md:text-[19px] text-white/65 max-w-[720px] leading-[1.6] mb-10 sm:mb-14">
-          A free in-app AI is great for FAQs. But Indian kitchens don&apos;t grow from FAQs &mdash; they grow from <i className="zt-serif text-white/85">booked tables, paid orders, and customers that don&apos;t slip away while you&apos;re asleep.</i> Here&apos;s what changes when the bot has actually been built for the way you run service.
+          A free in-app AI is great for FAQs. But Indian kitchens don&apos;t grow from FAQs &mdash; they grow from{' '}
+          <i className="zt-serif text-white/85">booked tables, paid orders, and customers that don&apos;t slip away while you&apos;re asleep.</i>{' '}
+          Here&apos;s what changes when the bot has actually been built for the way you run service.
         </p>
 
         <div className="flex flex-col gap-3.5 sm:gap-4">
@@ -508,9 +329,7 @@ function WhyNotFreeBot() {
               <div className="grid grid-cols-1 md:grid-cols-2">
                 <div className="px-5 sm:px-8 py-4 sm:py-6 border-b md:border-b-0 md:border-r border-white/10">
                   <div className="flex items-center gap-2 mb-2 sm:mb-2.5">
-                    <span className="w-5 h-5 rounded-full bg-white/8 grid place-items-center text-[11px] text-white/55">
-                      ✕
-                    </span>
+                    <span className="w-5 h-5 rounded-full bg-white/8 grid place-items-center text-[11px] text-white/55">✕</span>
                     <span className="zt-mono text-[10px] sm:text-[10.5px] uppercase tracking-[.12em] text-white/45">
                       Free in-app AI
                     </span>
@@ -547,10 +366,7 @@ function WhyNotFreeBot() {
 
         <div className="mt-10 sm:mt-14 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
           {pillars.map((p) => (
-            <div
-              key={p.title}
-              className="rounded-[16px] border border-white/10 bg-white/[0.025] px-5 sm:px-6 py-5 sm:py-6"
-            >
+            <div key={p.title} className="rounded-[16px] border border-white/10 bg-white/[0.025] px-5 sm:px-6 py-5 sm:py-6">
               <div className="zt-mono text-[10.5px] uppercase tracking-[.1em] text-[var(--accent)] mb-2 font-semibold">
                 {p.title}
               </div>
@@ -584,198 +400,6 @@ function WhyNotFreeBot() {
   );
 }
 
-// ─── Phone chat (animated) ───
-function PhoneChat() {
-  const [bizKey] = useState<BizKey>("restaurant");
-  const biz = BIZ[bizKey];
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [rendered, setRendered] = useState<Array<ChatMsg & { id: number; isTyping?: boolean }>>([]);
-
-  useEffect(() => {
-    if (!biz.chat.length) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    let idCounter = 0;
-    const playOnce = (startDelay = 300) => {
-      let delay = startDelay;
-      setRendered([]);
-      biz.chat.forEach((m) => {
-        if (m.who === "out" && m.typing) {
-          const typingId = ++idCounter;
-          timers.push(
-            setTimeout(() => {
-              setRendered((prev) => [...prev, { ...m, id: typingId, isTyping: true }]);
-              requestAnimationFrame(() => {
-                if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-              });
-            }, delay)
-          );
-          delay += 700;
-        }
-        const msgId = ++idCounter;
-        timers.push(
-          setTimeout(() => {
-            setRendered((prev) => [...prev.filter((x) => !x.isTyping), { ...m, id: msgId }]);
-            requestAnimationFrame(() => {
-              if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-            });
-          }, delay)
-        );
-        delay += m.who === "out" ? 1100 : 800;
-      });
-      timers.push(setTimeout(() => playOnce(0), delay + 3000));
-    };
-    playOnce();
-    return () => {
-      timers.forEach((t) => clearTimeout(t));
-    };
-  }, [biz]);
-
-  return (
-    <div className="relative flex justify-center items-start">
-      <Sticker
-        className="hidden lg:flex absolute top-[60px] -left-[30px] -rotate-[4deg]"
-        label="Response time"
-        main={
-          <>
-            <b>1.2 seconds</b> · avg
-          </>
-        }
-        dot
-      />
-      <Sticker
-        className="hidden lg:flex absolute bottom-[120px] -right-[40px] rotate-[3deg]"
-        label="More bookings"
-        main={
-          <>
-            <b>3.4×</b> vs. missed calls
-          </>
-        }
-        badge="3×"
-      />
-      <Sticker
-        className="hidden lg:flex absolute top-[300px] -left-[60px] rotate-[2deg] zt-bob"
-        label="Understands"
-        main={
-          <>
-            <b>Hindi · English · Hinglish</b>
-          </>
-        }
-        flag="🇮🇳"
-      />
-
-      <div
-        className="w-[280px] sm:w-[320px] md:w-[340px] h-[540px] sm:h-[600px] md:h-[640px] max-w-full bg-[#111] rounded-[44px] p-3 relative z-[2]"
-        style={{
-          boxShadow:
-            "0 40px 80px -30px rgba(20,20,15,.35), inset 0 0 0 1px rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.05)",
-        }}
-      >
-        <div
-          className="absolute top-[18px] left-1/2 -translate-x-1/2 w-[110px] h-[26px] bg-black rounded-[16px] z-[5]"
-          aria-hidden
-        />
-        <div className="w-full h-full rounded-[34px] overflow-hidden bg-[#ECE5DD] flex flex-col relative">
-          <div className="bg-[#1f3d2d] text-white pt-[44px] pb-3 px-3.5 flex items-center gap-2.5 text-[14px]">
-            <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center font-bold text-[14px] zt-mono flex-shrink-0">
-              {biz.avatar || biz.label[0]}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-[14px] tracking-tight">{biz.name || `${biz.label} · Bot`}</div>
-              <div className="text-[11px] opacity-70 flex items-center gap-1.5">
-                <span
-                  className="w-1.5 h-1.5 rounded-full bg-[#8fffb0]"
-                  style={{ boxShadow: "0 0 6px #8fffb0" }}
-                />
-                online · replies instantly
-              </div>
-            </div>
-          </div>
-          <div
-            ref={bodyRef}
-            className="zt-chat-body flex-1 overflow-y-auto p-[14px_12px] flex flex-col gap-2"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 20%, rgba(31,61,45,0.04) 1px, transparent 1.5px), radial-gradient(circle at 80% 60%, rgba(31,61,45,0.04) 1px, transparent 1.5px)",
-              backgroundSize: "120px 120px",
-            }}
-          >
-            {rendered.map((m) =>
-              m.isTyping ? (
-                <div
-                  key={m.id}
-                  className="zt-msg max-w-[78%] py-2 px-2.5 rounded-[10px] text-[13.5px] leading-[1.4] bg-white self-start rounded-tl-[2px]"
-                  style={{ boxShadow: "0 1px 0.5px rgba(0,0,0,0.13)" }}
-                >
-                  <div className="inline-flex gap-[3px] py-1 zt-typing">
-                    <i className="inline-block w-[5px] h-[5px] rounded-full bg-black/60" />
-                    <i className="inline-block w-[5px] h-[5px] rounded-full bg-black/60" />
-                    <i className="inline-block w-[5px] h-[5px] rounded-full bg-black/60" />
-                  </div>
-                </div>
-              ) : (
-                <div
-                  key={m.id}
-                  className={`zt-msg max-w-[78%] py-2 px-2.5 rounded-[10px] text-[13.5px] leading-[1.4] ${
-                    m.who === "in"
-                      ? "bg-white self-start rounded-tl-[2px]"
-                      : "bg-[#D9FDD3] self-end rounded-tr-[2px]"
-                  }`}
-                  style={{ boxShadow: "0 1px 0.5px rgba(0,0,0,0.13)" }}
-                >
-                  <span dangerouslySetInnerHTML={{ __html: m.t }} />
-                  <div className="text-[10px] text-black/40 text-right mt-0.5 font-medium">
-                    {m.time || ""} {m.who === "out" && <span style={{ color: "#53bdeb" }}>✓✓</span>}
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-          <div className="p-[8px_10px_12px] flex items-center gap-2">
-            <div className="flex-1 bg-white rounded-[24px] px-3.5 py-2.5 text-[13px] text-black/50 flex items-center justify-between">
-              <span>Type a message…</span>
-              <span className="flex gap-2.5 opacity-50">📎 📷</span>
-            </div>
-            <div className="w-[38px] h-[38px] rounded-full bg-[#1f3d2d] text-white grid place-items-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type StickerProps = {
-  className?: string;
-  label: string;
-  main: React.ReactNode;
-  dot?: boolean;
-  badge?: string;
-  flag?: string;
-};
-function Sticker({ className = "", label, main, dot, badge, flag }: StickerProps) {
-  return (
-    <div
-      className={`absolute bg-[var(--card)] border border-[var(--line)] rounded-[14px] px-3.5 py-3 text-[13px] flex items-center gap-2.5 z-[3] ${className}`}
-      style={{ boxShadow: "0 14px 30px -18px rgba(0,0,0,.25)" }}
-    >
-      {dot && <span className="w-2 h-2 rounded-full bg-[#1fae4f]" />}
-      {badge && (
-        <span className="w-[26px] h-[26px] rounded-full bg-[var(--accent)] grid place-items-center font-extrabold zt-mono text-[var(--accent-2)]">
-          {badge}
-        </span>
-      )}
-      {flag && <span className="text-[18px]">{flag}</span>}
-      <div>
-        <div className="text-[11px] text-[var(--mute)] zt-mono uppercase tracking-wide">{label}</div>
-        <div>{main}</div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Marquee ───
 function Marquee() {
   const items = [...MARQUEE_ITEMS, ...MARQUEE_ITEMS];
@@ -789,33 +413,6 @@ function Marquee() {
           </span>
         ))}
       </div>
-    </div>
-  );
-}
-
-// ─── Section head ───
-function SectionHead({
-  num,
-  label,
-  title,
-  lead,
-}: {
-  num: string;
-  label: string;
-  title: React.ReactNode;
-  lead: React.ReactNode;
-}) {
-  return (
-    <div className="grid md:grid-cols-[1fr_1.8fr] gap-5 md:gap-14 items-end mb-10 md:mb-14">
-      <div>
-        <div className="zt-mono text-[12px] uppercase tracking-[.08em] text-[var(--mute)]">
-          {`// ${num} — ${label}`}
-        </div>
-        <h2 className="text-[clamp(36px,4.4vw,62px)] font-bold tracking-[-0.035em] leading-[0.98] mt-3 text-balance">
-          {title}
-        </h2>
-      </div>
-      <p className="text-[18px] text-[var(--ink-2)] leading-[1.5] max-w-[540px]">{lead}</p>
     </div>
   );
 }
@@ -1072,185 +669,6 @@ function Features() {
   );
 }
 
-function FeatCard({
-  span,
-  variant = "default",
-  label,
-  title,
-  children,
-}: {
-  span: number;
-  variant?: "default" | "accent" | "ink";
-  label: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  const base = "border rounded-[22px] p-6 relative overflow-hidden flex flex-col min-h-[240px]";
-  const variantCls =
-    variant === "accent"
-      ? "bg-[var(--accent)] text-[var(--accent-2)] border-black/10"
-      : variant === "ink"
-      ? "bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]"
-      : "bg-[var(--card)] border-[var(--line)]";
-  const lblCls =
-    variant === "accent"
-      ? "text-[var(--accent-2)] opacity-65"
-      : variant === "ink"
-      ? "text-white/40"
-      : "text-[var(--mute)]";
-  return (
-    <div
-      className={`${base} ${variantCls} zt-feat-card`}
-      style={{ ['--feat-span' as never]: String(span) }}
-    >
-      <div className={`zt-mono text-[11px] uppercase tracking-[.08em] ${lblCls}`}>{label}</div>
-      <h4 className="text-[20px] sm:text-[22px] font-bold tracking-[-0.022em] mt-2 mb-1.5">{title}</h4>
-      {children}
-    </div>
-  );
-}
-
-// ─── Pricing ───
-function Pricing() {
-  // Three-way duration toggle (1M / 6M / 12M) matches the subscription
-  // page so prospects see exactly the same options before signup as
-  // they do once logged in. Earlier the landing only had Monthly/Annual
-  // which left a gap.
-  const [duration, setDuration] = useState<DurationKey>(1);
-  return (
-    <section id="pricing" className="py-14 md:py-[110px] bg-[var(--bg-2)] border-y border-[var(--line)]">
-      <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
-        <SectionHead
-          num="04"
-          label="Pricing"
-          title={
-            <>
-              Pay for <span className="zt-serif">bots.</span>
-              <br />
-              Not for promises.
-            </>
-          }
-          lead="Launch offer — setup fees waived on every plan. Includes WhatsApp Business API, hosting, model inference, and dashboard. Cancel anytime."
-        />
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-7">
-          <div className="inline-flex p-1 rounded-full bg-[var(--card)] border border-[var(--line)] text-[13px]">
-            {(Object.keys(DURATIONS) as unknown as DurationKey[]).map((m) => {
-              const months = Number(m) as DurationKey;
-              const active = duration === months;
-              const label = months === 1 ? 'Monthly' : months === 6 ? '6 months' : 'Annual';
-              return (
-                <button
-                  key={m}
-                  onClick={() => setDuration(months)}
-                  className={`rounded-full font-medium inline-flex items-center gap-1.5 ${active ? "bg-[var(--ink)] text-[var(--background)]" : "text-[var(--ink-2)]"}`}
-                  style={{ padding: "9px 18px" }}
-                >
-                  {label}
-                  {DURATIONS[months].savingLabel && (
-                    <span className={`ml-1 px-2 py-[2px] rounded-full zt-mono text-[10px] font-bold ${active ? 'bg-[var(--accent)] text-[var(--accent-2)]' : 'bg-[var(--accent)]/20 text-[var(--ink)]'}`}>
-                      {DURATIONS[months].savingLabel}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <div className="zt-mono text-[12px] text-[var(--mute)]">
-            All prices in ₹INR · GST extra · billed on razorpay
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
-          {PLAN_ORDER.map(({ key, tag }) => {
-            const p = PLANS[key];
-            const popular = key === "growth";
-            const isFree = key === "trial";
-            // Per-month effective rate at the selected duration. The
-            // multiplier in DURATIONS encodes the discount (e.g. 6mo=5.5x
-            // = ~8% off, 12mo=10x = ~17% off). Card always shows /mo so
-            // prospects can compare straight across durations.
-            const price = Math.round((p.price * DURATIONS[duration].multiplier) / duration);
-            return (
-              <div
-                key={key}
-                className={`rounded-[22px] border flex flex-col relative transition hover:-translate-y-0.5 ${
-                  popular ? "bg-[var(--ink)] text-[var(--background)] border-[var(--ink)]" : "bg-[var(--card)] border-[var(--line)]"
-                }`}
-                style={{ padding: "24px 22px" }}
-              >
-                {popular && (
-                  <div className="absolute -top-2.5 right-5 bg-[var(--accent)] text-[var(--accent-2)] zt-mono text-[11px] font-bold px-2.5 py-[5px] rounded-full tracking-wide">
-                    Most popular
-                  </div>
-                )}
-                <div className={`text-[14px] font-semibold uppercase tracking-[.06em] ${popular ? "text-[var(--accent)]" : "text-[var(--ink-2)]"}`}>
-                  {p.name}
-                </div>
-                <div className="text-[12.5px] mt-0.5" style={{ color: popular ? "#ffffff99" : "var(--mute)" }}>
-                  {tag}
-                </div>
-                <div className="mt-3.5 flex items-baseline gap-1.5">
-                  {isFree ? (
-                    <>
-                      <span className="text-[54px] font-bold tracking-[-0.045em] leading-none">
-                        Free
-                      </span>
-                      <span className="text-[13px]" style={{ color: popular ? "#ffffff88" : "var(--mute)" }}>
-                        / forever
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-[54px] font-bold tracking-[-0.045em] leading-none">
-                        <span className="zt-serif text-[0.7em] mr-0.5">₹</span>
-                        {price.toLocaleString("en-IN")}
-                      </span>
-                      <span className="text-[13px]" style={{ color: popular ? "#ffffff88" : "var(--mute)" }}>
-                        / mo{duration === 12 ? " · billed yearly" : duration === 6 ? " · billed 6-monthly" : ""}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <div className="text-[12.5px] mb-5" style={{ color: popular ? "#ffffffcc" : "var(--ink-2)" }}>
-                  {isFree ? (
-                    <span style={{ color: "var(--mute)" }}>No card required · upgrade anytime</span>
-                  ) : (
-                    <>
-                      Setup:{" "}
-                      <b className={`${popular ? "text-[var(--accent-2)]" : "text-[var(--ink)]"} bg-[var(--accent)] px-1.5 rounded-[4px] font-bold`}>
-                        FREE
-                      </b>{" "}
-                      <s className="opacity-50">₹{p.originalSetupFee.toLocaleString("en-IN")}</s> · launch offer
-                    </>
-                  )}
-                </div>
-                <ul className="flex flex-col gap-2.5 flex-1 mb-5">
-                  {p.featureList.map((f, i) => (
-                    <li key={i} className={`flex gap-2 text-[14px] leading-[1.4] ${popular ? "text-white/80" : "text-[var(--ink-2)]"}`}>
-                      <span className={`zt-mono flex-shrink-0 ${popular ? "text-[var(--accent)]" : "text-[var(--ink)]"}`}>→</span>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/sign-up"
-                  className={`block text-center py-3.5 rounded-[12px] font-semibold text-[14px] border ${
-                    popular
-                      ? "bg-[var(--accent)] text-[var(--accent-2)] border-[var(--accent)] hover:bg-white"
-                      : "border-[var(--ink)] hover:bg-[var(--ink)] hover:text-[var(--background)]"
-                  } transition`}
-                >
-                  {isFree ? "Start free →" : `Start ${p.name} →`}
-                </Link>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // ─── Testimonial ───
 function Testimonial() {
   return (
@@ -1297,37 +715,6 @@ function Testimonial() {
         </div>
       </div>
     </section>
-  );
-}
-
-function QStat({
-  n,
-  suffix,
-  l,
-  dark,
-  accent,
-}: {
-  n: string;
-  suffix: string;
-  l: string;
-  dark?: boolean;
-  accent?: boolean;
-}) {
-  const bg = dark
-    ? "bg-[var(--ink)] text-[var(--background)]"
-    : accent
-    ? "bg-[var(--accent)] text-[var(--accent-2)]"
-    : "bg-[var(--background)]";
-  return (
-    <div className={`py-7 px-5 ${bg}`}>
-      <div className="text-[52px] font-bold tracking-[-0.04em] leading-none" style={dark ? { color: "var(--accent)" } : {}}>
-        {n}
-        <span className="zt-serif">{suffix}</span>
-      </div>
-      <div className="text-[13px] mt-2.5" style={{ color: dark ? "#ffffffaa" : accent ? "#0f1405aa" : "var(--mute)" }}>
-        {l}
-      </div>
-    </div>
   );
 }
 
@@ -1496,22 +883,5 @@ function Footer() {
         </div>
       </div>
     </footer>
-  );
-}
-
-function FootCol({ title, links }: { title: string; links: { h: string; l: string }[] }) {
-  return (
-    <div>
-      <h5 className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)] font-medium mb-3.5">{title}</h5>
-      <ul className="list-none p-0 m-0 flex flex-col gap-2.5">
-        {links.map((link) => (
-          <li key={link.l}>
-            <Link href={link.h} className="text-[var(--ink-2)] hover:text-[var(--ink)]">
-              {link.l}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }

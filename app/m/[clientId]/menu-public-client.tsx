@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { themeCssVars, heroGradient, resolveAccent, LAYOUT } from '@/lib/storefront-theme';
 import { DesktopView } from '@/lib/storefront-ui/desktop-view';
+import { MobileView } from '@/lib/storefront-ui/mobile-view';
 
 // MapLibre lives inside MapPicker — touches `window`, so we lazy-load
 // client-side only. SSR returns nothing for this slot; the loading
@@ -524,31 +525,37 @@ export function MenuPublicClient({
     return () => mq.removeEventListener('change', apply);
   }, []);
 
+  // Both views consume the same prop set — desktop renders the
+  // 3-column layout, mobile renders the single-column sage shell.
+  // We always render one of the two new design-system views now;
+  // the legacy code path below this block is dead and gets deleted
+  // in D4 cleanup.
+  const sharedProps = {
+    clientId,
+    businessName,
+    tagline,
+    brandColor,
+    brandLogoUrl,
+    city,
+    cuisineType,
+    workingHours,
+    phone,
+    address,
+    deliveryRadius: pricing?.deliveryRadius,
+    minimumOrder: pricing?.minimumOrder,
+    fssaiLicenseNumber: compliance?.fssaiLicenseNumber,
+    gstin: compliance?.gstin,
+    deliveryAvailable,
+    takeawayEnabled,
+    dineInEnabled,
+    items,
+    prefillPhone,
+  };
+
   if (isDesktop) {
-    return (
-      <DesktopView
-        clientId={clientId}
-        businessName={businessName}
-        tagline={tagline}
-        brandColor={brandColor}
-        brandLogoUrl={brandLogoUrl}
-        city={city}
-        cuisineType={cuisineType}
-        workingHours={workingHours}
-        phone={phone}
-        address={address}
-        deliveryRadius={pricing?.deliveryRadius}
-        minimumOrder={pricing?.minimumOrder}
-        fssaiLicenseNumber={compliance?.fssaiLicenseNumber}
-        gstin={compliance?.gstin}
-        deliveryAvailable={deliveryAvailable}
-        takeawayEnabled={takeawayEnabled}
-        dineInEnabled={dineInEnabled}
-        items={items}
-        prefillPhone={prefillPhone}
-      />
-    );
+    return <DesktopView {...sharedProps} />;
   }
+  return <MobileView {...sharedProps} />;
 
   // Theme-provider wrapper: paints the page dark, exposes CSS vars to
   // every child, and removes the legacy 540px mobile-only cap so the

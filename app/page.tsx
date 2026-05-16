@@ -1,3 +1,4 @@
+import { auth } from '@clerk/nextjs/server';
 import { getUserRole } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import LandingPage from '@/components/landing/landing-page';
@@ -42,9 +43,17 @@ const LANDING_FAQS = [
 ];
 
 export default async function Home() {
-  const user = await getUserRole();
-  if (user?.role === 'admin') redirect('/admin/dashboard');
-  if (user?.role === 'client') redirect('/client/dashboard');
+  // Skip the Clerk RPC for anonymous visitors — `auth()` reads only the
+  // signed session cookie that Clerk middleware already validated, so
+  // it's free. `currentUser()` (inside `getUserRole`) hits Clerk's API
+  // over the network and was previously running on every landing-page
+  // hit, including bots and first-time visitors with no session.
+  const { userId } = await auth();
+  if (userId) {
+    const user = await getUserRole();
+    if (user?.role === 'admin') redirect('/admin/dashboard');
+    if (user?.role === 'client') redirect('/client/dashboard');
+  }
 
   return (
     <>

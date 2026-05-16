@@ -17,10 +17,8 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: [
       "lucide-react",
-      "@radix-ui/react-icons",
       "@base-ui/react",
       "sonner",
-      "date-fns",
     ],
   },
   // Don't ship source maps to browsers in prod — saves bandwidth.

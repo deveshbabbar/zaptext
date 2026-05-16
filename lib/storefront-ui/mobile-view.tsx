@@ -60,7 +60,14 @@ export function MobileView(props: MobileViewProps) {
   const [orderType, setOrderType] = useState<OrderMode>(initialMode);
   const [activeCat, setActiveCat] = useState<string | null>(null);
 
-  const [showCheckout, setShowCheckout] = useState(false);
+  // Mobile flow state machine — matches the design's separate Menu /
+  // Cart / Checkout pages (other-screens.jsx). Default 'menu' so SSR
+  // renders the menu shell. Cart bar tap moves to 'cart'; Continue
+  // from cart moves to 'checkout'; back from each goes one step up.
+  // Submit success doesn't use this state — TrackingScreen renders
+  // earlier via the `submitted` flag.
+  const [screen, setScreen] = useState<'menu' | 'cart' | 'checkout'>('menu');
+  const [coupon, setCoupon] = useState('');
   const [showInfo, setShowInfo] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone || '');
@@ -221,7 +228,7 @@ export function MobileView(props: MobileViewProps) {
         businessName={businessName}
         palette={palette}
         onOrderMore={() => {
-          setSubmitted(null); setCart({}); setShowCheckout(false);
+          setSubmitted(null); setCart({}); setScreen('menu');
           setNotes(''); setDeliveryAddress(''); setTableNumber('');
         }}
       />
@@ -448,7 +455,7 @@ export function MobileView(props: MobileViewProps) {
 
         {itemCount > 0 && (
           <CartBar count={itemCount} total={subtotal}
-            onTap={() => setShowCheckout(true)} />
+            onTap={() => setScreen('cart')} />
         )}
 
         <InfoModal
@@ -467,7 +474,21 @@ export function MobileView(props: MobileViewProps) {
           gstin={props.gstin}
         />
 
-        {showCheckout && (
+        {screen === 'cart' && (
+          <MobileCartScreen
+            businessName={businessName}
+            cartLines={cartLines}
+            subtotal={subtotal}
+            itemCount={itemCount}
+            coupon={coupon} setCoupon={setCoupon}
+            bump={bump}
+            onBack={() => setScreen('menu')}
+            onAddMore={() => setScreen('menu')}
+            onContinue={() => setScreen('checkout')}
+          />
+        )}
+
+        {screen === 'checkout' && (
           <MobileCheckoutSheet
             businessName={businessName}
             itemCount={itemCount}
@@ -482,7 +503,8 @@ export function MobileView(props: MobileViewProps) {
             cartLines={cartLines} subtotal={subtotal}
             submitting={submitting} error={errorMsg}
             address={address}
-            onSubmit={handleSubmit} onClose={() => setShowCheckout(false)}
+            onSubmit={handleSubmit}
+            onClose={() => setScreen('cart')}
           />
         )}
       </div>
@@ -608,6 +630,253 @@ function CartBar({ count, total, onTap }: { count: number; total: number; onTap:
             View cart <I.chevron s={{ color: '#fff' }} />
           </div>
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────── Mobile Cart Screen
+//
+// Full-page cart between menu and checkout. Ports
+// other-screens.jsx::CartScreen. Locks body scroll while open, sticky
+// header (back arrow + title + subtitle), WhatsApp reassurance callout,
+// item list with inline quantity stepper, "Add more items" link back to
+// menu, coupon input (UI-only for now — server-side coupon validation
+// is a future scope), bill breakdown, sticky Continue CTA at bottom.
+function MobileCartScreen(props: {
+  businessName: string;
+  cartLines: Array<{ key: string; name: string; qty: number; unit: number; lineTotal: number; isVeg: boolean }>;
+  subtotal: number;
+  itemCount: number;
+  coupon: string; setCoupon: (v: string) => void;
+  bump: (key: string, delta: number) => void;
+  onBack: () => void;
+  onAddMore: () => void;
+  onContinue: () => void;
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Coupon validation is a future task — show "Applied" feedback purely
+  // visually for now so the UX feels complete. Real discounts will be
+  // computed server-side in /api/menu/submit when the coupon column
+  // lands on dine_in_orders. Hard-coded recognised codes match the
+  // design's demo set.
+  const recognisedCoupons = new Set(['FLAT20', 'FIRST50', 'FREEGULAB']);
+  const couponApplied = recognisedCoupons.has(props.coupon.trim().toUpperCase());
+  // The bill rows below are minimal — taxes / packaging / delivery
+  // come from the kitchen's response after submit; the cart screen
+  // just shows the subtotal so the customer isn't surprised. Full
+  // breakdown lands on the order confirmation (TrackingScreen).
+  const taxes = Math.round(props.subtotal * 0.05);
+  const total = props.subtotal + taxes;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 50,
+      background: 'var(--zt-bg)', overflowY: 'auto',
+      WebkitOverflowScrolling: 'touch',
+    }}>
+      <div style={{ maxWidth: 540, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 1,
+          padding: '14px 16px', background: 'var(--zt-surface)',
+          borderBottom: '0.5px solid var(--zt-border)',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <button type="button" onClick={props.onBack} aria-label="Back to menu"
+            style={{
+              width: 36, height: 36, borderRadius: 10,
+              border: '0.5px solid var(--zt-border)', background: 'var(--zt-bg)',
+              color: 'var(--zt-ink)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', padding: 0, flexShrink: 0,
+            }}>
+            <I.back />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--zt-font-display)', fontSize: 19, color: 'var(--zt-ink)', lineHeight: 1.1 }}>
+              Your cart
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--zt-ink-muted)', marginTop: 1 }}>
+              {props.itemCount} {props.itemCount === 1 ? 'item' : 'items'} from {props.businessName}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, padding: '14px 14px 130px' }}>
+          {/* WhatsApp callout */}
+          <div style={{
+            margin: '0 0 14px', padding: '10px 12px',
+            background: '#E7F4EB', border: '0.5px solid #B6DAB8',
+            borderRadius: 12, display: 'flex', gap: 10, alignItems: 'center',
+          }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 8, background: '#25D366',
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}><I.whatsapp /></div>
+            <div style={{ fontSize: 11, color: '#1B5E20', lineHeight: 1.4 }}>
+              Updates &amp; confirmations land in your <b>WhatsApp</b>. Reply <b>STATUS</b> anytime to track.
+            </div>
+          </div>
+
+          {/* Items */}
+          <div style={{
+            background: 'var(--zt-surface)',
+            border: '0.5px solid var(--zt-border)',
+            borderRadius: 14, overflow: 'hidden',
+          }}>
+            {props.cartLines.map((it, i) => (
+              <div key={it.key}>
+                <div style={{ padding: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <VegDot veg={it.isVeg} size={12} />
+                      <div style={{
+                        fontSize: 13.5, fontWeight: 700, color: 'var(--zt-ink)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
+                      }}>
+                        {it.name}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--zt-ink-muted)' }}>₹{it.unit} each</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                    <AddButton qty={it.qty} primary="#5C7A4F"
+                      onInc={() => props.bump(it.key, 1)} onDec={() => props.bump(it.key, -1)} />
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--zt-ink)' }}>
+                      ₹{it.lineTotal}
+                    </div>
+                  </div>
+                </div>
+                {i < props.cartLines.length - 1 && (
+                  <div style={{ height: 1, background: 'var(--zt-border)', margin: '0 14px' }} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add more */}
+          <button type="button" onClick={props.onAddMore} style={{
+            marginTop: 14, width: '100%',
+            background: 'transparent', border: '1px dashed var(--zt-border)',
+            borderRadius: 12, padding: 12, fontSize: 12, fontWeight: 600,
+            color: 'var(--zt-primary-dark)', cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            + Add more items
+          </button>
+
+          {/* Coupon */}
+          <div style={{ marginTop: 18 }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
+              letterSpacing: .8, textTransform: 'uppercase', marginBottom: 8,
+            }}>
+              Have a coupon?
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={props.coupon}
+                onChange={(e) => props.setCoupon(e.target.value.toUpperCase())}
+                placeholder="Enter code (try FLAT20)"
+                style={{
+                  flex: 1, padding: '11px 14px', borderRadius: 10,
+                  border: '0.5px solid var(--zt-border)', background: 'var(--zt-surface)',
+                  fontSize: 13, fontFamily: 'inherit', color: 'var(--zt-ink)', outline: 'none',
+                  letterSpacing: .5,
+                }}
+              />
+              <button type="button" style={{
+                padding: '11px 18px', borderRadius: 10,
+                background: couponApplied ? '#E7F4EB' : 'var(--zt-ink)',
+                color: couponApplied ? '#1B5E20' : '#fff',
+                border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}>
+                {couponApplied ? 'Applied' : 'Apply'}
+              </button>
+            </div>
+            {couponApplied && (
+              <div style={{
+                marginTop: 6, fontSize: 11, color: '#1B5E20', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                <I.check s={{ width: 11, height: 11 }} /> {props.coupon} recognised — discount applied at checkout
+              </div>
+            )}
+          </div>
+
+          {/* Bill summary */}
+          <div style={{
+            marginTop: 18, padding: '14px 16px',
+            background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
+            borderRadius: 14,
+          }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
+              letterSpacing: .8, textTransform: 'uppercase', marginBottom: 10,
+            }}>
+              Bill details
+            </div>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', padding: '3px 0',
+              fontSize: 12.5, color: 'var(--zt-ink)',
+            }}>
+              <span style={{ color: 'var(--zt-ink-muted)' }}>Item total</span>
+              <span style={{ fontWeight: 600 }}>₹{props.subtotal}</span>
+            </div>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', padding: '3px 0',
+              fontSize: 12.5, color: 'var(--zt-ink)',
+            }}>
+              <span style={{ color: 'var(--zt-ink-muted)' }}>Taxes &amp; fees</span>
+              <span style={{ fontWeight: 600 }}>₹{taxes}</span>
+            </div>
+            <div style={{
+              fontSize: 10.5, color: 'var(--zt-ink-muted)', marginTop: 2,
+            }}>
+              Delivery / packaging shown on next step
+            </div>
+            <div style={{ height: 1, background: 'var(--zt-border)', margin: '10px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--zt-ink)' }}>To pay</span>
+              <span style={{ fontFamily: 'var(--zt-font-display)', fontSize: 26, color: 'var(--zt-ink)' }}>
+                ₹{total}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Sticky CTA */}
+        <div style={{
+          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 2,
+        }}>
+          <div style={{
+            maxWidth: 540, margin: '0 auto',
+            padding: 12, background: 'var(--zt-surface)',
+            borderTop: '0.5px solid var(--zt-border)',
+            boxShadow: '0 -4px 16px rgba(40,55,30,.06)',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: 'var(--zt-ink-muted)', fontWeight: 500 }}>Total payable</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--zt-ink)' }}>₹{total}</div>
+            </div>
+            <button type="button" onClick={props.onContinue} style={{
+              padding: '13px 22px',
+              background: 'linear-gradient(180deg, var(--zt-primary) 0%, var(--zt-primary-dark) 100%)',
+              color: '#fff', border: 'none', borderRadius: 12,
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 12px rgba(60,80,50,.25)',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              Continue <I.chevron s={{ color: '#fff' }} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

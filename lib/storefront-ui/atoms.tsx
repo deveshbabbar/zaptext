@@ -424,10 +424,16 @@ function softTint(base: string | undefined): string {
   return SAGE[2];
 }
 
-export function storefrontThemeStyle(brandColor: string | undefined): CSSProperties {
-  const primary = brandColor && isValidHex(brandColor) ? brandColor : SAGE[0];
+// Note: brandColor is intentionally IGNORED in the current build — the
+// design system specifies the sage palette exactly and the owner asked
+// for "bilkul aisa bana do, there should be no changes made in this
+// design." Palette selection (sage / forest / olive / charcoal /
+// terracotta) is a planned D4 task that will let owners pick from a
+// fixed set rather than feed an arbitrary hex.
+export function storefrontThemeStyle(_brandColor: string | undefined): CSSProperties {
+  const primary = SAGE[0];
   const primaryDark = SAGE[1];
-  const primarySoft = softTint(brandColor);
+  const primarySoft = SAGE[2];
   return {
     ['--zt-bg' as string]: '#FAFAF6',
     ['--zt-surface' as string]: '#FFFFFF',

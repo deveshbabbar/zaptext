@@ -325,8 +325,9 @@ export function DesktopView(props: DesktopViewProps) {
       </div>
 
       {showCheckout && (
-        <CheckoutSection
-          anchorId="zt-checkout-anchor"
+        <CheckoutModal
+          itemCount={itemCount}
+          businessName={businessName}
           mode={orderType} setMode={setOrderType}
           deliveryAvailable={deliveryAvailable} takeawayEnabled={takeawayEnabled} dineInEnabled={dineInEnabled}
           customerName={customerName} setCustomerName={setCustomerName}
@@ -335,10 +336,10 @@ export function DesktopView(props: DesktopViewProps) {
           tableNumber={tableNumber} setTableNumber={setTableNumber}
           notes={notes} setNotes={setNotes}
           marketingOptIn={marketingOptIn} setMarketingOptIn={setMarketingOptIn}
-          businessName={businessName}
-          subtotal={subtotal}
+          cartLines={cartLines} subtotal={subtotal}
           submitting={submitting} error={error}
-          onSubmit={handleSubmit} onCancel={() => setShowCheckout(false)}
+          onSubmit={handleSubmit} onClose={() => setShowCheckout(false)}
+          address={address}
         />
       )}
 
@@ -893,9 +894,95 @@ function CartPanel({
   );
 }
 
-// ═══════════════════════════════════════ CHECKOUT SECTION
-function CheckoutSection(props: {
-  anchorId: string;
+// ═══════════════════════════════════════ MODAL SHELL
+//
+// Fixed full-viewport overlay with a centred card. Click backdrop or
+// Escape to close. Card slides in on mount. Ported from
+// `desktop-modals.jsx::ModalShell` — see the design files at the repo
+// root.
+function ModalShell({
+  title, subtitle, onClose, children, maxWidth = 720,
+}: {
+  title: string; subtitle?: string; onClose: () => void;
+  children: ReactNode; maxWidth?: number;
+}) {
+  // Close on Escape — matches the design system's expectation that
+  // popup screens are dismissable from the keyboard.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  // Lock page scroll while the modal is open so the menu doesn't move
+  // behind it while the customer fills the form.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(20,25,18,.45)',
+        backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 30,
+      }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth,
+        maxHeight: 'calc(100vh - 60px)',
+        background: 'var(--zt-bg)',
+        borderRadius: 18,
+        overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 30px 80px rgba(0,0,0,.25)',
+      }}>
+        <div style={{
+          padding: '18px 24px', borderBottom: '0.5px solid var(--zt-border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--zt-surface)', flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontFamily: 'var(--zt-font-display)', fontSize: 22, color: 'var(--zt-ink)', lineHeight: 1.1 }}>
+              {title}
+            </div>
+            {subtitle && (
+              <div style={{ fontSize: 12, color: 'var(--zt-ink-muted)', marginTop: 2 }}>{subtitle}</div>
+            )}
+          </div>
+          <button type="button" onClick={onClose} style={{
+            width: 36, height: 36, borderRadius: 10,
+            border: '0.5px solid var(--zt-border)', background: 'var(--zt-bg)',
+            color: 'var(--zt-ink)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', padding: 0,
+          }}><I.close /></button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════ CHECKOUT MODAL
+//
+// Ported from `desktop-modals.jsx::CheckoutModal`. Two-column layout:
+// left = order-type segment + form fields, right = order summary +
+// "Continue to pay" button + WhatsApp reassurance.
+//
+// "Continue to pay" currently submits the order directly (legacy
+// /api/menu/submit flow which sends the customer payment instructions
+// via WhatsApp). The design's intermediate PaymentModal (UPI tile
+// picker, in-app payment confirmation) is a planned D3 task.
+function CheckoutModal(props: {
+  itemCount: number;
+  businessName: string;
   mode: OrderMode; setMode: (m: OrderMode) => void;
   deliveryAvailable: boolean; takeawayEnabled: boolean; dineInEnabled: boolean;
   customerName: string; setCustomerName: (v: string) => void;
@@ -904,159 +991,273 @@ function CheckoutSection(props: {
   tableNumber: string; setTableNumber: (v: string) => void;
   notes: string; setNotes: (v: string) => void;
   marketingOptIn: boolean; setMarketingOptIn: (v: boolean) => void;
-  businessName: string; subtotal: number;
+  cartLines: Array<{ key: string; name: string; qty: number; unit: number; lineTotal: number; isVeg: boolean }>;
+  subtotal: number;
   submitting: boolean; error: string | null;
-  onSubmit: () => void; onCancel: () => void;
+  onSubmit: () => void; onClose: () => void;
+  address?: string;
 }) {
-  const inputStyle: CSSProperties = {
-    width: '100%', padding: '11px 14px',
-    background: 'var(--zt-bg)', border: '0.5px solid var(--zt-border)',
-    borderRadius: 10, fontSize: 13.5, color: 'var(--zt-ink)',
-    outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-  };
+  const valid = props.customerName.trim().length > 0
+    && props.customerPhone.replace(/\D/g, '').length >= 10
+    && (props.mode === 'delivery' ? props.deliveryAddress.trim().length > 0
+        : props.mode === 'dine_in' ? props.tableNumber.trim().length > 0
+        : true);
   return (
-    <div id={props.anchorId} style={{
-      background: 'var(--zt-surface-2)', borderTop: '0.5px solid var(--zt-border)',
-      padding: '40px 32px',
-    }}>
-      <div style={{ maxWidth: 720, margin: '0 auto',
-        background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
-        borderRadius: 18, padding: '28px 32px',
-        boxShadow: '0 8px 30px rgba(40,55,30,.08)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
-          <h2 style={{ fontFamily: 'var(--zt-font-display)', fontSize: 32, margin: 0,
-            fontWeight: 400, letterSpacing: -.5, color: 'var(--zt-ink)' }}>
-            Checkout
-          </h2>
-          <button type="button" onClick={props.onCancel} style={{
-            background: 'none', border: 'none', color: 'var(--zt-ink-muted)',
-            fontSize: 13, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit',
-          }}>
-            ← Back to menu
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {props.deliveryAvailable && (
-            <ModeButton active={props.mode === 'delivery'} onClick={() => props.setMode('delivery')}
-              icon={<I.scooter />} label="Delivery" />
-          )}
-          {props.takeawayEnabled && (
-            <ModeButton active={props.mode === 'takeaway'} onClick={() => props.setMode('takeaway')}
-              icon={<I.bag />} label="Takeaway" />
-          )}
-          {props.dineInEnabled && (
-            <ModeButton active={props.mode === 'dine_in'} onClick={() => props.setMode('dine_in')}
-              icon={<I.table />} label="Dine-in" />
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <Field label="Your name">
-            <input type="text" value={props.customerName} onChange={(e) => props.setCustomerName(e.target.value)}
-              placeholder="Aapka naam" style={inputStyle} />
-          </Field>
-          <Field label="WhatsApp number">
-            <input type="tel" inputMode="numeric" value={props.customerPhone}
-              onChange={(e) => props.setCustomerPhone(e.target.value)}
-              placeholder="+91 9XXXXXXXXX" style={inputStyle} />
-          </Field>
-        </div>
-
-        {props.mode === 'delivery' && (
-          <Field label="Delivery address">
-            <textarea value={props.deliveryAddress} onChange={(e) => props.setDeliveryAddress(e.target.value)}
-              placeholder="Full address with landmark / floor / apartment number"
-              rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: 80, fontFamily: 'inherit' }} />
-          </Field>
-        )}
-
-        {props.mode === 'dine_in' && (
-          <Field label="Table number">
-            <input type="text" value={props.tableNumber} onChange={(e) => props.setTableNumber(e.target.value)}
-              placeholder="e.g. 7" style={inputStyle} />
-          </Field>
-        )}
-
-        <Field label="Special instructions (optional)">
-          <textarea value={props.notes} onChange={(e) => props.setNotes(e.target.value)}
-            placeholder="Less spicy, no onion, etc." rows={2}
-            style={{ ...inputStyle, resize: 'vertical', minHeight: 60, fontFamily: 'inherit' }} />
-        </Field>
-
-        <label style={{
-          display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 6, marginBottom: 16,
-          fontSize: 12.5, color: 'var(--zt-ink-muted)', lineHeight: 1.5, cursor: 'pointer',
-        }}>
-          <input type="checkbox" checked={props.marketingOptIn}
-            onChange={(e) => props.setMarketingOptIn(e.target.checked)}
-            style={{ marginTop: 2, flexShrink: 0, accentColor: 'var(--zt-primary)' }} />
-          <span>
-            Send me updates from <b style={{ color: 'var(--zt-ink)' }}>{props.businessName}</b> about offers and weekly specials on WhatsApp.
-            <br />
-            <span style={{ fontSize: 11, opacity: .75 }}>
-              Optional. Reply STOP anytime. Order confirmations are sent regardless.
-            </span>
-          </span>
-        </label>
-
-        {props.error && (
+    <ModalShell
+      title="Checkout"
+      subtitle={`${props.itemCount} ${props.itemCount === 1 ? 'item' : 'items'} from ${props.businessName}`}
+      onClose={props.onClose}
+      maxWidth={780}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 0 }}>
+        {/* LEFT: form */}
+        <div style={{ padding: 24, borderRight: '0.5px solid var(--zt-border)' }}>
+          <FieldLabel>How would you like it?</FieldLabel>
           <div style={{
-            padding: '10px 14px', borderRadius: 10,
-            background: '#FEF2F2', border: '0.5px solid #FCA5A5', color: '#991B1B',
-            fontSize: 12.5, marginBottom: 14,
-          }}>{props.error}</div>
-        )}
+            display: 'grid', gridTemplateColumns: `repeat(${
+              [props.deliveryAvailable, props.takeawayEnabled, props.dineInEnabled].filter(Boolean).length
+            }, 1fr)`, gap: 8,
+            background: 'var(--zt-surface-2)', padding: 6, borderRadius: 12,
+            border: '0.5px solid var(--zt-border)', marginBottom: 20,
+          }}>
+            {props.deliveryAvailable && (
+              <SegmentBtn icon={<I.scooter />} label="Delivery"
+                active={props.mode === 'delivery'} onClick={() => props.setMode('delivery')} />
+            )}
+            {props.takeawayEnabled && (
+              <SegmentBtn icon={<I.bag />} label="Takeaway"
+                active={props.mode === 'takeaway'} onClick={() => props.setMode('takeaway')} />
+            )}
+            {props.dineInEnabled && (
+              <SegmentBtn icon={<I.table />} label="Dine-in"
+                active={props.mode === 'dine_in'} onClick={() => props.setMode('dine_in')} />
+            )}
+          </div>
 
-        <button type="button" disabled={props.submitting} onClick={props.onSubmit} style={{
-          width: '100%', padding: 15,
-          background: props.submitting ? 'var(--zt-ink-muted)'
-            : 'linear-gradient(180deg, var(--zt-primary) 0%, var(--zt-primary-dark) 100%)',
-          color: '#fff', border: 'none', borderRadius: 12,
-          fontSize: 14.5, fontWeight: 700, cursor: props.submitting ? 'wait' : 'pointer',
-          fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          boxShadow: '0 6px 18px rgba(60,80,50,.25)',
-        }}>
-          {props.submitting ? 'Placing order…' : (
-            <>Place order — ₹{props.subtotal} <I.chevron s={{ color: '#fff' }} /></>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <FieldD label="Your name" required>
+              <input type="text" value={props.customerName}
+                onChange={(e) => props.setCustomerName(e.target.value)}
+                placeholder="Aapka naam" style={inputD} />
+            </FieldD>
+            <FieldD label="WhatsApp number" required>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{
+                  ...inputD, width: 64, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', color: 'var(--zt-ink-muted)',
+                }}>+91</div>
+                <input type="tel" inputMode="numeric" value={props.customerPhone}
+                  onChange={(e) => props.setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="98765 43210"
+                  style={{ ...inputD, flex: 1 }} />
+              </div>
+            </FieldD>
+          </div>
+
+          {props.mode === 'delivery' && (
+            <FieldD label="Delivery address" required>
+              <textarea value={props.deliveryAddress}
+                onChange={(e) => props.setDeliveryAddress(e.target.value)}
+                placeholder="House / flat no., street, landmark" rows={2}
+                style={{ ...inputD, resize: 'none' as const, fontFamily: 'inherit', lineHeight: 1.5 }} />
+            </FieldD>
           )}
-        </button>
-        <div style={{ fontSize: 11, color: 'var(--zt-ink-muted)', textAlign: 'center', marginTop: 10 }}>
-          Payment instructions will be sent on WhatsApp after placing the order.
+
+          {props.mode === 'dine_in' && (
+            <FieldD label="Table number" required hint="Look at your table card">
+              <input type="text" value={props.tableNumber}
+                onChange={(e) => props.setTableNumber(e.target.value)}
+                placeholder="e.g. 7" style={inputD} />
+            </FieldD>
+          )}
+
+          {props.mode === 'takeaway' && (
+            <div style={{
+              background: 'var(--zt-primary-soft)', border: '0.5px dashed var(--zt-primary)',
+              borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: 'var(--zt-primary-dark)',
+              display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, marginBottom: 14,
+            }}>
+              <I.bag s={{ color: '#3F5736' }} />
+              <div>
+                {props.address ? <>Pickup from <b>{props.address}</b>.<br /></> : null}
+                <span style={{ opacity: .8, fontSize: 11.5 }}>We&apos;ll WhatsApp you when ready (~15 min)</span>
+              </div>
+            </div>
+          )}
+
+          <FieldD label="Special instructions" hint="Spice level, allergies etc.">
+            <textarea value={props.notes} onChange={(e) => props.setNotes(e.target.value)}
+              placeholder="Less spicy, no onion…" rows={2}
+              style={{ ...inputD, resize: 'none' as const, fontFamily: 'inherit' }} />
+          </FieldD>
+
+          <label style={{
+            display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0',
+            cursor: 'pointer', marginTop: 4,
+          }}>
+            <input type="checkbox" checked={props.marketingOptIn}
+              onChange={(e) => props.setMarketingOptIn(e.target.checked)}
+              style={{ accentColor: 'var(--zt-primary)', marginTop: 2 }} />
+            <div style={{ fontSize: 12, color: 'var(--zt-ink)', lineHeight: 1.4 }}>
+              Send me offers &amp; weekly specials from <b>{props.businessName}</b>.
+              <div style={{ color: 'var(--zt-ink-muted)', marginTop: 2, fontSize: 11 }}>
+                Optional. Order confirmations are sent regardless.
+              </div>
+            </div>
+          </label>
+
+          {props.error && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 10,
+              background: '#FEF2F2', border: '0.5px solid #FCA5A5', color: '#991B1B',
+              fontSize: 12.5, marginTop: 8,
+            }}>{props.error}</div>
+          )}
+        </div>
+
+        {/* RIGHT: order summary */}
+        <div style={{ background: 'var(--zt-surface-2)', padding: 20 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
+            letterSpacing: .8, textTransform: 'uppercase', marginBottom: 12,
+          }}>
+            Order summary
+          </div>
+          <div style={{
+            background: 'var(--zt-surface)', borderRadius: 10,
+            border: '0.5px solid var(--zt-border)', padding: '10px 12px', marginBottom: 14,
+          }}>
+            {props.cartLines.map((it) => (
+              <div key={it.key} style={{
+                display: 'flex', justifyContent: 'space-between', padding: '5px 0',
+                fontSize: 12, color: 'var(--zt-ink)',
+              }}>
+                <span style={{
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, paddingRight: 6,
+                }}>
+                  <b style={{ fontWeight: 600 }}>{it.qty}×</b> {it.name}
+                </span>
+                <span>₹{it.lineTotal}</span>
+              </div>
+            ))}
+          </div>
+
+          <BillRowSimple label="Subtotal" value={`₹${props.subtotal}`} />
+          <BillRowSimple label="Delivery" value="Calculated by kitchen" muted />
+          <Hairline style={{ margin: '10px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Total</span>
+            <span style={{ fontFamily: 'var(--zt-font-display)', fontSize: 24, color: 'var(--zt-ink)' }}>
+              ₹{props.subtotal}
+            </span>
+          </div>
+
+          <button type="button" disabled={!valid || props.submitting} onClick={props.onSubmit}
+            style={{
+              width: '100%',
+              background: !valid || props.submitting ? 'var(--zt-ink-muted)'
+                : 'linear-gradient(180deg, var(--zt-primary) 0%, var(--zt-primary-dark) 100%)',
+              color: '#fff', border: 'none', borderRadius: 12,
+              padding: 13, fontSize: 13.5, fontWeight: 700,
+              cursor: !valid || props.submitting ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 12px rgba(60,80,50,.2)',
+              opacity: !valid || props.submitting ? .55 : 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}>
+            {props.submitting ? 'Placing order…' : <>Place order <I.chevron s={{ color: '#fff' }} /></>}
+          </button>
+
+          <div style={{
+            marginTop: 14, padding: 10,
+            background: '#E7F4EB', border: '0.5px solid #B6DAB8',
+            borderRadius: 10, display: 'flex', gap: 8, alignItems: 'center',
+          }}>
+            <I.whatsapp s={{ color: '#25D366' }} />
+            <div style={{ fontSize: 11, color: '#1B5E20', lineHeight: 1.4 }}>
+              Updates on WhatsApp. Payment instructions sent on confirm.
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
-function ModeButton({
-  active, onClick, icon, label,
-}: { active: boolean; onClick: () => void; icon: ReactNode; label: string }) {
+function SegmentBtn({
+  icon, label, active, onClick,
+}: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} style={{
-      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-      padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-      background: active ? 'var(--zt-primary-soft)' : 'var(--zt-surface)',
-      color: active ? 'var(--zt-primary-dark)' : 'var(--zt-ink)',
-      border: `0.5px solid ${active ? 'var(--zt-primary)' : 'var(--zt-border)'}`,
-      fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+      padding: '11px 6px', borderRadius: 9, border: 'none',
+      background: active ? 'var(--zt-surface)' : 'transparent',
+      color: active ? 'var(--zt-ink)' : 'var(--zt-ink-muted)',
+      boxShadow: active ? '0 1px 3px rgba(40,55,30,.08), 0 0 0 0.5px var(--zt-border)' : 'none',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      cursor: 'pointer', fontFamily: 'inherit',
+      fontWeight: active ? 700 : 500, fontSize: 12.5,
     }}>
-      {icon} {label}
+      <span style={{ color: active ? 'var(--zt-primary-dark)' : 'var(--zt-ink-muted)' }}>{icon}</span>
+      {label}
     </button>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label style={{ display: 'block', marginBottom: 14 }}>
-      <div style={{
-        fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
-        letterSpacing: .6, textTransform: 'uppercase', marginBottom: 6,
-      }}>{label}</div>
-      {children}
-    </label>
+    <div style={{
+      fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
+      letterSpacing: .8, textTransform: 'uppercase', marginBottom: 8,
+    }}>{children}</div>
   );
 }
+
+function FieldD({
+  label, required, hint, children,
+}: { label: string; required?: boolean; hint?: string; children: ReactNode }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'baseline', marginBottom: 6,
+      }}>
+        <label style={{
+          fontSize: 11, fontWeight: 600, color: 'var(--zt-ink-muted)',
+          letterSpacing: .6, textTransform: 'uppercase',
+        }}>
+          {label} {required && <span style={{ color: '#B91C1C' }}>*</span>}
+        </label>
+        {hint && <span style={{ fontSize: 10.5, color: 'var(--zt-ink-muted)' }}>{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function BillRowSimple({
+  label, value, muted,
+}: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between',
+      padding: '3px 0', fontSize: 12.5, color: 'var(--zt-ink)',
+    }}>
+      <span style={{ color: 'var(--zt-ink-muted)' }}>{label}</span>
+      <span style={{
+        fontWeight: 600,
+        color: muted ? 'var(--zt-ink-muted)' : 'var(--zt-ink)',
+        fontStyle: muted ? 'italic' : 'normal',
+      }}>{value}</span>
+    </div>
+  );
+}
+
+const inputD: CSSProperties = {
+  width: '100%', padding: '10px 13px', borderRadius: 9,
+  border: '0.5px solid var(--zt-border)', background: 'var(--zt-surface)',
+  fontSize: 13, fontFamily: 'inherit', color: 'var(--zt-ink)', outline: 'none',
+  boxSizing: 'border-box',
+};
 
 // ═══════════════════════════════════════ FOOTER
 function Footer({

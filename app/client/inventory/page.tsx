@@ -513,7 +513,7 @@ export default function InventoryPage() {
               />
             </label>
             <Pill variant="ghost" onClick={runSyncFromForm}>
-              {syncingForm ? 'Syncing…' : '📥 Sync products from form'}
+              {syncingForm ? 'Syncing…' : '🔄 Re-sync from menu'}
             </Pill>
           </div>
         }
@@ -521,7 +521,7 @@ export default function InventoryPage() {
       <div style={{ padding: '28px 32px 60px' }} className="max-w-5xl">
         <PageHead
           title={<>Your <span className="zt-serif">products.</span></>}
-          sub="Menu / services / plans from your onboarding form auto-sync here. Bot auto-decrements on every order. Adjust stock or mark items unavailable anytime."
+          sub="Items here are auto-synced from your Menu / Bot Settings every time you Save there. Bot auto-decrements stock on every order. Adjust stock counts or pause items anytime — your changes stay even when you re-sync."
         />
 
         <Panel title="Add new item" sub="Pick a category — stock fields auto-hide for service-style categories like memberships, services, and courses.">

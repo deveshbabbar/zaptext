@@ -205,18 +205,29 @@ export function MenuEditor({ businessName }: { businessName: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bulk: { knowledge_base_json: JSON.stringify(nextKb) } }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        inventorySynced?: number | null;
+      };
       if (!res.ok) {
         throw new Error(data.message || data.error || `save failed (${res.status})`);
       }
       setKb(nextKb);
       setOverrides(cleanedOverrides);
       setDirty(false);
-      toast.success(
+      // Work Item 6: surface inventory auto-sync result so the owner knows
+      // their menu edit ALREADY flowed into the bot's live stock list — no
+      // manual /client/inventory sync click needed.
+      const synced =
+        typeof data.inventorySynced === 'number' && data.inventorySynced > 0
+          ? ` · ${data.inventorySynced} item${data.inventorySynced === 1 ? '' : 's'} synced to inventory`
+          : '';
+      const base =
         selectedOutletId === null
           ? 'Chain menu saved'
-          : `Menu saved for ${outlets.find((o) => o.id === selectedOutletId)?.name || 'this branch'}`
-      );
+          : `Menu saved for ${outlets.find((o) => o.id === selectedOutletId)?.name || 'this branch'}`;
+      toast.success(`${base}${synced}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {

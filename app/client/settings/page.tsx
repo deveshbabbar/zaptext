@@ -423,8 +423,15 @@ export default function ClientSettingsPage() {
         // Same for the capacity cap. If the owner cleared the input we
         // store '' in the baseline so the empty-state diff is right.
         setInitialConcurrentOrderCap(concurrentOrderCap.trim());
+        // Work Item 6: surface inventory auto-sync count when the KB was
+        // touched — replaces the old "Click Sync to inventory" instruction
+        // which lied (the sync already ran server-side).
+        const synced =
+          typeof data.inventorySynced === 'number' && data.inventorySynced > 0
+            ? ` · ${data.inventorySynced} item${data.inventorySynced === 1 ? '' : 's'} synced to inventory`
+            : '';
         if (kbDirty) {
-          toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
+          toast.success(`Saved — knowledge updated${synced}`);
         } else {
           toast.success('Saved — all changes applied');
         }
@@ -901,11 +908,11 @@ export default function ClientSettingsPage() {
                   type="button"
                   onClick={syncInventoryFromForm}
                   disabled={syncingInv || saving || kbDirty}
-                  title={kbDirty ? 'Save knowledge first, then sync' : 'Copy menu / products into the inventory sheet'}
+                  title={kbDirty ? 'Save knowledge first, then re-sync' : 'Force a manual re-sync if the auto-sync (which runs on every Save) ever drifts.'}
                   className="text-[12px] font-semibold rounded-[8px] border border-[var(--line)] hover:border-[var(--ink)] disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ padding: '5px 10px' }}
                 >
-                  {syncingInv ? 'Syncing…' : '📥 Sync to inventory'}
+                  {syncingInv ? 'Syncing…' : '🔄 Re-sync inventory'}
                 </button>
                 {kbDirty && !kbError && (
                   <span className="text-[11.5px] text-[#E89A1C] font-semibold">● Unsaved changes</span>
@@ -927,7 +934,7 @@ export default function ClientSettingsPage() {
                 style={{ padding: 14, resize: 'vertical' }}
               />
               <p className="text-[11.5px] text-[var(--mute)] mt-2 m-0">
-                Tip: if you add / remove menu items here, click <b>Sync to inventory</b> after saving to push them into the Products &amp; Inventory sheet. Existing stock is preserved.
+                Menu / product edits here <b>auto-sync to the Inventory page on every Save</b>. The <b>Re-sync inventory</b> button is just a manual override for edge cases (e.g. after editing raw JSON and skipping Save). Existing stock counts are always preserved.
               </p>
             </Panel>
           </div>

@@ -206,11 +206,19 @@ export async function POST(request: NextRequest) {
       // owner just typed in settings. Best-effort — if sync fails, the
       // settings save still succeeds and the user can rerun manually from
       // /client/inventory.
+      //
+      // Work Item 6: capture and return the count so callers (menu editor /
+      // settings page) can show "N items synced" in their success toast
+      // instead of telling the user to click a manual Sync button. The
+      // manual button stays as a recovery path but should no longer be the
+      // primary mental model.
+      let inventorySynced: number | null = null;
       if (typeof writes.knowledge_base_json === 'string') {
         try {
           const parsedKb = JSON.parse(writes.knowledge_base_json) as ClientConfig;
           if (parsedKb && parsedKb.type) {
-            await syncProductsFromConfig(bot.client_id, parsedKb);
+            const result = await syncProductsFromConfig(bot.client_id, parsedKb);
+            inventorySynced = result?.count ?? 0;
           }
         } catch (e) {
           console.error('[settings] inventory auto-sync failed (non-fatal):', e);
@@ -224,6 +232,7 @@ export async function POST(request: NextRequest) {
         success: true,
         systemPrompt: writes.system_prompt,
         saved: savedKeys,
+        inventorySynced,
       });
     }
 

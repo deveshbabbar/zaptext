@@ -16,7 +16,7 @@ import { recordConsentEvent } from '@/lib/db/consent-log';
 import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
-import { countActiveKitchenOrders } from '@/lib/db/restaurant-dine-in';
+import { countActiveKitchenOrders, createOrder as createDineInOrder } from '@/lib/db/restaurant-dine-in';
 import { classifyPriority } from '@/lib/conversation-priority';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
 import {
@@ -371,10 +371,76 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         action = 'decline';
         targetBookingId = buttonId.slice('decl_'.length);
       } else {
+        // Match "approve <id>" / "decline <id>" first (specific target).
         const m = textCmd.match(/^(approve|decline)\s+(bk_[a-z0-9-]+)/i);
         if (m) {
           action = m[1].toLowerCase() as 'approve' | 'decline';
           targetBookingId = m[2];
+        } else {
+          // Loose match: owner just typed "approve" / "decline" / "Approve" etc.
+          // Auto-target the most recent pending_approval booking for this
+          // client. Owner is implicitly approving the latest one. If there
+          // are zero or multiple, we reply with disambiguation.
+          const looseM = textCmd.match(/^(approve|decline|approve\s+order|decline\s+order|haan|nahin|nahi|ok|yes|no)\s*$/i);
+          if (looseM) {
+            const word = looseM[1].toLowerCase();
+            const inferredAction: 'approve' | 'decline' =
+              word === 'decline' || word === 'decline order' || word === 'nahin' || word === 'nahi' || word === 'no'
+                ? 'decline'
+                : 'approve';
+            try {
+              // Find most-recent pending_approval booking for this client.
+              const todayIst = getTodayIST();
+              const yesterdayIst = getDateOffset(-1);
+              const recent = [
+                ...(await getBookingsForDate(client.client_id, todayIst).catch(() => [])),
+                ...(await getBookingsForDate(client.client_id, yesterdayIst).catch(() => [])),
+              ]
+                .filter((b) => b.status === 'pending_approval')
+                .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+              if (recent.length === 0) {
+                await sendWhatsAppMessage(
+                  phoneNumberId,
+                  ownerWhatsApp,
+                  `No orders are pending approval right now. Reply *approve <booking_id>* if you meant a specific older order.`
+                );
+                await addConversationMessage({
+                  timestamp,
+                  client_id: client.client_id,
+                  customer_phone: customerPhone,
+                  direction: 'incoming',
+                  message: `[owner-cmd loose:${word}] no-pending`,
+                  message_type: msg.type,
+                });
+                continue;
+              }
+              if (recent.length > 1) {
+                const list = recent
+                  .slice(0, 5)
+                  .map((b) => `• ${b.booking_id}  (${b.service || 'order'})`)
+                  .join('\n');
+                await sendWhatsAppMessage(
+                  phoneNumberId,
+                  ownerWhatsApp,
+                  `${recent.length} orders are pending approval. Reply with the specific booking ID:\n\n${list}\n\nExample: *${inferredAction} ${recent[0].booking_id}*`
+                );
+                await addConversationMessage({
+                  timestamp,
+                  client_id: client.client_id,
+                  customer_phone: customerPhone,
+                  direction: 'incoming',
+                  message: `[owner-cmd loose:${word}] ambiguous-${recent.length}`,
+                  message_type: msg.type,
+                });
+                continue;
+              }
+              // Exactly one pending — use it.
+              action = inferredAction;
+              targetBookingId = recent[0].booking_id;
+            } catch (e) {
+              console.error('[owner-approval] loose-match lookup failed:', e);
+            }
+          }
         }
       }
 
@@ -1194,6 +1260,15 @@ these four data points IN THIS ORDER before saying the order is placed:
           This question is REQUIRED. Do not skip it even if the customer
           seems eager to finish. The customer's "no, that's all" answers
           STEP 1 (no more items), NOT step 2 — you still need their mode.
+          ⚠️ Mode-inference exception: if the customer's CURRENT or PREVIOUS
+          message in this thread has already named a table ("table 4", "T9",
+          "for table number 7") OR explicitly said "takeaway" / "parcel" /
+          "delivery to <address>", you may skip the question and treat that
+          as the mode answer — BUT in your reply you MUST echo it back for
+          confirmation: "Dine-in at table 7, 1 × Chicken 65 (₹189). Confirm?"
+          Wait for a yes / "haan" / "confirm" / "pakka" before emitting the
+          [ORDER:] / [ORDER_PENDING:] tag. If the customer corrects you
+          ("nahin delivery"), restart the mode capture.
 
   STEP 3. ADDRESS (delivery only) — if step 2 = delivery, ask "Please
           share your delivery address with pincode." If step 2 = dine-in,
@@ -2040,6 +2115,70 @@ existing per-message LANGUAGE RULES still apply.
           skipSlotValidation: true,
         });
 
+        // Mirror the order into `dine_in_orders` so /client/restaurant/orders
+        // (Today's orders dashboard) actually shows it. The bookings table
+        // is the legacy home for ORDER tags; the dashboard reads dine_in_orders
+        // (which also drives QR-scan + storefront orders), so without this
+        // mirror the owner sees "0 orders today" even when the bot processed
+        // dozens. Best-effort — a write failure here doesn't undo the
+        // booking that just succeeded.
+        try {
+          const addrLower = address.toLowerCase().trim();
+          let orderType: 'dine_in' | 'home_delivery' | 'parcel_takeaway' = 'home_delivery';
+          let tableNumber: string | null = null;
+          let deliveryAddr = '';
+          if (/^table\s*\d+/i.test(address) || /^t\s*\d+/i.test(address) || addrLower.startsWith('dine-in') || addrLower === 'walk-in') {
+            orderType = 'dine_in';
+            const m = address.match(/(\d+)/);
+            tableNumber = m ? m[1] : null;
+          } else if (addrLower.includes('takeaway') || addrLower.includes('parcel') || addrLower.includes('pickup')) {
+            orderType = 'parcel_takeaway';
+          } else if (address.trim()) {
+            orderType = 'home_delivery';
+            deliveryAddr = address;
+          }
+
+          // Look up unit prices from active inventory by canonical name so
+          // each dine_in_orders item has a price. Fall back to splitting the
+          // total evenly across quantities when inventory doesn't match
+          // (e.g. specials not yet in the menu table).
+          const activeInv = await getActiveInventory(client.client_id).catch(() => []);
+          const priceByName = new Map<string, number>();
+          for (const inv of activeInv) {
+            priceByName.set(inv.name.toLowerCase(), Number(inv.price) || 0);
+          }
+          const totalQty = items.reduce((s, it) => {
+            const m = it.match(/^(\d+)\s*[xX*]/);
+            return s + (m ? parseInt(m[1], 10) : 1);
+          }, 0);
+          const fallbackUnit = totalQty > 0 ? total / totalQty : total;
+          const parsedItems = items.map((tok) => {
+            const m = tok.match(/^(\d+)\s*[xX*]\s*(.+)$/);
+            const qty = m ? parseInt(m[1], 10) : 1;
+            const name = m ? m[2].trim() : tok.trim();
+            const price = priceByName.get(name.toLowerCase()) ?? fallbackUnit;
+            return { name, qty, price };
+          });
+
+          const specialNotes = [
+            needsApproval ? '⚠️ PENDING OWNER APPROVAL' : '',
+            extraNotes,
+          ].filter(Boolean).join(' · ');
+
+          await createDineInOrder({
+            client_id: client.client_id,
+            customer_phone: customerPhone,
+            customer_name: customerPhone,
+            order_type: orderType,
+            items: parsedItems,
+            table_number: tableNumber,
+            delivery_address: deliveryAddr,
+            special_notes: specialNotes,
+          });
+        } catch (e) {
+          console.error('[dine-in-mirror] failed (non-fatal):', e);
+        }
+
         // Real-time WhatsApp to owner — gated by per-client notify_whatsapp.
         if (client.notify_whatsapp !== false) {
           const itemsList = items.length ? items.map((i) => `  • ${i}`).join('\n') : '  (no items parsed)';
@@ -2100,21 +2239,31 @@ existing per-message LANGUAGE RULES still apply.
             const itemsHtml = items.length
               ? `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>`
               : '<p>(no items parsed)</p>';
+            // Approval-mode emails get a different subject + an action-needed
+            // block telling the owner how to approve (reply to bot WhatsApp
+            // or click into the dashboard).
+            const subject = needsApproval
+              ? `🔔 Action needed — Order ₹${total.toFixed(2)} pending approval — ${client.business_name}`
+              : `🛍️ New order ₹${total.toFixed(2)} — ${client.business_name}`;
+            const heading = needsApproval
+              ? `<h2>🔔 Order needs your approval</h2><p style="background:#FFF4E5;padding:12px 14px;border-radius:8px;border-left:4px solid #E89A1C;margin:0 0 16px;">Reply to the WhatsApp message with <strong>approve</strong> or <strong>decline</strong> — or use the specific command <code>approve ${created.booking_id}</code> if multiple orders are pending.</p>`
+              : `<h2>🛍️ New order received</h2>`;
             await sendTemplate(
               ownerEmail,
               {
-                subject: `🛍️ New order ₹${total.toFixed(2)} — ${client.business_name}`,
+                subject,
                 html: `
-                  <h2>🛍️ New order received</h2>
+                  ${heading}
                   <p><strong>Business:</strong> ${client.business_name}</p>
                   <p><strong>Customer:</strong> ${customerPhone}</p>
                   <p><strong>Amount:</strong> ₹${total.toFixed(2)}</p>
                   <p><strong>Items (${itemCount}):</strong></p>
                   ${itemsHtml}
-                  ${address ? `<p><strong>Delivery address:</strong> ${address}</p>` : ''}
+                  ${address ? `<p><strong>Address / mode:</strong> ${address}</p>` : ''}
                   ${extraNotes ? `<p><strong>Notes:</strong> ${extraNotes}</p>` : ''}
+                  <p><strong>Booking ID:</strong> <code>${created.booking_id}</code></p>
                   <p style="color:#6F6A5F;font-size:13px;margin-top:16px;">
-                    Placed at ${timeSlot} on ${todayIst}. Payment screenshot will follow when the customer pays.
+                    ${needsApproval ? 'Customer is waiting — please approve or decline ASAP.' : 'Placed at ' + timeSlot + ' on ' + todayIst + '. Payment screenshot will follow when the customer pays.'}
                   </p>
                 `,
               },

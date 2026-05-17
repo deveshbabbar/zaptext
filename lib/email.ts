@@ -1,10 +1,22 @@
-// ZeptoMail (Zoho transactional email) integration
-// Dashboard: https://app.zeptomail.com
-// Env vars required: ZEPTO_API_KEY, ZEPTO_SENDER_EMAIL, ZEPTO_SENDER_NAME
+// Brevo (formerly Sendinblue) transactional email integration.
+// Dashboard: https://app.brevo.com
+// Env vars:
+//   BREVO_API_KEY       (required) — xkeysib-... key from Brevo dashboard
+//                                    → Senders & IPs → SMTP & API → API Keys
+//   BREVO_SENDER_EMAIL  (optional) — defaults to 'hello@zaptext.shop'.
+//                                    Must be a verified sender in Brevo.
+//   BREVO_SENDER_NAME   (optional) — defaults to 'ZapText'.
+//   BREVO_REPLY_TO_EMAIL(optional) — defaults to BREVO_SENDER_EMAIL
+//                                    (single-inbox setup — replies go
+//                                    back to the same hello@ mailbox).
+//
+// API reference: https://developers.brevo.com/reference/sendtransacemail
+// Body shape differs from Zoho's ZeptoMail (`htmlContent` vs `htmlbody`,
+// `sender` vs `from`, etc.) — full rewrite, not a drop-in swap.
 
 import { recordEmailAttempt } from './db/email-send-log';
 
-const ZEPTO_API_URL = 'https://api.zeptomail.in/v1.1/email';
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 export interface EmailAttachment {
   filename: string;
@@ -37,40 +49,45 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function sendEmail({ to, toName, subject, html, attachments }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
-  const apiKey = process.env.ZEPTO_API_KEY;
+  const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) {
-    console.error('[Email] ZEPTO_API_KEY not configured. Add it from ZeptoMail dashboard → Mail Agents → API token.');
-    return { success: false, error: 'ZEPTO_API_KEY not configured' };
+    console.error('[Email] BREVO_API_KEY not configured. Add it from Brevo dashboard → Senders & IPs → SMTP & API → API Keys.');
+    return { success: false, error: 'BREVO_API_KEY not configured' };
   }
   if (!to) {
     return { success: false, error: 'No recipient' };
   }
 
-  const senderEmail = process.env.ZEPTO_SENDER_EMAIL || 'noreply@zaptext.shop';
-  const senderName = process.env.ZEPTO_SENDER_NAME || 'ZapText';
-  // Reply-To: ZeptoMail is send-only — there's no inbox at zaptext.shop, so
-  // any customer reply to a noreply@ message would bounce. Route replies to
-  // a real inbox (Gmail by default). Override with ZEPTO_REPLY_TO_EMAIL.
-  const replyToEmail = process.env.ZEPTO_REPLY_TO_EMAIL || 'zaptextofficial@gmail.com';
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'hello@zaptext.shop';
+  const senderName = process.env.BREVO_SENDER_NAME || 'ZapText';
+  // Single-mailbox setup: replies route back to the same hello@ inbox
+  // by default, so the customer's reply lands in the mailbox the email
+  // came from. Override with BREVO_REPLY_TO_EMAIL if you ever want
+  // replies routed elsewhere.
+  const replyToEmail = process.env.BREVO_REPLY_TO_EMAIL || senderEmail;
   const safeSubject = sanitizeSubject(subject);
 
+  // Brevo's transactional send endpoint expects a different body shape
+  // than ZeptoMail: `sender` (not `from`), `htmlContent` (not `htmlbody`),
+  // `to` is a flat array of {email, name}, attachments use `attachment`
+  // (singular) array with {name, content} fields. Get any of these wrong
+  // and Brevo returns 400.
   const body: Record<string, unknown> = {
-    from: { address: senderEmail, name: senderName },
-    to: [{ email_address: { address: to, name: toName || to } }],
-    reply_to: [{ address: replyToEmail, name: senderName }],
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: to, name: toName || to }],
+    replyTo: { email: replyToEmail, name: senderName },
     subject: safeSubject,
-    htmlbody: html,
+    htmlContent: html,
   };
   if (attachments && attachments.length > 0) {
-    body.attachments = attachments.map((a) => ({
+    body.attachment = attachments.map((a) => ({
       name: a.filename,
       content: a.content,
-      mime_type: a.contentType || 'application/octet-stream',
     }));
   }
 
   // Retry on transient (5xx/429) failures. Booking notifications are
-  // critical — a single Zepto blip used to drop them silently. Worst
+  // critical — a single provider blip used to drop them silently. Worst
   // case wall-clock under ~5.5s so we don't blow webhook latency budgets.
   const MAX_ATTEMPTS = 3;
   const BASE_DELAY_MS = 750;
@@ -79,10 +96,11 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
   let lastError = '';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(ZEPTO_API_URL, {
+      const res = await fetch(BREVO_API_URL, {
         method: 'POST',
         headers: {
-          'Authorization': apiKey,
+          // Brevo uses a custom `api-key` header (NOT `Authorization`).
+          'api-key': apiKey,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
@@ -91,7 +109,8 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
 
       if (res.ok) {
         const result = await res.json().catch(() => ({})) as Record<string, unknown>;
-        console.log(`[Email] Sent to ${to} | ID: ${result.message_id || result.request_id || 'ok'}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
+        // Brevo returns `messageId` on 201 Created.
+        console.log(`[Email] Sent to ${to} | ID: ${result.messageId || 'ok'}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
         await recordEmailAttempt({
           toEmail: to,
           subject: safeSubject,
@@ -103,12 +122,12 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
 
       const errorData = await res.text();
       lastError = `${res.status} ${errorData}`.slice(0, 500);
-      console.error(`[Email] ZeptoMail error (${res.status}, attempt ${attempt}/${MAX_ATTEMPTS}):`, errorData);
+      console.error(`[Email] Brevo error (${res.status}, attempt ${attempt}/${MAX_ATTEMPTS}):`, errorData);
       if (res.status === 401) {
-        console.error('[Email] Invalid ZEPTO_API_KEY — check ZeptoMail dashboard → Mail Agents → API token.');
+        console.error('[Email] Invalid BREVO_API_KEY — check Brevo dashboard → Senders & IPs → SMTP & API → API Keys.');
       }
       if (res.status === 400) {
-        console.error('[Email] Bad request — verify noreply@zaptext.shop is added as sender in ZeptoMail.');
+        console.error(`[Email] Bad request — verify ${senderEmail} is added as a verified sender in Brevo (Senders & IPs → Senders).`);
       }
       if (!isRetryableStatus(res.status) || attempt === MAX_ATTEMPTS) {
         await recordEmailAttempt({

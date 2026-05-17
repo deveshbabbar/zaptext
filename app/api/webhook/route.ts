@@ -3070,20 +3070,37 @@ async function sweepStalePendings() {
       const ageMinutes = b.created_at ? (now - new Date(b.created_at).getTime()) / 60000 : Infinity;
       if (ageMinutes < cutoffMinutes) continue; // not yet eligible for THIS client
 
+      // Same restaurant-order awareness as the cron handler — see
+      // app/api/cron/auto-cancel-stale/route.ts for the rationale.
+      const isOrder = (b.service || '').toUpperCase().startsWith('ORDER');
+      const actorWord = isOrder
+        ? 'the owner'
+        : (realClient?.type === 'gym' ? 'the trainer' : 'the team');
       await cancelBooking(
         b.booking_id,
-        `[AUTO-CANCEL: trainer did not respond within ${cutoffMinutes} minutes]`
+        isOrder
+          ? `[AUTO-CANCEL: owner did not approve the order within ${cutoffMinutes} minutes]`
+          : `[AUTO-CANCEL: ${actorWord} did not respond within ${cutoffMinutes} minutes]`
       );
 
       if (!realClient?.phone_number_id) continue;
 
       if (b.customer_phone) {
         try {
-          const trainerLine = b.service ? ` with ${b.service}` : '';
-          const msg =
-            `🙏 Sorry, we couldn't confirm your booking${trainerLine} for ${b.date} at ${b.time_slot} — no response from our side within ${cutoffMinutes} minutes.\n\n` +
-            `Please reply with another preferred time and we'll set it up.\n\n` +
-            `Hindi: 🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking confirm nahi ho payi. Doosra time bhej dijiye, hum set kar denge.`;
+          const lang = realClient?.default_language === 'hindi' || realClient?.default_language === 'hinglish'
+            ? realClient.default_language
+            : 'english';
+          let msg: string;
+          if (isOrder) {
+            msg = lang === 'english'
+              ? `🙏 Sorry, we couldn't confirm your order in time. It was auto-cancelled after ${cutoffMinutes} minutes without confirmation from the kitchen. Please message again if you'd still like to order.`
+              : `🙏 Sorry, aapka order ${cutoffMinutes} minute mein confirm nahi ho paya — auto-cancel ho gaya. Agar phir bhi order karna ho toh dobara message kariye.`;
+          } else {
+            const svcLine = b.service ? ` (${b.service})` : '';
+            msg = lang === 'english'
+              ? `🙏 Sorry, we couldn't confirm your booking${svcLine} for ${b.date} at ${b.time_slot} — no response within ${cutoffMinutes} minutes. Please reply with another preferred time and we'll set it up.`
+              : `🙏 Maaf kijiye, ${b.date} ko ${b.time_slot} ki booking${svcLine} confirm nahi ho payi. Doosra time bhej dijiye, hum set kar denge.`;
+          }
           await sendWhatsAppMessage(realClient.phone_number_id, b.customer_phone, msg);
         } catch (e) {
           console.error('[stale-sweep] customer-notify failed:', e);

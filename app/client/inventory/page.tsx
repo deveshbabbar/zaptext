@@ -64,6 +64,74 @@ export default function InventoryPage() {
   const [newCategory, setNewCategory] = useState('');
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
 
+  // ── Bulk-update state (Work Item 3) ──────────────────────────────────
+  // Checked rows accumulate here. The bulk-action bar appears only while
+  // this set is non-empty. Cleared after a successful Apply.
+  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [bulkStock, setBulkStock] = useState('');
+  const [bulkThreshold, setBulkThreshold] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleSku = (sku: string) => {
+    setSelectedSkus((prev) => {
+      const next = new Set(prev);
+      if (next.has(sku)) next.delete(sku);
+      else next.add(sku);
+      return next;
+    });
+  };
+  const setGroupSelection = (skus: string[], on: boolean) => {
+    setSelectedSkus((prev) => {
+      const next = new Set(prev);
+      for (const sku of skus) {
+        if (on) next.add(sku);
+        else next.delete(sku);
+      }
+      return next;
+    });
+  };
+  const clearBulkSelection = () => {
+    setSelectedSkus(new Set());
+    setBulkStock('');
+    setBulkThreshold('');
+  };
+  async function applyBulk(patch: {
+    stock?: number;
+    low_stock_threshold?: number;
+    is_active?: boolean;
+  }) {
+    if (selectedSkus.size === 0) return;
+    if (Object.keys(patch).length === 0) {
+      toast.error('Set a value to apply');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      const res = await fetch('/api/client/inventory/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skus: Array.from(selectedSkus), patch }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        updated?: number;
+        skipped?: number;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || `Bulk update failed (${res.status})`);
+        return;
+      }
+      const skippedNote = data.skipped && data.skipped > 0 ? ` · ${data.skipped} skipped` : '';
+      toast.success(`Updated ${data.updated ?? 0} item${(data.updated ?? 0) === 1 ? '' : 's'}${skippedNote}`);
+      clearBulkSelection();
+      await load();
+    } catch {
+      toast.error('Bulk update failed');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   // Per-row availability editor state (keyed by sku).
   // File-import preview state
   interface ImportedProduct {
@@ -568,6 +636,30 @@ export default function InventoryPage() {
                   <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
+                        {/* Bulk-select master checkbox for this group. Reflects
+                            "all selected", "some selected" (indeterminate), or
+                            "none selected" based on the group's items. */}
+                        <th
+                          className="bg-[var(--bg-2)]"
+                          style={{ padding: '10px 8px 10px 12px', borderBottom: '1px solid var(--line)', width: 32 }}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Select all in ${group.name}`}
+                            checked={
+                              group.items.length > 0 &&
+                              group.items.every((it) => selectedSkus.has(it.sku))
+                            }
+                            ref={(el) => {
+                              if (!el) return;
+                              const selectedHere = group.items.filter((it) => selectedSkus.has(it.sku)).length;
+                              el.indeterminate = selectedHere > 0 && selectedHere < group.items.length;
+                            }}
+                            onChange={(e) =>
+                              setGroupSelection(group.items.map((it) => it.sku), e.target.checked)
+                            }
+                          />
+                        </th>
                         {(group.tracks_stock
                           ? ['Name', 'Price', 'Stock', 'Threshold', 'Updated', 'Actions']
                           : ['Name', 'Price', 'Updated', 'Actions']
@@ -591,6 +683,16 @@ export default function InventoryPage() {
                         return (
                           <Fragment key={it.sku}>
                           <tr>
+                            <td
+                              style={{ padding: '10px 8px 10px 12px', borderBottom: editing ? 'none' : '1px solid var(--line)', width: 32 }}
+                            >
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${it.name}`}
+                                checked={selectedSkus.has(it.sku)}
+                                onChange={() => toggleSku(it.sku)}
+                              />
+                            </td>
                             <td style={{ padding: '10px 12px', borderBottom: editing ? 'none' : '1px solid var(--line)' }}>
                               <div className="font-semibold">{it.name}</div>
                               <div className="zt-mono text-[11.5px] text-[var(--mute)]">{it.sku}</div>
@@ -676,7 +778,7 @@ export default function InventoryPage() {
                           </tr>
                           {editing && (
                             <tr>
-                              <td colSpan={6} style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+                              <td colSpan={7} style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
                                 <div className="flex flex-wrap items-end gap-3">
                                   <div>
                                     <div className="text-[11.5px] font-semibold mb-1">Available from (HH:MM)</div>
@@ -913,6 +1015,112 @@ export default function InventoryPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk-action bar (Work Item 3) ───────────────────────────────
+          Sticky bottom toolbar. Visible only while ≥ 1 row is ticked.
+          Stock / threshold inputs accept a single value to apply to all
+          selected rows; Pause / Resume toggles is_active in one shot. */}
+      {selectedSkus.size > 0 && (
+        <div
+          role="region"
+          aria-label="Bulk update toolbar"
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 90,
+            background: 'var(--card)',
+            borderTop: '1px solid var(--line)',
+            boxShadow: '0 -8px 24px rgba(0,0,0,.08)',
+          }}
+        >
+          <div
+            className="max-w-5xl mx-auto flex flex-wrap items-center gap-3"
+            style={{ padding: '12px 32px' }}
+          >
+            <div className="font-semibold text-[13px]">
+              {selectedSkus.size} selected
+            </div>
+
+            <label className="flex items-center gap-2 text-[12px] text-[var(--mute)]">
+              Stock
+              <input
+                type="number"
+                min={0}
+                value={bulkStock}
+                onChange={(e) => setBulkStock(e.target.value)}
+                disabled={bulkBusy}
+                placeholder="—"
+                className="w-[78px] rounded-[8px] border border-[var(--line)] bg-[var(--bg)] text-[13px] font-semibold focus:border-[var(--ink)] focus:outline-none disabled:opacity-50"
+                style={{ padding: '5px 8px' }}
+              />
+            </label>
+
+            <label className="flex items-center gap-2 text-[12px] text-[var(--mute)]">
+              Low alert
+              <input
+                type="number"
+                min={0}
+                value={bulkThreshold}
+                onChange={(e) => setBulkThreshold(e.target.value)}
+                disabled={bulkBusy}
+                placeholder="—"
+                className="w-[78px] rounded-[8px] border border-[var(--line)] bg-[var(--bg)] text-[13px] font-semibold focus:border-[var(--ink)] focus:outline-none disabled:opacity-50"
+                style={{ padding: '5px 8px' }}
+              />
+            </label>
+
+            <Pill
+              variant="ink"
+              onClick={() => {
+                const patch: { stock?: number; low_stock_threshold?: number } = {};
+                if (bulkStock.trim()) {
+                  const n = parseInt(bulkStock, 10);
+                  if (Number.isFinite(n)) patch.stock = Math.max(0, n);
+                }
+                if (bulkThreshold.trim()) {
+                  const n = parseInt(bulkThreshold, 10);
+                  if (Number.isFinite(n)) patch.low_stock_threshold = Math.max(0, n);
+                }
+                applyBulk(patch);
+              }}
+              disabled={bulkBusy || (!bulkStock.trim() && !bulkThreshold.trim())}
+            >
+              {bulkBusy ? 'Applying…' : 'Apply'}
+            </Pill>
+
+            <button
+              type="button"
+              onClick={() => applyBulk({ is_active: false })}
+              disabled={bulkBusy}
+              className="rounded-[8px] border border-[var(--line)] font-semibold text-[12px] disabled:opacity-50 hover:border-[#E89A1C] hover:text-[#E89A1C]"
+              style={{ padding: '6px 12px' }}
+            >
+              Pause all
+            </button>
+            <button
+              type="button"
+              onClick={() => applyBulk({ is_active: true })}
+              disabled={bulkBusy}
+              className="rounded-[8px] border border-[var(--line)] font-semibold text-[12px] disabled:opacity-50 hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              style={{ padding: '6px 12px' }}
+            >
+              Resume all
+            </button>
+
+            <button
+              type="button"
+              onClick={clearBulkSelection}
+              disabled={bulkBusy}
+              className="ml-auto rounded-[8px] border border-transparent text-[var(--mute)] font-semibold text-[12px] hover:text-[var(--ink)] disabled:opacity-50"
+              style={{ padding: '6px 10px' }}
+            >
+              Clear
+            </button>
           </div>
         </div>
       )}

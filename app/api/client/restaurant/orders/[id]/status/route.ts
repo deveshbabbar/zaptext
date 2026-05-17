@@ -28,50 +28,64 @@ const ALLOWED_STATUS: Record<string, true> = {
   cancelled: true,
 };
 
-function bilingualPing(
+// Single-language status ping. The bot used to send English + Hindi
+// concatenated, which felt spammy to customers who'd been talking in
+// only one language. We now pick the line by the client's
+// `default_language` setting (set in /client/settings → Default language).
+function statusPing(
   status: DineInOrderStatus,
   orderType: DineInOrderType,
   businessName: string,
   tableNumber: string,
+  lang: 'english' | 'hindi' | 'hinglish',
 ): string {
   // Header line varies by order type so the customer always knows the context.
   const header =
     orderType === 'dine_in'      ? `${businessName} — Table ${tableNumber || '?'}`
     : orderType === 'home_delivery' ? `${businessName} — Delivery`
     : `${businessName} — Takeaway`;
-  const lines: [string, string] | null = (() => {
+  const en: Record<string, string> = {
+    preparing: `Your order is being prepared 👨‍🍳`,
+    ready_delivery: `Your order is packed and ready — assigning a rider now 📦`,
+    ready_takeaway: `Your order is ready for pickup 🛍️ Please come collect.`,
+    ready_dinein: `Your order is ready, being served now 🍽️`,
+    served: `Your order has been served 🍽️ Enjoy!`,
+    out_for_delivery: `Your order is out for delivery 🛵 Should reach in 15-25 min.`,
+    delivered: `Your order is delivered ✅ Enjoy! Reply with how it was — we read every message.`,
+    picked_up: `Picked up — thanks for visiting ✅ Hope you enjoy!`,
+    cancelled: `Your order has been cancelled. Please contact us if this was unexpected.`,
+  };
+  const hi: Record<string, string> = {
+    preparing: `Aapka order ban raha hai 👨‍🍳`,
+    ready_delivery: `Aapka order pack ho gaya — rider assign ho raha hai 📦`,
+    ready_takeaway: `Aapka order pickup ke liye ready hai 🛍️ Please aa kar le jaayein.`,
+    ready_dinein: `Aapka order ready hai, serve ho raha hai 🍽️`,
+    served: `Aapka order serve kar diya hai 🍽️ Enjoy karein!`,
+    out_for_delivery: `Aapka order delivery ke liye nikal gaya 🛵 15-25 min mein pohonch jayega.`,
+    delivered: `Aapka order deliver ho gaya ✅ Enjoy karein! Feedback de dijiye chote se reply mein.`,
+    picked_up: `Pickup ho gaya — thanks for visiting ✅ Enjoy karein!`,
+    cancelled: `Aapka order cancel ho gaya hai. Agar galti se hua, hum se baat kariye.`,
+  };
+  const table = lang === 'english' ? en : hi;
+  const readyKey = orderType === 'home_delivery'
+    ? 'ready_delivery'
+    : orderType === 'parcel_takeaway'
+      ? 'ready_takeaway'
+      : 'ready_dinein';
+  const line = (() => {
     switch (status) {
-      case 'preparing':
-        return [`Your order is being prepared 👨‍🍳`, `Aapka order ban raha hai 👨‍🍳`];
-      case 'ready':
-        return orderType === 'home_delivery'
-          ? [`Your order is packed and ready — assigning a rider now 📦`,
-             `Aapka order pack ho gaya — rider assign ho raha hai 📦`]
-          : orderType === 'parcel_takeaway'
-          ? [`Your order is ready for pickup 🛍️ Please come collect.`,
-             `Aapka order pickup ke liye ready hai 🛍️ Please aa kar le jaayein.`]
-          : [`Your order is ready, being served now 🍽️`,
-             `Aapka order ready hai, serve ho raha hai 🍽️`];
-      case 'served':
-        return [`Your order has been served 🍽️ Enjoy!`, `Aapka order serve kar diya hai 🍽️ Enjoy karein!`];
-      case 'out_for_delivery':
-        return [`Your order is out for delivery 🛵 Should reach in 15-25 min.`,
-                `Aapka order delivery ke liye nikal gaya 🛵 15-25 min mein pohonch jayega.`];
-      case 'delivered':
-        return [`Your order is delivered ✅ Enjoy! Reply with how it was — we read every message.`,
-                `Aapka order deliver ho gaya ✅ Enjoy karein! Feedback de dijiye chote se reply mein.`];
-      case 'picked_up':
-        return [`Picked up — thanks for visiting ✅ Hope you enjoy!`,
-                `Pickup ho gaya — thanks for visiting ✅ Enjoy karein!`];
-      case 'cancelled':
-        return [`Your order has been cancelled. Please contact us if this was unexpected.`,
-                `Aapka order cancel ho gaya hai. Agar galti se hua, hum se baat kariye.`];
-      default:
-        return null;
+      case 'preparing': return table.preparing;
+      case 'ready': return table[readyKey];
+      case 'served': return table.served;
+      case 'out_for_delivery': return table.out_for_delivery;
+      case 'delivered': return table.delivered;
+      case 'picked_up': return table.picked_up;
+      case 'cancelled': return table.cancelled;
+      default: return '';
     }
   })();
-  if (!lines) return '';
-  return [header, lines[0], ``, lines[1]].join('\n');
+  if (!line) return '';
+  return [header, line].join('\n');
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -105,11 +119,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const client = await getClientById(user.activeBot.client_id);
     if (client?.phone_number_id) {
-      const ping = bilingualPing(
+      const lang = client.default_language === 'hindi' || client.default_language === 'hinglish'
+        ? client.default_language
+        : 'english';
+      const ping = statusPing(
         next as DineInOrderStatus,
         (order.order_type as DineInOrderType) || 'dine_in',
         client.business_name,
         order.table_number || '',
+        lang,
       );
       if (ping) {
         await sendWhatsAppMessage(client.phone_number_id, order.customer_phone, ping);

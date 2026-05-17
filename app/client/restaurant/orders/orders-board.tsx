@@ -33,6 +33,7 @@ const FLOW: Record<string, string[]> = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
+  pending_approval: 'Pending approval',
   placed: 'Placed',
   preparing: 'Preparing',
   ready: 'Ready',
@@ -97,6 +98,24 @@ export function OrdersBoard({ initialOrders }: Props) {
     }
   }
 
+  // Approve a pending_approval order — separate endpoint from the regular
+  // status flow because it has its own customer-confirmation copy and
+  // flips from a state the /status endpoint deliberately doesn't accept.
+  async function approveOrder(orderId: string) {
+    setBusy(orderId);
+    try {
+      const res = await fetch(`/api/client/restaurant/orders/${orderId}/approve`, { method: 'POST' });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error || `Failed (${res.status})`);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: 'placed' } : o)));
+      toast.success('Approved — customer notified on WhatsApp');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Approve failed');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
       <div className="flex flex-wrap gap-1.5 mb-4">
@@ -125,7 +144,8 @@ export function OrdersBoard({ initialOrders }: Props) {
         <div className="space-y-3">
           {filtered.map((o) => {
             const flow = FLOW[o.order_type] || FLOW.dine_in;
-            const currentIdx = flow.indexOf(o.status);
+            const isPending = o.status === 'pending_approval';
+            const currentIdx = isPending ? -1 : flow.indexOf(o.status);
             const nextStatus = currentIdx >= 0 && currentIdx < flow.length - 1 ? flow[currentIdx + 1] : null;
             const isTerminal = ['served', 'delivered', 'picked_up', 'cancelled'].includes(o.status);
             const variant: 'ok' | 'cancel' | 'pending' =
@@ -169,28 +189,42 @@ export function OrdersBoard({ initialOrders }: Props) {
                   </div>
                 </div>
 
-                {/* Flow progress dots */}
-                <div className="flex items-center flex-wrap gap-1 mb-3 text-[10.5px]">
-                  {flow.map((s, i) => {
-                    const reached = currentIdx >= i;
-                    return (
-                      <span key={s} className="flex items-center gap-1">
-                        <span style={{
-                          width: 7, height: 7, borderRadius: 99,
-                          background: reached ? 'var(--ink)' : 'var(--line)',
-                        }} />
-                        <span className={reached ? 'font-semibold' : 'text-muted-foreground'}>
-                          {STATUS_LABEL[s] || s}
+                {/* Pending-approval banner OR flow progress dots */}
+                {isPending ? (
+                  <div className="mb-3 rounded-[10px] text-[12px] leading-snug"
+                       style={{ padding: '10px 12px', background: '#FFF4E5', border: '1px solid #E89A1C', color: '#7A5300' }}>
+                    🔔 <b>Awaiting your approval.</b> Customer was told to wait. Tap <b>Approve</b> to confirm the order, or <b>Decline</b> to send a polite refusal.
+                  </div>
+                ) : (
+                  <div className="flex items-center flex-wrap gap-1 mb-3 text-[10.5px]">
+                    {flow.map((s, i) => {
+                      const reached = currentIdx >= i;
+                      return (
+                        <span key={s} className="flex items-center gap-1">
+                          <span style={{
+                            width: 7, height: 7, borderRadius: 99,
+                            background: reached ? 'var(--ink)' : 'var(--line)',
+                          }} />
+                          <span className={reached ? 'font-semibold' : 'text-muted-foreground'}>
+                            {STATUS_LABEL[s] || s}
+                          </span>
+                          {i < flow.length - 1 && <span className="text-muted-foreground">→</span>}
                         </span>
-                        {i < flow.length - 1 && <span className="text-muted-foreground">→</span>}
-                      </span>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Action buttons */}
                 <div className="flex flex-wrap gap-2">
-                  {nextStatus && (
+                  {isPending && (
+                    <button onClick={() => approveOrder(o.id)} disabled={busy === o.id}
+                      className="rounded-[8px] text-[12.5px] font-semibold"
+                      style={{ padding: '7px 14px', background: 'var(--ink)', color: 'var(--card)' }}>
+                      ✅ Approve order
+                    </button>
+                  )}
+                  {!isPending && nextStatus && (
                     <button onClick={() => setStatus(o.id, nextStatus)} disabled={busy === o.id}
                       className="rounded-[8px] text-[12.5px] font-semibold"
                       style={{ padding: '7px 14px', background: 'var(--ink)', color: 'var(--card)' }}>
@@ -201,7 +235,7 @@ export function OrdersBoard({ initialOrders }: Props) {
                     <button onClick={() => setStatus(o.id, 'cancelled')} disabled={busy === o.id}
                       className="rounded-[8px] border border-red-500/30 text-red-500 hover:bg-red-500/10 text-[12.5px] font-semibold"
                       style={{ padding: '7px 12px' }}>
-                      Cancel order
+                      {isPending ? '❌ Decline' : 'Cancel order'}
                     </button>
                   )}
                 </div>

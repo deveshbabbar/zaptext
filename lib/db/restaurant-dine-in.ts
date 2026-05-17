@@ -48,6 +48,11 @@ export type DineInOrderType = 'dine_in' | 'home_delivery' | 'parcel_takeaway';
 //   parcel_takeaway: placed → preparing → ready → picked_up
 // 'served' is kept for backward compat with rows written before the flow expanded.
 export type DineInOrderStatus =
+  // Manual approval gate (Order Gate). Bot writes this when
+  // client.order_approval_mode === 'manual'. Owner approves from
+  // /client/restaurant/orders or via WhatsApp; on approve, status flips
+  // to 'placed' and the standard preparing → ready → served flow begins.
+  | 'pending_approval'
   | 'placed'
   | 'preparing'
   | 'ready'
@@ -423,6 +428,11 @@ export async function createOrder(input: {
    *  takeaway typically have none. */
   delivery_lat?: number | null;
   delivery_lng?: number | null;
+  /** Starting status. Defaults to 'placed' (standard flow). Pass
+   *  'pending_approval' when the bot is in manual approval mode — the
+   *  owner has to tap Approve on the dashboard or WhatsApp before the
+   *  flow proceeds. */
+  status?: DineInOrderStatus;
 }): Promise<DineInOrder> {
   const subtotal = input.items.reduce((s, it) => s + it.price * it.qty, 0);
   // Total currently equals subtotal — taxes/delivery fee can be added later
@@ -442,6 +452,7 @@ export async function createOrder(input: {
     total: total.toFixed(2),
     delivery_address: input.delivery_address ?? '',
     special_notes: input.special_notes ?? '',
+    status: input.status || 'placed',
     outlet_id: input.outlet_id || 'main',
     delivery_lat: input.delivery_lat != null ? input.delivery_lat.toFixed(7) : null,
     delivery_lng: input.delivery_lng != null ? input.delivery_lng.toFixed(7) : null,

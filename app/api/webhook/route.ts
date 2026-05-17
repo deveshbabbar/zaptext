@@ -2160,11 +2160,6 @@ existing per-message LANGUAGE RULES still apply.
             return { name, qty, price };
           });
 
-          const specialNotes = [
-            needsApproval ? '⚠️ PENDING OWNER APPROVAL' : '',
-            extraNotes,
-          ].filter(Boolean).join(' · ');
-
           await createDineInOrder({
             client_id: client.client_id,
             customer_phone: customerPhone,
@@ -2173,7 +2168,11 @@ existing per-message LANGUAGE RULES still apply.
             items: parsedItems,
             table_number: tableNumber,
             delivery_address: deliveryAddr,
-            special_notes: specialNotes,
+            special_notes: extraNotes,
+            // Status carries the approval state — no need to stuff a
+            // warning string into notes (it never gets cleared when status
+            // moves on). Dashboard renders 'pending_approval' specially.
+            status: needsApproval ? 'pending_approval' : 'placed',
           });
         } catch (e) {
           console.error('[dine-in-mirror] failed (non-fatal):', e);
@@ -2236,35 +2235,62 @@ existing per-message LANGUAGE RULES still apply.
           const ownerEmail = owner.emailAddresses[0]?.emailAddress;
           const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
           if (ownerEmail) {
-            const itemsHtml = items.length
-              ? `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>`
-              : '<p>(no items parsed)</p>';
+            const itemRows = items.length
+              ? items.map((i) => `<tr><td style="padding:8px 0;border-bottom:1px solid #EEE;font-size:14px;">${i}</td></tr>`).join('')
+              : `<tr><td style="padding:8px 0;color:#888;font-size:14px;">(no items parsed)</td></tr>`;
             // Approval-mode emails get a different subject + an action-needed
             // block telling the owner how to approve (reply to bot WhatsApp
             // or click into the dashboard).
             const subject = needsApproval
-              ? `🔔 Action needed — Order ₹${total.toFixed(2)} pending approval — ${client.business_name}`
-              : `🛍️ New order ₹${total.toFixed(2)} — ${client.business_name}`;
-            const heading = needsApproval
-              ? `<h2>🔔 Order needs your approval</h2><p style="background:#FFF4E5;padding:12px 14px;border-radius:8px;border-left:4px solid #E89A1C;margin:0 0 16px;">Reply to the WhatsApp message with <strong>approve</strong> or <strong>decline</strong> — or use the specific command <code>approve ${created.booking_id}</code> if multiple orders are pending.</p>`
-              : `<h2>🛍️ New order received</h2>`;
+              ? `Action needed — Order ₹${total.toFixed(2)} pending approval at ${client.business_name}`
+              : `New order ₹${total.toFixed(2)} — ${client.business_name}`;
+            const dashboardLink = 'https://www.zaptext.shop/client/restaurant/orders';
+            // Modern email template — table-based layout for client compat,
+            // brand colors, a single primary CTA button, and clearer
+            // visual hierarchy than the previous bare <h2>+<ul> block.
+            // Better visual matters here because the email is the only
+            // approval channel if owner's WhatsApp is on Do Not Disturb.
+            const ribbon = needsApproval
+              ? `<tr><td style="background:#FFF4E5;border-left:4px solid #E89A1C;padding:14px 18px;font-size:14px;color:#7A5300;border-radius:6px;">
+                    <b>🔔 Customer is waiting.</b><br/>Reply to the WhatsApp ping with <b>approve</b> or <b>decline</b> — or use the explicit command <code style="background:#FFE4BA;padding:2px 5px;border-radius:3px;">approve ${created.booking_id}</code> if multiple orders are pending. You can also approve from the dashboard:
+                    <div style="margin-top:10px;">
+                      <a href="${dashboardLink}" style="background:#0E0E0C;color:#F8F4E3;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;display:inline-block;">Open Today's orders →</a>
+                    </div>
+                  </td></tr><tr><td style="height:18px;"></td></tr>`
+              : '';
+            const headlineText = needsApproval ? 'Order needs your approval' : 'New order received';
+            const headlineEmoji = needsApproval ? '🔔' : '🛍️';
             await sendTemplate(
               ownerEmail,
               {
                 subject,
                 html: `
-                  ${heading}
-                  <p><strong>Business:</strong> ${client.business_name}</p>
-                  <p><strong>Customer:</strong> ${customerPhone}</p>
-                  <p><strong>Amount:</strong> ₹${total.toFixed(2)}</p>
-                  <p><strong>Items (${itemCount}):</strong></p>
-                  ${itemsHtml}
-                  ${address ? `<p><strong>Address / mode:</strong> ${address}</p>` : ''}
-                  ${extraNotes ? `<p><strong>Notes:</strong> ${extraNotes}</p>` : ''}
-                  <p><strong>Booking ID:</strong> <code>${created.booking_id}</code></p>
-                  <p style="color:#6F6A5F;font-size:13px;margin-top:16px;">
-                    ${needsApproval ? 'Customer is waiting — please approve or decline ASAP.' : 'Placed at ' + timeSlot + ' on ' + todayIst + '. Payment screenshot will follow when the customer pays.'}
-                  </p>
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px 18px;color:#0E0E0C;background:#F8F4E3;">
+  <div style="text-align:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6F6A5F;margin-bottom:8px;">ZapText · ${client.business_name}</div>
+  <h1 style="font-size:22px;margin:0 0 18px;font-weight:700;text-align:center;">${headlineEmoji} ${headlineText}</h1>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FDFBF0;border:1px solid #E8E1C8;border-radius:12px;padding:0;">
+    <tr><td style="padding:18px 22px 6px;">
+      ${ribbon ? `<table cellpadding="0" cellspacing="0" border="0" width="100%">${ribbon}</table>` : ''}
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:14px;">
+        <tr><td style="padding:6px 0;width:120px;color:#6F6A5F;">Customer</td><td style="padding:6px 0;">${customerPhone}</td></tr>
+        <tr><td style="padding:6px 0;color:#6F6A5F;">Amount</td><td style="padding:6px 0;font-weight:700;font-size:18px;">₹${total.toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 0;color:#6F6A5F;">${address && /table/i.test(address) ? 'Table' : address ? 'Mode' : 'Mode'}</td><td style="padding:6px 0;">${address || '—'}</td></tr>
+        ${extraNotes ? `<tr><td style="padding:6px 0;color:#6F6A5F;">Notes</td><td style="padding:6px 0;">${extraNotes}</td></tr>` : ''}
+        <tr><td style="padding:6px 0;color:#6F6A5F;">Booking ID</td><td style="padding:6px 0;font-family:monospace;font-size:12px;color:#6F6A5F;">${created.booking_id}</td></tr>
+      </table>
+      <div style="margin:14px -6px 6px;border-top:1px solid #E8E1C8;"></div>
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6F6A5F;margin:8px 0;">Items (${itemCount})</div>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%">
+        ${itemRows}
+      </table>
+    </td></tr>
+  </table>
+  <p style="margin:20px 4px 0;font-size:12px;color:#6F6A5F;text-align:center;">
+    ${needsApproval
+      ? 'This is an action-required notification from your ZapText bot. Customer is on hold.'
+      : 'Order placed at ' + timeSlot + ' on ' + todayIst + ' · Payment screenshot follows on the WhatsApp thread.'}
+  </p>
+</div>
                 `,
               },
               ownerName

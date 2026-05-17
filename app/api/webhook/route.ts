@@ -1434,6 +1434,10 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     // the false confirmation, (c) replace with a polite "ek detail rah gayi"
     // course-correction that asks for service mode + address. Customer
     // never sees the misleading reply.
+    //
+    // The replacement message is rendered in the customer's most recent
+    // message language — English / Hinglish / Hindi-Devanagari — using a
+    // simple heuristic over msg.text (the same signal the LLM uses).
     if (client.type === 'restaurant' && orderCapable && aiResponse) {
       const hasOrderTag = /\[ORDER:[^\]]+\]/i.test(aiResponse);
       // Catches English + Hinglish + Hindi confirmation patterns the LLM
@@ -1446,16 +1450,43 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
           customer_phone: customerPhone,
           ai_reply_preview: aiResponse.slice(0, 200),
         });
-        // Replace the entire AI reply with a course-correction. We can't
-        // safely surgically strip just the confirmation phrase because LLM
-        // wording varies — wholesale replacement guarantees customer
-        // doesn't see the false "placed" claim.
-        aiResponse =
-          'Ek minute — order place karne se pehle thoda confirm karna hai:\n\n' +
-          '1. Aap dine-in, takeaway, ya delivery chahte hain?\n' +
-          '2. Agar delivery hai toh delivery address (with pincode) share karein.\n' +
-          '3. Agar dine-in hai toh kaunsa table, ya walk-in?\n\n' +
-          'Payment: cash on delivery (or at the venue) — abhi online payment available nahi hai.';
+        // Pick the customer's language for the fallback. Simple heuristic
+        // mirrors the LANGUAGE RULES in the system prompt — Devanagari
+        // script wins immediately; two or more Hinglish keywords win
+        // Hinglish; everything else defaults to English (the prompt's
+        // own default).
+        const customerText = (msg.text || '').toLowerCase();
+        const hasDevanagari = /[ऀ-ॿ]/.test(msg.text || '');
+        const hinglishKeywords = [
+          'bhai', 'kya', 'kaise', 'kaisa', 'chahiye', 'milega', 'hain',
+          'nahi', 'haan', 'karo', 'mein', 'aap', 'abhi', 'kitna', 'theek',
+          'accha', 'bhejdo', 'batao', 'dijiye', 'mujhe', 'tumhe', 'hai',
+        ];
+        const hinglishHits = hinglishKeywords.reduce(
+          (n, kw) => (customerText.includes(` ${kw} `) || customerText.startsWith(`${kw} `) || customerText.endsWith(` ${kw}`) || customerText === kw ? n + 1 : n),
+          0
+        );
+        const lang: 'english' | 'hinglish' | 'hindi' =
+          hasDevanagari ? 'hindi' : hinglishHits >= 2 ? 'hinglish' : 'english';
+        const fallback =
+          lang === 'hindi'
+            ? 'एक मिनट — ऑर्डर place करने से पहले थोड़ा confirm करना है:\n\n' +
+              '1. आप dine-in, takeaway, या delivery चाहते हैं?\n' +
+              '2. अगर delivery है तो delivery address (with pincode) share करें।\n' +
+              '3. अगर dine-in है तो कौन सा table, या walk-in?\n\n' +
+              'Payment: cash on delivery (या venue पर) — अभी online payment available नहीं है।'
+            : lang === 'hinglish'
+            ? 'Ek minute — order place karne se pehle thoda confirm karna hai:\n\n' +
+              '1. Aap dine-in, takeaway, ya delivery chahte hain?\n' +
+              '2. Agar delivery hai toh delivery address (with pincode) share karein.\n' +
+              '3. Agar dine-in hai toh kaunsa table, ya walk-in?\n\n' +
+              'Payment: cash on delivery (or at the venue) — abhi online payment available nahi hai.'
+            : 'One moment — before I place the order, a few quick details:\n\n' +
+              '1. Would you like dine-in, takeaway, or delivery?\n' +
+              '2. If delivery, please share your address (with pincode).\n' +
+              '3. If dine-in, which table, or walk-in?\n\n' +
+              'Payment: cash on delivery (or at the venue) — online payment is not available yet.';
+        aiResponse = fallback;
       }
     }
 

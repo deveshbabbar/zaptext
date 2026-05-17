@@ -16,6 +16,7 @@ import { headers } from 'next/headers';
 import { getClientByIdOrSlug } from '@/lib/db/clients';
 import { getOutletsForClient } from '@/lib/db/outlets';
 import { getRecentOrderForCustomer } from '@/lib/db/restaurant-dine-in';
+import { getActiveInventory, isItemAvailableNow, findBestMatch, formatAvailabilityHuman } from '@/lib/inventory';
 import { MenuPublicClient } from './menu-public-client';
 import { PincodeGate } from './pincode-gate';
 
@@ -285,6 +286,8 @@ export default async function PublicMenuPage({
     isBestseller: boolean;
     sizes: Array<{ label: string; price: number }>;
     allergens: string[];
+    unavailable?: boolean;
+    unavailableReason?: string;
   }> = [];
   menu.forEach((cat, ci) => {
     (cat.items || []).forEach((it, ii) => {
@@ -320,6 +323,55 @@ export default async function PublicMenuPage({
       });
     });
   });
+
+  // ─── Inventory-driven availability (Zomato/Swiggy style) ─────────────────
+  // The menu rows above came from knowledge_base_json — the owner's
+  // declared menu. Inventory is the LIVE truth: stock counts, is_active,
+  // and per-item time windows (e.g. breakfast 7-11am). We resolve each
+  // menu row against the inventory rows here so the storefront card can
+  // render a "Currently not available" badge instead of letting the
+  // customer add a sold-out item and only discover that at checkout.
+  //
+  // Behavior:
+  //   • No matching inventory row → leave available (legacy fallback —
+  //     not every menu item is in inventory yet).
+  //   • Match exists + is_active === false → unavailable, "Currently paused".
+  //   • Match exists + tracks_stock && stock <= 0 → unavailable, "Out of stock".
+  //   • Match exists + outside available_from/to/days → unavailable with
+  //     a "Available <hours>" hint pulled from formatAvailabilityHuman.
+  //
+  // Failure here is non-fatal — a DB hiccup on inventory shouldn't
+  // black-hole the entire storefront. We log and proceed with every
+  // item marked as available.
+  try {
+    const inv = await getActiveInventory(client.client_id);
+    if (inv.length > 0) {
+      for (const fi of flatItems) {
+        const match = findBestMatch(inv, fi.name);
+        if (!match) continue; // legacy: no inventory row, treat as available
+        if (match.is_active === false) {
+          fi.unavailable = true;
+          fi.unavailableReason = 'Currently paused by the kitchen';
+          continue;
+        }
+        // tracks_stock is a per-item flag — service items (e.g. table
+        // booking, takeaway box) typically have tracks_stock=false and
+        // shouldn't get a sold-out badge just because stock=0.
+        if (match.tracks_stock !== false && match.stock <= 0) {
+          fi.unavailable = true;
+          fi.unavailableReason = 'Out of stock right now';
+          continue;
+        }
+        if (!isItemAvailableNow(match)) {
+          fi.unavailable = true;
+          fi.unavailableReason = `Available ${formatAvailabilityHuman(match)}`;
+          continue;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[storefront] inventory availability resolve failed (non-fatal):', err);
+  }
 
   const servicePincodes = parseServicePincodes(client.service_pincodes);
   // Storage key: prefer the human-readable slug when available so a

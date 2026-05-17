@@ -186,6 +186,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'No valid items in order' }, { status: 400 });
   }
 
+  // Live availability gate. The storefront UI already greys out unavailable
+  // items, but a stale browser tab (kept open for an hour while the kitchen
+  // sold the last portion) could still submit a sold-out / paused / out-of-
+  // window item. Block it here with a clear error so the customer reloads
+  // and sees the updated badge. Mirrors the bot's webhook reserveOrder()
+  // logic so both order paths fail the same way.
+  try {
+    const { getActiveInventory, isItemAvailableNow, findBestMatch, formatAvailabilityHuman } =
+      await import('@/lib/inventory');
+    const inv = await getActiveInventory(clientId);
+    if (inv.length > 0) {
+      const blocked: string[] = [];
+      for (const ci of cleanItems) {
+        const m = findBestMatch(inv, ci.name);
+        if (!m) continue; // no inventory row → legacy, allow through
+        if (m.is_active === false) {
+          blocked.push(`${m.name} (paused by kitchen)`);
+        } else if (m.tracks_stock !== false && m.stock < ci.qty) {
+          blocked.push(`${m.name} (out of stock)`);
+        } else if (!isItemAvailableNow(m)) {
+          blocked.push(`${m.name} (available ${formatAvailabilityHuman(m)})`);
+        }
+      }
+      if (blocked.length > 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'item_unavailable',
+            message: `Some items in your cart are no longer available:\n• ${blocked.join('\n• ')}\n\nPlease reload the page and pick from the items still in stock.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[menu-submit] availability gate failed (allowing):', err);
+  }
+
   // Double-tap / spam guard. If a customer phone has placed a
   // non-cancelled order in the last 2 minutes against this client,
   // reject a second submit UNLESS the caller explicitly set

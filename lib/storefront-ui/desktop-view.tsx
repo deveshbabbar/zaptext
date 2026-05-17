@@ -30,6 +30,17 @@ export interface FlatItem {
   isBestseller: boolean;
   sizes: Array<{ label: string; price: number }>;
   allergens: string[];
+  // Live availability — server-resolved against the inventory table at
+  // page-load time. True when the item is currently NOT orderable. Cards
+  // pass `unavailable: true` to render a "Currently not available" badge
+  // and disable the Add button (Zomato/Swiggy style). Missing/undefined
+  // on legacy callers = treat as available.
+  unavailable?: boolean;
+  /** Optional reason for unavailability — surfaced in the badge so the
+   *  customer knows whether to come back later, ask staff, or pick a
+   *  different item. e.g. "Out of stock" / "Available 18:00–22:00" /
+   *  "Currently paused by kitchen". */
+  unavailableReason?: string;
 }
 
 type OrderMode = 'delivery' | 'takeaway' | 'dine_in';
@@ -761,16 +772,32 @@ function DishCardD({
 }: { item: FlatItem; cart: Record<string, number>; bump: (k: string, d: number) => void }) {
   const hasVariants = item.sizes.length > 0;
   const singleQty = hasVariants ? 0 : cart[item.id] || 0;
+  const isUnavail = !!item.unavailable;
   return (
     <div style={{
       background: 'var(--zt-surface)', border: '0.5px solid var(--zt-border)',
       borderRadius: 14, padding: 16, display: 'flex', gap: 14,
+      position: 'relative',
+      // Greyscale + lower opacity dims the whole card when not orderable
+      // — matches the Zomato pattern. Photo still visible so the customer
+      // recognises the dish.
+      opacity: isUnavail ? 0.55 : 1,
+      filter: isUnavail ? 'grayscale(0.6)' : 'none',
     }}>
       <PhotoSlot size={110} label={item.name.split(' ')[0].toLowerCase()} rounded={12} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <VegDot veg={item.isVeg} />
-          {item.isBestseller && <BestsellerChip />}
+          {item.isBestseller && !isUnavail && <BestsellerChip />}
+          {isUnavail && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '.04em',
+              textTransform: 'uppercase', color: '#B23A3A',
+              background: '#FFE6E6', padding: '2px 8px', borderRadius: 4,
+            }}>
+              Currently not available
+            </span>
+          )}
         </div>
         <div style={{
           fontSize: 15, fontWeight: 700, color: 'var(--zt-ink)', lineHeight: 1.2,
@@ -779,6 +806,11 @@ function DishCardD({
         {!hasVariants && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--zt-ink)' }}>{item.price}</span>
+          </div>
+        )}
+        {isUnavail && item.unavailableReason && (
+          <div style={{ fontSize: 11.5, color: '#B23A3A', marginBottom: 6 }}>
+            {item.unavailableReason}
           </div>
         )}
         {item.description && (
@@ -803,16 +835,27 @@ function DishCardD({
                     <span style={{ fontWeight: 600, color: 'var(--zt-ink)' }}>{sz.label}</span>
                     <span style={{ marginLeft: 8, color: 'var(--zt-ink-muted)' }}>₹{sz.price}</span>
                   </div>
-                  <AddButton qty={qty} primary="#5C7A4F"
-                    onAdd={() => bump(key, 1)} onInc={() => bump(key, 1)} onDec={() => bump(key, -1)} />
+                  {isUnavail ? (
+                    <span style={{ fontSize: 10.5, color: '#8A8A8A', fontWeight: 600 }}>Unavailable</span>
+                  ) : (
+                    <AddButton qty={qty} primary="#5C7A4F"
+                      onAdd={() => bump(key, 1)} onInc={() => bump(key, 1)} onDec={() => bump(key, -1)} />
+                  )}
                 </div>
               );
             })}
           </div>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <AddButton qty={singleQty} primary="#5C7A4F"
-              onAdd={() => bump(item.id, 1)} onInc={() => bump(item.id, 1)} onDec={() => bump(item.id, -1)} />
+            {isUnavail ? (
+              <span style={{
+                fontSize: 11, color: '#8A8A8A', fontWeight: 600,
+                padding: '6px 12px', border: '1px dashed #C0C0C0', borderRadius: 8,
+              }}>Unavailable</span>
+            ) : (
+              <AddButton qty={singleQty} primary="#5C7A4F"
+                onAdd={() => bump(item.id, 1)} onInc={() => bump(item.id, 1)} onDec={() => bump(item.id, -1)} />
+            )}
           </div>
         )}
       </div>

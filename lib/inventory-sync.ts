@@ -5,12 +5,29 @@ import { generateSystemPrompt } from './prompt-generator';
 import { seedDefaultsForVertical } from './db/inventory-categories';
 
 // Extract a numeric price from user-entered strings like "₹280", "Rs. 1,200",
-// "300/-", "1499 INR". Returns 0 if no number found.
+// "300/-", "1499 INR", "Rs.199", "Half Rs.199 / Full Rs.349". Returns 0 if no
+// number found.
+//
+// Previous version stripped everything except digits and dots with
+// /[^\d.]/g. That kept the trailing dot inside "Rs.199", producing ".199" —
+// which parseFloat reads as 0.199. Every Rs.-prefixed price in the demo
+// seed (and many real onboarding inputs) ended up in the DB as 1/1000th
+// of its real value (₹199 → ₹0.2 in the UI).
+//
+// New approach: strip thousand-separator commas, then capture the FIRST
+// contiguous number (optional decimal) with a regex. The dot in "Rs."
+// never becomes part of the captured group because the capture must
+// start with a digit. For composite labels like "Half Rs.199 / Full
+// Rs.349" we take the first (smaller) value, which is at least a sane
+// non-zero rupee figure — the inventory schema only stores one price
+// per item, so collapsing to the half-portion is the safe choice.
 function parsePrice(raw: string | number | undefined): number {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
   if (typeof raw !== 'string') return 0;
-  const digits = raw.replace(/[^\d.]/g, '').replace(/,/g, '');
-  const n = parseFloat(digits);
+  const stripped = raw.replace(/,/g, '');
+  const m = stripped.match(/(\d+(?:\.\d+)?)/);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
   return Number.isFinite(n) ? n : 0;
 }
 

@@ -15,7 +15,7 @@ import { incrementUsageAtomic, monthKey } from '@/lib/db/usage-counters';
 import { recordConsentEvent } from '@/lib/db/consent-log';
 import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
-import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
+import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getBookingsForDate, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
 import { countActiveKitchenOrders, createOrder as createDineInOrder } from '@/lib/db/restaurant-dine-in';
 import { classifyPriority } from '@/lib/conversation-priority';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';

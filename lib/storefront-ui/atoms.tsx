@@ -273,64 +273,81 @@ interface EmojiMatch {
   bowl?: boolean;
 }
 
-// Order matters: more specific keys (paneer tikka) come before generic
-// (paneer) so we hit the most-specific match first.
+// Order is hierarchical from most-specific dish CATEGORY → ingredient →
+// generic. The key insight: "Chicken Biryani" should be 🍚 (rice dish),
+// not 🍗 (chicken). "Tandoori Roti" should be 🫓 (bread), not 🍗
+// (chicken). "Sweet Lassi" should be 🥤 (drink), not 🍮 (dessert).
+// So beverages + named dish categories come FIRST, ingredient/protein
+// modifiers come AFTER, and the generic catch-alls come last.
 const EMOJI_RULES: Array<[RegExp, EmojiMatch]> = [
-  // ── Non-veg mains
-  [/\b(prawn|shrimp|lobster|crab)\b/i, { emoji: '🦐', gradient: ['#FFC78C', '#FF8A3D'] }],
-  [/\b(fish|pomfret|rohu|salmon|tuna|seafood)\b/i, { emoji: '🐟', gradient: ['#AED9E0', '#5C9EAD'] }],
-  [/\b(egg|omelette|omelet|bhurji)\b/i, { emoji: '🍳', gradient: ['#FFE4A8', '#F4B860'] }],
-  [/\b(mutton|lamb|goat|keema|seekh|kheema)\b/i, { emoji: '🍖', gradient: ['#E8A990', '#C26B4F'] }],
-  [/\b(chicken|murg|murgh|kebab|tikka|tandoori|65)\b/i, { emoji: '🍗', gradient: ['#FFB87A', '#E56B2E'] }],
-  // ── Veg / dairy mains
-  [/\b(paneer|tofu)\b/i, { emoji: '🧀', gradient: ['#FFF1B8', '#F2C94C'] }],
-  [/\b(mushroom|champignon)\b/i, { emoji: '🍄', gradient: ['#D6BFA8', '#A88B6B'] }],
-  // ── Rice / grains
-  [/\b(biryani|biriyani|pulao|pulav|fried rice|jeera rice|rice|khichdi|khichri)\b/i,
-    { emoji: '🍚', gradient: ['#FFE0B2', '#E8A95C'], bowl: true }],
-  // ── Bread
-  [/\b(naan|roti|chapati|paratha|kulcha|bhatura|puri|poori|bread)\b/i,
-    { emoji: '🫓', gradient: ['#FFE8C2', '#E6B86A'] }],
-  // ── South Indian
-  [/\b(dosa|uttapam|uttappam|appam)\b/i, { emoji: '🥞', gradient: ['#FFE4A0', '#D9A04A'] }],
-  [/\b(idli|vada|sambar|rasam)\b/i, { emoji: '🥟', gradient: ['#F4E1C1', '#C99A55'], bowl: true }],
-  // ── Liquid / curry
-  [/\b(curry|gravy|masala|makhani|kadai|kadhai|korma|qorma|tikka masala|butter masala|dal|daal|lentil|sambhar)\b/i,
-    { emoji: '🍛', gradient: ['#FFAA66', '#D9591B'], bowl: true }],
-  [/\b(soup|shorba)\b/i, { emoji: '🍲', gradient: ['#FFC089', '#D87A2A'], bowl: true }],
-  [/\b(salad|kachumber|raita)\b/i, { emoji: '🥗', gradient: ['#C8E6A6', '#7CB04D'] }],
-  // ── Snacks / street food
-  [/\b(samosa|kachori|pakora|pakoda|bhajiya|bhaji)\b/i,
-    { emoji: '🥟', gradient: ['#F4C57B', '#D88C2A'] }],
-  [/\b(chaat|pani puri|gol gappa|bhel|sev puri|aloo tikki)\b/i,
-    { emoji: '🌮', gradient: ['#FFB783', '#E27735'] }],
-  [/\b(spring roll|momo|dimsum|dim sum)\b/i, { emoji: '🥟', gradient: ['#EFD9A8', '#C5934C'] }],
-  // ── Western
-  [/\b(pizza|margherita)\b/i, { emoji: '🍕', gradient: ['#FFC7A0', '#E55B2D'] }],
-  [/\b(burger|sandwich|sub)\b/i, { emoji: '🍔', gradient: ['#FFCB8A', '#D08440'] }],
-  [/\b(fries|chips|wedges)\b/i, { emoji: '🍟', gradient: ['#FFD899', '#E2A24F'] }],
-  [/\b(pasta|spaghetti|noodle|noodles|hakka|maggi|ramen)\b/i,
-    { emoji: '🍜', gradient: ['#FFD391', '#D8923D'], bowl: true }],
-  [/\b(taco|burrito|quesadilla)\b/i, { emoji: '🌮', gradient: ['#FFC07A', '#E08137'] }],
-  // ── Sweets / drinks
-  [/\b(ice cream|kulfi|gelato|sundae|sorbet)\b/i, { emoji: '🍦', gradient: ['#FFD6E1', '#E89AB2'] }],
-  [/\b(cake|pastry|brownie|cupcake|muffin|cheesecake|tiramisu)\b/i,
-    { emoji: '🍰', gradient: ['#FFCFD8', '#E27E92'] }],
-  [/\b(gulab jamun|jamun|jalebi|rasgulla|rasmalai|barfi|laddu|halwa|kheer|firni|payasam|sweet|mithai|dessert)\b/i,
-    { emoji: '🍮', gradient: ['#FFE0C7', '#E8A36B'] }],
-  [/\b(chocolate|cocoa|fudge)\b/i, { emoji: '🍫', gradient: ['#D2A682', '#85553A'] }],
-  [/\b(coffee|espresso|latte|cappuccino|mocha)\b/i,
+  // ── 1. Beverages (run first — owners prefix with "Masala"/"Sweet"/etc.) ───
+  [/\b(masala chai|chai|tea)\b/i, { emoji: '🍵', gradient: ['#E8C89C', '#A87545'] }],
+  [/\b(coffee|espresso|latte|cappuccino|mocha|americano)\b/i,
     { emoji: '☕', gradient: ['#D4A77A', '#7C4B2A'] }],
-  [/\b(chai|tea|masala chai)\b/i, { emoji: '🍵', gradient: ['#E8C89C', '#A87545'] }],
-  [/\b(lassi|smoothie|shake|milkshake|thandai)\b/i,
+  [/\b(lassi|chaas|buttermilk|smoothie|shake|milkshake|thandai)\b/i,
     { emoji: '🥤', gradient: ['#FFD8E0', '#E08BA1'] }],
-  [/\b(juice|sharbat|nimbu|lemonade|cooler|mocktail)\b/i,
+  [/\b(juice|sharbat|nimbu|lemonade|cooler|mocktail|jaljeera|aam panna)\b/i,
     { emoji: '🧃', gradient: ['#FFD18A', '#E6852E'] }],
-  [/\b(beer|wine|cocktail|whisky|rum|vodka)\b/i,
+  [/\b(beer|wine|cocktail|whisky|whiskey|rum|vodka|gin)\b/i,
     { emoji: '🍹', gradient: ['#FFB179', '#D86A2E'] }],
   [/\b(water|bisleri|aquafina|bottled)\b/i, { emoji: '💧', gradient: ['#C5E5F0', '#7BB0C7'] }],
-  // ── Fruits
-  [/\b(apple|fruit|banana|mango|orange|watermelon|grape|guava|papaya)\b/i,
+
+  // ── 2. Named dish categories (beat ingredient modifiers like chicken/mutton/tandoori) ──
+  // Biryani BEFORE chicken/mutton/egg — "Chicken Hyderabadi Biryani" → 🍚.
+  [/\b(biryani|biriyani|pulao|pulav|fried rice|jeera rice|khichdi|khichri)\b/i,
+    { emoji: '🍚', gradient: ['#FFE0B2', '#E8A95C'], bowl: true }],
+  // Bread BEFORE tandoori — "Tandoori Roti" → 🫓.
+  [/\b(naan|roti|chapati|paratha|kulcha|bhatura|puri|poori|phulka|rumali|bread loaf)\b/i,
+    { emoji: '🫓', gradient: ['#FFE8C2', '#E6B86A'] }],
+  [/\b(dosa|uttapam|uttappam|appam)\b/i, { emoji: '🥞', gradient: ['#FFE4A0', '#D9A04A'] }],
+  [/\b(idli|medu vada|sambar idli)\b/i, { emoji: '🥟', gradient: ['#F4E1C1', '#C99A55'], bowl: true }],
+  [/\b(pizza|margherita|focaccia)\b/i, { emoji: '🍕', gradient: ['#FFC7A0', '#E55B2D'] }],
+  [/\b(burger|sandwich|sub|wrap)\b/i, { emoji: '🍔', gradient: ['#FFCB8A', '#D08440'] }],
+  [/\b(pasta|spaghetti|noodle|noodles|hakka|maggi|ramen|chow mein|chowmein)\b/i,
+    { emoji: '🍜', gradient: ['#FFD391', '#D8923D'], bowl: true }],
+  [/\b(taco|burrito|quesadilla)\b/i, { emoji: '🌮', gradient: ['#FFC07A', '#E08137'] }],
+  [/\b(fries|chips|wedges)\b/i, { emoji: '🍟', gradient: ['#FFD899', '#E2A24F'] }],
+  [/\b(chaat|pani puri|gol gappa|bhel|sev puri|aloo tikki|dahi puri)\b/i,
+    { emoji: '🌮', gradient: ['#FFB783', '#E27735'] }],
+  [/\b(samosa|kachori|pakora|pakoda|bhajiya|bhaji)\b/i,
+    { emoji: '🥟', gradient: ['#F4C57B', '#D88C2A'] }],
+  [/\b(spring roll|momo|dimsum|dim sum|wonton)\b/i, { emoji: '🥟', gradient: ['#EFD9A8', '#C5934C'] }],
+
+  // ── 3. Specific desserts (BEFORE the catch-all "sweet" keyword has any chance) ──
+  // "Sweet Lassi" already matched #1; the only items left are real desserts.
+  [/\b(ice cream|kulfi|falooda|gelato|sundae|sorbet|softy)\b/i,
+    { emoji: '🍦', gradient: ['#FFD6E1', '#E89AB2'] }],
+  [/\b(cake|pastry|brownie|cupcake|muffin|cheesecake|tiramisu|donut|doughnut)\b/i,
+    { emoji: '🍰', gradient: ['#FFCFD8', '#E27E92'] }],
+  [/\b(gulab jamun|gulabjamun|jamun|jalebi|rasgulla|rasmalai|barfi|laddu|ladoo|halwa|kheer|firni|payasam|peda|mysore pak)\b/i,
+    { emoji: '🍩', gradient: ['#FFC58A', '#D9852E'] }],
+  [/\b(chocolate|cocoa|fudge)\b/i, { emoji: '🍫', gradient: ['#D2A682', '#85553A'] }],
+
+  // ── 4. Salads (beat the generic curry/masala catch-all) ──
+  [/\b(salad|kachumber|raita)\b/i, { emoji: '🥗', gradient: ['#C8E6A6', '#7CB04D'] }],
+
+  // ── 5. Proteins / ingredients (paneer BEFORE tikka so "Paneer Tikka" → 🧀) ──
+  [/\b(paneer|tofu|cottage cheese)\b/i, { emoji: '🧀', gradient: ['#FFF1B8', '#F2C94C'] }],
+  [/\b(mushroom|champignon)\b/i, { emoji: '🍄', gradient: ['#D6BFA8', '#A88B6B'] }],
+  [/\b(prawn|shrimp|lobster|crab)\b/i, { emoji: '🦐', gradient: ['#FFC78C', '#FF8A3D'] }],
+  [/\b(fish|pomfret|rohu|salmon|tuna|seafood|surmai|bangda)\b/i,
+    { emoji: '🐟', gradient: ['#AED9E0', '#5C9EAD'] }],
+  [/\b(egg|anda|omelette|omelet|bhurji|akuri)\b/i,
+    { emoji: '🍳', gradient: ['#FFE4A8', '#F4B860'] }],
+  [/\b(mutton|lamb|goat|keema|kheema|seekh)\b/i,
+    { emoji: '🍖', gradient: ['#E8A990', '#C26B4F'] }],
+  [/\b(chicken|murg|murgh|tandoori|tikka|kebab|kabab|65)\b/i,
+    { emoji: '🍗', gradient: ['#FFB87A', '#E56B2E'] }],
+
+  // ── 6. Generic catch-alls (curry / dal / soup) ──
+  [/\b(curry|gravy|masala|makhani|kadai|kadhai|korma|qorma|dal|daal|lentil|sambar|sambhar)\b/i,
+    { emoji: '🍛', gradient: ['#FFAA66', '#D9591B'], bowl: true }],
+  [/\b(soup|shorba|broth)\b/i, { emoji: '🍲', gradient: ['#FFC089', '#D87A2A'], bowl: true }],
+  // Plain "rice" only catches when no biryani/pulao/khichdi already matched.
+  [/\b(rice|steamed rice)\b/i, { emoji: '🍚', gradient: ['#FFE0B2', '#E8A95C'], bowl: true }],
+
+  // ── 7. Fruits ──
+  [/\b(apple|fruit|banana|mango|orange|watermelon|grape|guava|papaya|pineapple)\b/i,
     { emoji: '🍎', gradient: ['#FFC7C5', '#E37576'] }],
 ];
 

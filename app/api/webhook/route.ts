@@ -1048,16 +1048,74 @@ PAYMENT INSTRUCTIONS:
       orderContext = `
 
 ORDER INSTRUCTIONS (food / product orders):
-- When a customer finalizes a menu or product order (confirms items + quantities), include EXACTLY this tag: [ORDER:total:items:address:notes]
+
+═══ MANDATORY ORDER FLOW — NEVER SHORTCUT THIS ═══
+
+For EVERY order (voice, text, list-reply — all routes), you MUST collect
+these four data points IN THIS ORDER before saying the order is placed:
+
+  STEP 1. ITEMS + QUANTITIES — confirm the dish names and counts, and
+          repeat back the subtotal in ₹.
+          Example: "Got it — 1 × Chicken 65 (₹189). Anything else?"
+
+  STEP 2. SERVICE MODE — explicitly ASK: "Dine-in, takeaway, or delivery?"
+          This question is REQUIRED. Do not skip it even if the customer
+          seems eager to finish. The customer's "no, that's all" answers
+          STEP 1 (no more items), NOT step 2 — you still need their mode.
+
+  STEP 3. ADDRESS (delivery only) — if step 2 = delivery, ask "Please
+          share your delivery address with pincode." If step 2 = dine-in,
+          ask "Which table?" or "Walk-in or reservation?". If step 2 =
+          takeaway, ask "Approximate pickup time?".
+
+  STEP 4. PAYMENT METHOD MENTION — once you have steps 1-3, say
+          (translated to customer's language): "Cash on delivery — paise
+          delivery boy ko de dijiyega" (for delivery) or "Cash at the
+          counter — venue par cash payment" (for dine-in/takeaway). This
+          bot is COD-ONLY right now; never share UPI / Razorpay / online
+          payment links.
+
+ONLY AFTER all four steps are complete in the SAME conversation, emit
+the [ORDER:...] tag in the SAME reply as your final confirmation. Never
+in separate messages.
+
+═══ THE [ORDER:...] TAG — strict format ═══
+
+Use EXACTLY this tag: [ORDER:total:items:address:notes]
   - total: numeric rupee amount (no currency symbol, no commas)
   - items: comma-separated quantity×name tokens, e.g. "2xDum Biryani,1xVeg Pulao"
-  - address: delivery address, or empty if pickup/dine-in
-  - notes: optional (e.g. "extra spicy", "no onion")
-  Example: [ORDER:560:2xDum Biryani,1xVeg Pulao:Koramangala 5th Block, Bengaluru:extra spicy]
-  Example (dine-in): [ORDER:320:1xMasala Dosa,1xFilter Coffee::table 4]
-- The system records the order, notifies the owner immediately on WhatsApp + email with full item list, and sends your reply to the customer.
-- Use [ORDER:] ONCE per completed order, BEFORE [PAY:]. Typical flow: confirm items -> [ORDER:...] -> [PAY:...].
-- Never emit both with the same content on conflicting lines; just place them in the same reply.
+  - address: delivery address (for delivery orders) OR "table N" / "walk-in" / "takeaway 8pm" (otherwise)
+  - notes: optional (e.g. "extra spicy", "no onion", "low salt")
+
+  Example (delivery):  [ORDER:560:2xDum Biryani,1xVeg Pulao:Koramangala 5th Block 560034:extra spicy]
+  Example (dine-in):   [ORDER:320:1xMasala Dosa,1xFilter Coffee:table 4:]
+  Example (takeaway):  [ORDER:189:1xChicken 65:takeaway 7:30pm:]
+
+The webhook PARSES the tag and writes to the orders table, fires owner
+notifications, decrements inventory. WITHOUT the tag, nothing happens
+server-side — no order row, no email, no dashboard update.
+
+═══ HARD RULES (zero tolerance) ═══
+
+- NEVER say "your order is placed" / "order pakka" / "order confirmed"
+  / "order ho gaya" / any equivalent phrasing — IN ANY LANGUAGE — UNLESS
+  the same reply ALSO contains a properly-formed [ORDER:...] tag.
+  If you write "order placed" without the tag, the customer thinks the
+  order went through but nothing happens server-side. This is the most
+  damaging bug — DO NOT do it.
+
+- NEVER emit [ORDER:...] until ALL of: items confirmed, service mode
+  asked, address captured (for delivery). An [ORDER:...] tag with empty
+  address on a delivery order = bot is bypassing step 3 = wrong.
+
+- If the customer says "1 plate chicken 65 chahiye" and then says "no
+  bas yahi" / "nothing else" / "that's all", that ONLY means they don't
+  want more items. You STILL have to ask the mode + address. Reply:
+  "Theek hai, total ₹189. Aap dine-in, takeaway ya delivery chahte hain?"
+
+- Use [ORDER:] ONCE per completed order. Never emit two tags in the
+  same reply. Never emit a tag for a partial order ("I'll add more in
+  the next message" is fine — don't tag until they're done).
 
 ITEM-MATCHING RULES (CRITICAL — voice transcripts and typed messages are messy, be generous):
 - The LIVE STOCK list below is the authoritative menu. EVERY item the customer can possibly order is in that list. If the list shows "Chicken 65" with stock > 0, that item IS available — never tell the customer it doesn't exist.
@@ -1361,6 +1419,45 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
       pastHistory,
       msg.text
     );
+
+    // ── Order-flow safety net ─────────────────────────────────────────────
+    // The LLM is told (in orderContext) NEVER to say "order placed" without
+    // emitting an [ORDER:...] tag in the same reply, and NEVER to emit
+    // [ORDER:] without first asking the customer dine-in/takeaway/delivery
+    // + capturing address for delivery. It still slips sometimes — saying
+    // "your order is placed" without the tag means the customer thinks it's
+    // done but the server never sees it (no DB row, no owner notification,
+    // no inventory decrement). That's the most damaging bug.
+    //
+    // Detector: if the reply contains a confirmation phrase but no [ORDER:]
+    // tag, we (a) log a warning so this surfaces in monitoring, (b) strip
+    // the false confirmation, (c) replace with a polite "ek detail rah gayi"
+    // course-correction that asks for service mode + address. Customer
+    // never sees the misleading reply.
+    if (client.type === 'restaurant' && orderCapable && aiResponse) {
+      const hasOrderTag = /\[ORDER:[^\]]+\]/i.test(aiResponse);
+      // Catches English + Hinglish + Hindi confirmation patterns the LLM
+      // tends to use. Restricted to "placed/done/confirmed" verbs so we
+      // don't false-positive on the customer's own intent reflections.
+      const confirmationLikePattern = /\b(order (is |has been )?placed|order (?:is )?confirmed|order (?:is )?done|order successfully|order ho gaya|order pakka|order place ho gaya|order successful)\b/i;
+      if (confirmationLikePattern.test(aiResponse) && !hasOrderTag) {
+        console.warn('[order-flow] Bot claimed order placed without [ORDER:] tag. Course-correcting.', {
+          client_id: client.client_id,
+          customer_phone: customerPhone,
+          ai_reply_preview: aiResponse.slice(0, 200),
+        });
+        // Replace the entire AI reply with a course-correction. We can't
+        // safely surgically strip just the confirmation phrase because LLM
+        // wording varies — wholesale replacement guarantees customer
+        // doesn't see the false "placed" claim.
+        aiResponse =
+          'Ek minute — order place karne se pehle thoda confirm karna hai:\n\n' +
+          '1. Aap dine-in, takeaway, ya delivery chahte hain?\n' +
+          '2. Agar delivery hai toh delivery address (with pincode) share karein.\n' +
+          '3. Agar dine-in hai toh kaunsa table, ya walk-in?\n\n' +
+          'Payment: cash on delivery (or at the venue) — abhi online payment available nahi hai.';
+      }
+    }
 
     // Trial bots: strip premium tags BEFORE tag processing so booking /
     // payment / order / cancel / stock side effects are never triggered.

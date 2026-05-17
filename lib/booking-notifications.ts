@@ -75,6 +75,43 @@ export async function notifyBookingCancellation(args: {
   return { ok: r.success, used: 'template', error: r.error };
 }
 
+// Sends a booking-APPROVED notification when the owner clicks Approve on a
+// pending advance reservation. Mirrors notifyBookingCancellation's dispatch
+// logic — friendly free-form text inside the 24-hr CSW, fall back to the
+// pre-approved booking_confirmation template outside the window.
+export async function notifyBookingApproved(args: {
+  phoneNumberId: string;
+  clientId: string;
+  customerPhone: string;
+  customerName: string;
+  service: string;
+  date: string;
+  time: string;
+  bookingId: string;
+  businessName: string;
+  customerLang?: string | null;
+}): Promise<NotifyResult> {
+  const inWindow = isWithinCustomerServiceWindow(await lastInboundMs(args.clientId, args.customerPhone));
+  if (inWindow) {
+    const text =
+      `✅ ${args.customerName || 'Hi'}, your booking for ` +
+      `${args.service || 'your appointment'} on ${args.date}` +
+      `${args.time ? ` at ${args.time}` : ''} is confirmed at ${args.businessName}.` +
+      `\nBooking ID: ${args.bookingId}\n\nReply CANCEL anytime to cancel.`;
+    const r = await sendWhatsAppMessage(args.phoneNumberId, args.customerPhone, text);
+    return { ok: r.success, used: 'freeform', error: r.error };
+  }
+  const lang = pickTemplateLanguage(args.customerLang);
+  const r = await sendWhatsAppTemplate(
+    args.phoneNumberId,
+    args.customerPhone,
+    TEMPLATE_NAMES.BOOKING_CONFIRMATION,
+    [args.customerName || 'Customer', args.service || 'your appointment', args.date, args.time || '—', args.bookingId],
+    lang
+  );
+  return { ok: r.success, used: 'template', error: r.error };
+}
+
 // Sends a booking-rescheduled notification. Same dispatch logic.
 export async function notifyBookingReschedule(args: {
   phoneNumberId: string;

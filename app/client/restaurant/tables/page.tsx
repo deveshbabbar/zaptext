@@ -8,6 +8,7 @@ import { requireRestaurantViewer } from '@/lib/restaurant/viewer-context';
 import { getBookingsByClient } from '@/lib/db/bookings';
 import { getISTDate } from '@/lib/utils';
 import { PageTopbar, PageHead, Panel, StatusPill } from '@/components/app/primitives';
+import { BookingActions } from '@/components/client/booking-actions';
 
 export default async function RestaurantTablesPage() {
   // Phase 3I v2 — viewer-context allows outlet managers to see
@@ -55,7 +56,7 @@ export default async function RestaurantTablesPage() {
               Table <span className="zt-serif">reservations.</span>
             </>
           }
-          sub={`${upcoming.length} upcoming booking${upcoming.length === 1 ? '' : 's'} from today onwards. Cancellations and confirmations flow in from WhatsApp automatically.`}
+          sub={`${upcoming.length} upcoming booking${upcoming.length === 1 ? '' : 's'} from today onwards. Tap Approve or Decline on pending rows — customer gets a WhatsApp message automatically.`}
         />
 
         {upcoming.length === 0 ? (
@@ -73,31 +74,37 @@ export default async function RestaurantTablesPage() {
                 sub={`${list.length} booking${list.length === 1 ? '' : 's'}`}
               >
                 <ul className="divide-y divide-border">
-                  {list.map((b) => (
-                    <li key={b.booking_id} className="py-2 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-semibold truncate">
-                          {b.customer_name || b.customer_phone}
+                  {list.map((b) => {
+                    const isPending = b.status === 'pending_approval';
+                    return (
+                      <li key={b.booking_id} className="py-2 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-semibold truncate">
+                            {b.customer_name || b.customer_phone}
+                          </div>
+                          <div className="text-[11.5px] text-[var(--mute)] zt-mono uppercase tracking-[.06em]">
+                            {b.time_slot}
+                            {b.service ? ` · ${b.service}` : ''}
+                            {b.notes ? ` · ${b.notes}` : ''}
+                          </div>
                         </div>
-                        <div className="text-[11.5px] text-[var(--mute)] zt-mono uppercase tracking-[.06em]">
-                          {b.time_slot}
-                          {b.service ? ` · ${b.service}` : ''}
-                          {b.notes ? ` · ${b.notes}` : ''}
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          {isPending && <BookingActions bookingId={b.booking_id} />}
+                          <StatusPill
+                            variant={
+                              b.status === 'confirmed' || b.status === 'completed'
+                                ? 'ok'
+                                : b.status === 'cancelled' || b.status === 'no_show'
+                                  ? 'cancel'
+                                  : 'pending'
+                            }
+                          >
+                            {b.status}
+                          </StatusPill>
                         </div>
-                      </div>
-                      <StatusPill
-                        variant={
-                          b.status === 'confirmed' || b.status === 'completed'
-                            ? 'ok'
-                            : b.status === 'cancelled' || b.status === 'no_show'
-                              ? 'cancel'
-                              : 'pending'
-                        }
-                      >
-                        {b.status}
-                      </StatusPill>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               </Panel>
             ))}

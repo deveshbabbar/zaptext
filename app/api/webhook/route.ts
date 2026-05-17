@@ -1058,7 +1058,18 @@ ORDER INSTRUCTIONS (food / product orders):
 - The system records the order, notifies the owner immediately on WhatsApp + email with full item list, and sends your reply to the customer.
 - Use [ORDER:] ONCE per completed order, BEFORE [PAY:]. Typical flow: confirm items -> [ORDER:...] -> [PAY:...].
 - Never emit both with the same content on conflicting lines; just place them in the same reply.
-- Use EXACT item names as shown in LIVE STOCK below. Never confirm or [ORDER:] an item that shows OUT OF STOCK. If customer insists, politely say it's unavailable and suggest an alternative.${stockBlock}`;
+
+ITEM-MATCHING RULES (CRITICAL — voice transcripts and typed messages are messy, be generous):
+- The LIVE STOCK list below is the authoritative menu. EVERY item the customer can possibly order is in that list. If the list shows "Chicken 65" with stock > 0, that item IS available — never tell the customer it doesn't exist.
+- Match customer's wording FUZZILY against the LIVE STOCK list. Examples that should ALL resolve to "Chicken 65":
+    "chicken 65" / "chicken sixty five" / "chicken sixty-five" / "1 plate chicken 65" /
+    "ek chicken 65" / "chiken 65" / "chicken sixty 5" / "chicken sixtyfive" /
+    "chicken six five" (voice mis-spacing)
+- Spoken-number variants ALWAYS map to digit variants in the menu: "sixty five" = "65", "two-fifty" = "250", "half plate" / "full plate" / "ek plate" / "one plate" are quantity modifiers, NOT separate items.
+- Voice-note transcripts have ASR artifacts (missing letters, wrong words, no punctuation). Be charitable — if a customer says "manuth seekh kbab", match it to "Mutton Seekh Kebab" via overlap on key tokens (mutton / seekh / kebab). Confirm the exact item by name when you reply ("got it — Mutton Seekh Kebab").
+- ONLY refuse with "item not available" when NO item in the LIVE STOCK list could plausibly match what the customer asked for (e.g. customer asks for "sushi" and the restaurant is Punjabi). In that case suggest 2-3 alternatives from the list.
+- When you EMIT the [ORDER:...] tag, use the CANONICAL name from the LIVE STOCK list (so inventory decrement works) — but in your conversational reply to the customer, mirror their wording naturally.
+- Never confirm or [ORDER:] an item that shows SOLD OUT in the LIVE STOCK list. Politely say it's sold out and suggest an alternative from the available items.${stockBlock}`;
     }
 
     // Staff context: inject active staff/trainers/doctors etc. into bot prompt.

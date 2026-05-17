@@ -43,6 +43,12 @@ export async function GET() {
     knowledgeBase: bot.knowledge_base_json,
     upiId: bot.upi_id || '',
     upiName: bot.upi_name || '',
+    // Owner's PERSONAL WhatsApp number (separate from `whatsapp_number`
+    // which identifies the bot's WABA). All owner notifications (new order,
+    // approval prompts, low stock alerts) get sent here. Empty = falls
+    // back to whatsapp_number, which fails when whatsapp_number IS the
+    // bot's WABA (Meta refuses send-to-self with #100 Invalid Parameter).
+    contactNumber: bot.contact_number || '',
     existingSystem: bot.existing_system || '',
     exportFormat: (bot.export_format || 'csv') as 'csv' | 'json',
     languages: langs.length > 0 ? langs : ['English'],
@@ -172,6 +178,21 @@ export async function POST(request: NextRequest) {
         writes.upi_id = trimmedUpi;
       }
       if (typeof bulk.upi_name === 'string') writes.upi_name = bulk.upi_name.trim();
+      // Owner's personal WhatsApp number. Strip everything but digits + a
+      // single leading '+'. Empty string is allowed (clears the override and
+      // falls back to whatsapp_number).
+      if (typeof bulk.contact_number === 'string') {
+        const cleaned = bulk.contact_number.trim();
+        // Allow empty OR a phone-like string. Minimal validation: digits +
+        // optional leading '+'. The webhook does its own /\D/g cleanup.
+        if (cleaned !== '' && !/^\+?\d{8,15}$/.test(cleaned.replace(/[\s-]/g, ''))) {
+          return NextResponse.json(
+            { error: 'INVALID_CONTACT_NUMBER', message: 'Owner contact number must be 8–15 digits, optionally with a leading +.' },
+            { status: 400 }
+          );
+        }
+        writes.contact_number = cleaned;
+      }
       if (typeof bulk.existing_system === 'string') writes.existing_system = bulk.existing_system.trim();
       if (bulk.export_format === 'csv' || bulk.export_format === 'json') {
         writes.export_format = bulk.export_format;

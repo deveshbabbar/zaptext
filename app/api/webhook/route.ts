@@ -238,6 +238,15 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   // Gemini quota on a non-paying account — send a polite single-shot reply
   // and stop. Owner messages bypass so they can still issue control commands.
   const ownerDigits = client.whatsapp_number.replace(/\D/g, '');
+  // Owner-notification destination. Prefer `contact_number` (the owner's
+  // personal phone, set in /client/settings). Fall back to whatsapp_number
+  // for legacy bots. When the bot's WABA number IS the owner's whatsapp_number
+  // (common in single-number demo setups), Meta refuses send-to-self with
+  // #100 Invalid Parameter — so a separate contact_number is required.
+  // Empty string here = owner-WhatsApp notifications get skipped at every
+  // call site (email/dashboard still fire).
+  const ownerNotifyDigits = (client.contact_number || '').replace(/\D/g, '');
+  const ownerWhatsApp = ownerNotifyDigits.length >= 10 ? ownerNotifyDigits : ownerDigits;
   const isSubscriptionExpired = !ownerSubscription;
 
   for (const msg of messages) {
@@ -373,9 +382,9 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         try {
           const booking = await getBookingById(targetBookingId);
           if (!booking || booking.client_id !== client.client_id) {
-            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `Couldn't find order ${targetBookingId} on this bot.`);
+            await sendWhatsAppMessage(phoneNumberId, ownerWhatsApp, `Couldn't find order ${targetBookingId} on this bot.`);
           } else if (booking.status !== 'pending_approval') {
-            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `Order ${targetBookingId} is already ${booking.status}. No change.`);
+            await sendWhatsAppMessage(phoneNumberId, ownerWhatsApp, `Order ${targetBookingId} is already ${booking.status}. No change.`);
           } else if (action === 'approve') {
             await approveBooking(targetBookingId);
             // Notify customer the order is confirmed (English fallback —
@@ -394,7 +403,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
               message: `Your order has been confirmed by ${client.business_name}! 🎉 We'll be with you shortly.`,
               message_type: 'text',
             });
-            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `✅ Approved — customer notified.`);
+            await sendWhatsAppMessage(phoneNumberId, ownerWhatsApp, `✅ Approved — customer notified.`);
           } else {
             await cancelBooking(targetBookingId, 'Declined by owner via WhatsApp');
             await sendWhatsAppMessage(
@@ -410,7 +419,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
               message: `Sorry, ${client.business_name} couldn't accept this order right now. Please call us if you'd like to discuss.`,
               message_type: 'text',
             });
-            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `❌ Declined — customer notified.`);
+            await sendWhatsAppMessage(phoneNumberId, ownerWhatsApp, `❌ Declined — customer notified.`);
           }
           await addConversationMessage({
             timestamp,
@@ -1814,7 +1823,7 @@ existing per-message LANGUAGE RULES still apply.
         // Default TRUE if undefined (legacy clients).
         if (client.notify_whatsapp !== false) {
           const ownerMsg = `🔔 *New Booking!*\n\n👤 ${name}\n📞 ${customerPhone}\n📅 ${date}\n🕐 ${time}\n${service ? `💼 ${service}\n` : ''}`;
-          await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+          await sendWhatsAppMessage(phoneNumberId, ownerWhatsApp, ownerMsg);
         }
         // Notify owner via email — gated by per-client notify_email.
         if (client.notify_email !== false) {
@@ -1904,7 +1913,7 @@ existing per-message LANGUAGE RULES still apply.
             `\nSlot khali ho gaya — koi aur le sakta hai.`;
           await sendWhatsAppMessage(
             phoneNumberId,
-            client.whatsapp_number.replace('+', ''),
+            ownerWhatsApp,
             ownerCancelMsg
           );
         } catch (e) {
@@ -2045,7 +2054,7 @@ existing per-message LANGUAGE RULES still apply.
           // Strip every non-digit so spaces/parens in owner's saved number
           // don't trigger Meta #100 Invalid Parameter. Plain `.replace('+', '')`
           // only handled the leading +.
-          const ownerTo = client.whatsapp_number.replace(/\D/g, '');
+          const ownerTo = ownerWhatsApp;
           if (needsApproval) {
             // Plain-text approval prompt. NO heavy box-drawing chars, NO
             // backticks — Meta's WhatsApp API returns #100 Invalid Parameter
@@ -2075,7 +2084,7 @@ existing per-message LANGUAGE RULES still apply.
               .join('\n');
             await sendWhatsAppMessage(
               phoneNumberId,
-              client.whatsapp_number.replace('+', ''),
+              ownerWhatsApp,
               `⚠️ *Low stock alert*\n${alertLines}\n\nText *stock ${reservation.lowStockAlerts[0].sku} <qty>* to set new count.`
             );
           }
@@ -2284,6 +2293,7 @@ type ClientForPayment = {
   client_id: string;
   business_name: string;
   whatsapp_number: string;
+  contact_number?: string;
   upi_id?: string;
   upi_name?: string;
   owner_user_id: string;
@@ -2369,7 +2379,12 @@ async function forwardImageToOwner(
   customerCaption: string,
   check: Awaited<ReturnType<typeof verifyPaymentScreenshot>> | null
 ) {
-  const ownerPhone = client.whatsapp_number.replace('+', '');
+  // Prefer contact_number (owner's personal phone) over whatsapp_number
+  // (often the bot's own WABA → send-to-self → Meta #100).
+  const personal = (client.contact_number || '').replace(/\D/g, '');
+  const ownerPhone = personal.length >= 10
+    ? personal
+    : client.whatsapp_number.replace(/\D/g, '');
   const pending = await getPendingPayment(client.client_id, customerPhone);
 
   const header = `💰 Payment screenshot from ${customerPhone}`;

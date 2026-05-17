@@ -24,6 +24,12 @@ export default function ClientSettingsPage() {
   const [exportFormat, setExportFormat] = useState<Format>('csv');
   const [upiId, setUpiId] = useState('');
   const [upiName, setUpiName] = useState('');
+  // Owner's personal WhatsApp number. Separate from the bot's own WABA
+  // number (which is in `whatsapp_number`). Without this, owner notifications
+  // try to send to the bot's own number → Meta refuses with #100 Invalid
+  // Parameter (can't send-to-self).
+  const [contactNumber, setContactNumber] = useState('');
+  const [initialContactNumber, setInitialContactNumber] = useState('');
   // FSSAI allergen-safety guardrail (Work Item 4). Defaults TRUE in the
   // GET response unless the owner has explicitly toggled it off.
   const [allergenStrictMode, setAllergenStrictMode] = useState(true);
@@ -116,6 +122,7 @@ export default function ClientSettingsPage() {
     notifyDashboard !== initialNotifyDashboard;
   const approvalModeDirty = orderApprovalMode !== initialOrderApprovalMode;
   const defaultLanguageDirty = defaultLanguage !== initialDefaultLanguage;
+  const contactNumberDirty = contactNumber.trim() !== initialContactNumber.trim();
   const dirtySections = useMemo<string[]>(() => {
     const out: string[] = [];
     if (bizDirty) out.push('Business details');
@@ -127,8 +134,9 @@ export default function ClientSettingsPage() {
     if (notifyDirty) out.push('Notifications');
     if (approvalModeDirty) out.push('Order approval');
     if (defaultLanguageDirty) out.push('Default language');
+    if (contactNumberDirty) out.push('Owner phone');
     return out;
-  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty, notifyDirty, approvalModeDirty, defaultLanguageDirty]);
+  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty, notifyDirty, approvalModeDirty, defaultLanguageDirty, contactNumberDirty]);
   const anyDirty = dirtySections.length > 0;
 
   useEffect(() => {
@@ -150,6 +158,9 @@ export default function ClientSettingsPage() {
         setExportFormat((data.exportFormat as Format) || 'csv');
         setUpiId(data.upiId || '');
         setUpiName(data.upiName || '');
+        const nextContactNumber = typeof data.contactNumber === 'string' ? data.contactNumber : '';
+        setContactNumber(nextContactNumber);
+        setInitialContactNumber(nextContactNumber);
         setBotName(data.botName || '');
         setBotType(data.botType || '');
         // Default TRUE if the server doesn't yet send the field (legacy
@@ -433,6 +444,8 @@ export default function ClientSettingsPage() {
       // Order Gate + greeting language — diff-only.
       if (approvalModeDirty) bulk.order_approval_mode = orderApprovalMode;
       if (defaultLanguageDirty) bulk.default_language = defaultLanguage;
+      // Owner personal phone (notifications destination) — diff-only.
+      if (contactNumberDirty) bulk.contact_number = contactNumber.trim();
 
       // If the business-detail fields (address / city / working hours /
       // welcome) were touched, merge them into the KB JSON we send. We
@@ -486,6 +499,8 @@ export default function ClientSettingsPage() {
         // Order Gate + default language baselines.
         setInitialOrderApprovalMode(orderApprovalMode);
         setInitialDefaultLanguage(defaultLanguage);
+        // Owner phone baseline.
+        setInitialContactNumber(contactNumber.trim());
         // Work Item 6: surface inventory auto-sync count when the KB was
         // touched — replaces the old "Click Sync to inventory" instruction
         // which lied (the sync already ran server-side).
@@ -908,6 +923,34 @@ export default function ClientSettingsPage() {
                   unsaved
                 </div>
               )}
+            </Panel>
+
+            {/* ── Owner WhatsApp number (notifications destination) ─────
+                Critical: this MUST be different from the bot's WABA number
+                in `whatsapp_number`. Meta refuses send-to-self with #100. */}
+            <Panel
+              title="Owner WhatsApp number"
+              sub="Your PERSONAL WhatsApp number — separate from the bot's number. All new-order / approval pings come here."
+            >
+              <div>
+                <input
+                  type="tel"
+                  value={contactNumber}
+                  onChange={(e) => setContactNumber(e.target.value)}
+                  placeholder="+919876543210"
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px]"
+                  style={{ padding: '11px 13px' }}
+                />
+                <div className="text-[12px] text-[var(--mute)] mt-2 leading-snug">
+                  Format: <b>+91</b> followed by 10 digits (or any country code).
+                  Leave empty to use the bot&apos;s own number — but that fails on most setups (WhatsApp can&apos;t deliver a message from a number to itself).
+                </div>
+                {contactNumberDirty && (
+                  <div className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C] mt-2">
+                    unsaved
+                  </div>
+                )}
+              </div>
             </Panel>
 
             {/* ── Order Gate ───────────────────────────────────────────────

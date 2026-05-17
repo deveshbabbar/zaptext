@@ -784,7 +784,7 @@ function DishCardD({
       opacity: isUnavail ? 0.55 : 1,
       filter: isUnavail ? 'grayscale(0.6)' : 'none',
     }}>
-      <PhotoSlot size={110} label={item.name} rounded={12} />
+      <PhotoSlot size={110} label={item.name} isVeg={item.isVeg} rounded={12} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <VegDot veg={item.isVeg} />

@@ -271,6 +271,10 @@ interface EmojiMatch {
    *  emoji sits in a "spot" rather than floating. Set on richer food
    *  categories (curry / biryani) where the bowl shape reads well. */
   bowl?: boolean;
+  /** Meat-only matches (chicken/mutton/fish/etc.) are skipped when the
+   *  menu row is marked isVeg. Prevents "Hara Bhara Kebab" (veg) from
+   *  picking up a 🍗 because of the "kebab" keyword. */
+  meatOnly?: boolean;
 }
 
 // Order is hierarchical from most-specific dish CATEGORY → ingredient →
@@ -326,18 +330,24 @@ const EMOJI_RULES: Array<[RegExp, EmojiMatch]> = [
   // ── 4. Salads (beat the generic curry/masala catch-all) ──
   [/\b(salad|kachumber|raita)\b/i, { emoji: '🥗', gradient: ['#C8E6A6', '#7CB04D'] }],
 
-  // ── 5. Proteins / ingredients (paneer BEFORE tikka so "Paneer Tikka" → 🧀) ──
+  // ── 5. Greens / veg-specific dishes (BEFORE the meat protein rules so
+  //       "Hara Bhara Kebab" picks 🥬 instead of 🍗, "Palak Paneer"
+  //       still falls through to paneer below) ───────────────────────────
+  [/\b(hara bhara|haryali|harabhara)\b/i, { emoji: '🥬', gradient: ['#C8E6A6', '#5D9E3F'] }],
+  [/\b(palak|spinach|methi|saag|sarson)\b/i, { emoji: '🥬', gradient: ['#BCE1A0', '#558E3A'] }],
+  // ── 6. Proteins / ingredients (paneer BEFORE tikka so "Paneer Tikka" → 🧀) ──
   [/\b(paneer|tofu|cottage cheese)\b/i, { emoji: '🧀', gradient: ['#FFF1B8', '#F2C94C'] }],
   [/\b(mushroom|champignon)\b/i, { emoji: '🍄', gradient: ['#D6BFA8', '#A88B6B'] }],
-  [/\b(prawn|shrimp|lobster|crab)\b/i, { emoji: '🦐', gradient: ['#FFC78C', '#FF8A3D'] }],
+  [/\b(prawn|shrimp|lobster|crab)\b/i,
+    { emoji: '🦐', gradient: ['#FFC78C', '#FF8A3D'], meatOnly: true }],
   [/\b(fish|pomfret|rohu|salmon|tuna|seafood|surmai|bangda)\b/i,
-    { emoji: '🐟', gradient: ['#AED9E0', '#5C9EAD'] }],
+    { emoji: '🐟', gradient: ['#AED9E0', '#5C9EAD'], meatOnly: true }],
   [/\b(egg|anda|omelette|omelet|bhurji|akuri)\b/i,
-    { emoji: '🍳', gradient: ['#FFE4A8', '#F4B860'] }],
+    { emoji: '🍳', gradient: ['#FFE4A8', '#F4B860'], meatOnly: true }],
   [/\b(mutton|lamb|goat|keema|kheema|seekh)\b/i,
-    { emoji: '🍖', gradient: ['#E8A990', '#C26B4F'] }],
+    { emoji: '🍖', gradient: ['#E8A990', '#C26B4F'], meatOnly: true }],
   [/\b(chicken|murg|murgh|tandoori|tikka|kebab|kabab|65)\b/i,
-    { emoji: '🍗', gradient: ['#FFB87A', '#E56B2E'] }],
+    { emoji: '🍗', gradient: ['#FFB87A', '#E56B2E'], meatOnly: true }],
 
   // ── 6. Generic catch-alls (curry / dal / soup) ──
   [/\b(curry|gravy|masala|makhani|kadai|kadhai|korma|qorma|dal|daal|lentil|sambar|sambhar)\b/i,
@@ -352,25 +362,44 @@ const EMOJI_RULES: Array<[RegExp, EmojiMatch]> = [
 ];
 
 const FALLBACK: EmojiMatch = { emoji: '🍽️', gradient: ['#F4E6C3', '#D9B872'] };
+// Used when a veg item matches only meat-protein rules (e.g. "Soya Kebab",
+// "Veg Manchurian" matching the kebab/chicken rule that we then skipped).
+// Green leafy emoji + green gradient mirrors the FSSAI veg-dot palette.
+const VEG_FALLBACK: EmojiMatch = { emoji: '🥗', gradient: ['#D6EBB6', '#7BB04C'] };
 
 // Deterministic so the same dish always gets the same look — server and
-// client SSR produce identical markup.
-function pickEmoji(name: string): EmojiMatch {
+// client SSR produce identical markup. When `isVeg` is true, rules
+// marked `meatOnly` are skipped — prevents veg dishes that happen to
+// contain meat-coded keywords ("Hara Bhara Kebab", "Soya Tikka") from
+// rendering with a chicken / mutton / fish emoji.
+function pickEmoji(name: string, isVeg = false): EmojiMatch {
   const s = (name || '').toLowerCase();
-  for (const [re, m] of EMOJI_RULES) if (re.test(s)) return m;
-  return FALLBACK;
+  let meatSkipped = false;
+  for (const [re, m] of EMOJI_RULES) {
+    if (!re.test(s)) continue;
+    if (isVeg && m.meatOnly) { meatSkipped = true; continue; }
+    return m;
+  }
+  // Veg item that only matched meat rules → use the leafy veg fallback
+  // instead of the neutral plate so the card still feels food-shaped.
+  return meatSkipped ? VEG_FALLBACK : FALLBACK;
 }
 
 export function PhotoSlot({
   size = 96,
   label = 'dish',
   rounded = 14,
+  isVeg = false,
 }: {
   size?: number;
   label?: string;
   rounded?: number;
+  /** When true, meat-only matches (chicken/mutton/fish/prawn/egg) are
+   *  skipped so veg dishes with meat-coded keywords ("Hara Bhara Kebab",
+   *  "Soya Tikka") don't render with a chicken-leg emoji. */
+  isVeg?: boolean;
 }) {
-  const m = pickEmoji(label);
+  const m = pickEmoji(label, isVeg);
   // Emoji sized at ~58% of the tile so it has visual weight without
   // touching the rounded corners. The bowl variant uses a soft inset
   // shadow + slightly lower emoji position so it looks like the food's

@@ -607,7 +607,7 @@ function DishCard({
         )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <PhotoSlot size={86} label={item.name} />
+        <PhotoSlot size={86} label={item.name} isVeg={item.isVeg} />
         {!hasVariants && (
           isUnavail ? (
             <span style={{

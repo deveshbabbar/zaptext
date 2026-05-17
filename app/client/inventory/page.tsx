@@ -223,6 +223,40 @@ export default function InventoryPage() {
         const catsData = await catsRes.json();
         setCategories(Array.isArray(catsData.categories) ? catsData.categories : []);
       }
+      // ── One-time price recovery for bots written before the parsePrice
+      //    fix (commit 97bc8ae). The old regex kept the trailing dot in
+      //    "Rs.199" and parseFloat read it as 0.199, so every Rs.-prefixed
+      //    item landed in the DB at 1/1000th its real value (₹199 → ₹0.2
+      //    in the UI). Detection heuristic: if MORE THAN HALF the items
+      //    are priced under ₹1, the table is almost certainly stale —
+      //    no real menu has half its items below a rupee. Re-run the
+      //    sync, which uses the fixed parser. Safe because:
+      //      • Inventory items added manually via "Add new item" come
+      //        in as numbers, not strings, so they bypass parsePrice.
+      //      • The sync only touches items that exist in knowledge_base —
+      //        manually added items without a KB counterpart are left
+      //        untouched.
+      //      • Stock counts and low_stock_threshold are preserved across
+      //        the upsert (see lib/db/inventory.ts L104-L112).
+      const itemsArr = (itemsData.items || []) as InventoryItem[];
+      const tinyPriced = itemsArr.filter((it) => it.price > 0 && it.price < 1);
+      const looksStale = itemsArr.length >= 4 && tinyPriced.length >= itemsArr.length / 2;
+      if (looksStale) {
+        try {
+          const fixRes = await fetch('/api/client/inventory/sync-from-form', { method: 'POST' });
+          if (fixRes.ok) {
+            // Re-read items so the table renders with the recovered prices
+            // without the user having to refresh manually.
+            const refreshed = await fetch('/api/client/inventory').then((r) => r.json());
+            if (Array.isArray(refreshed.items)) {
+              setItems(refreshed.items);
+              toast.success('Prices auto-recovered from your menu data');
+            }
+          }
+        } catch {
+          // Non-fatal — user can still click "Sync products from form" manually.
+        }
+      }
     } catch {
       toast.error('Failed to load inventory');
     } finally {

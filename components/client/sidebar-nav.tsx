@@ -118,7 +118,7 @@ const VERTICAL_ITEMS: Record<string, NavItem[]> = {
     // owners naturally look ("dum biryani ke 20 plates available" lives
     // next to the dum biryani menu entry). LOCKED_FOR_TRIAL adds the 🔒
     // badge on the free plan; paid plans see it normally.
-    { href: '/client/inventory', icon: '📦', label: 'Stock' },
+    { href: '/client/inventory', icon: '📦', label: 'Inventory' },
     { href: '/client/restaurant/tables-live', icon: '🟢', label: 'Live tables' },
     { href: '/client/restaurant/qr-codes', icon: '📱', label: 'QR codes' },
     { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },

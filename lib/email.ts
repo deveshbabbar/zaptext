@@ -170,30 +170,107 @@ export async function sendEmail({ to, toName, subject, html, attachments }: Send
 }
 
 // ─── Template Wrapper ───
+//
+// Modern transactional email shell. Table-based layout for max email-
+// client compatibility (Outlook desktop in particular ignores most
+// flex/grid + half of modern CSS). Brand strip + clean white body +
+// muted footer. Single brand colour token (`BRAND`) so a re-skin is
+// one constant change. System font stack — no @font-face dance.
+//
+// Constraints we deliberately accept:
+//   • Inline styles only (no <style> blocks survive Gmail clipping).
+//   • Max width 600px (Outlook narrowest reliable column).
+//   • No background-image (Outlook strips them).
+//   • CTA is a bulletproof MSO-conditional button so it renders in
+//     Outlook 2007-2019 as a real rectangle, not naked anchor text.
+
+const BRAND_INK   = '#0E0E0C';     // headlines / strong text
+const BRAND_MUTE  = '#6F6A5F';     // captions / labels
+const BRAND_LINE  = '#E8E1C8';     // dividers / borders
+const BRAND_PAGE  = '#F8F4E3';     // outer page bg (cream)
+const BRAND_CARD  = '#FFFFFF';     // card bg
+const BRAND_GREEN = '#25D366';     // WhatsApp green — used sparingly
+const BRAND_GREEN_DARK = '#1A8A47';// CTA button (better contrast than pure green)
 
 function wrap(title: string, body: string, ctaUrl?: string, ctaLabel?: string): string {
+  const ctaButton = ctaUrl && ctaLabel ? `
+    <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" style="margin:8px auto 4px;">
+      <tr>
+        <td align="center" bgcolor="${BRAND_GREEN_DARK}" style="border-radius:10px;">
+          <!--[if mso]>
+          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${ctaUrl}" style="height:44px;v-text-anchor:middle;width:240px;" arcsize="23%" stroke="f" fillcolor="${BRAND_GREEN_DARK}">
+            <w:anchorlock/>
+            <center style="color:#ffffff;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;font-weight:600;">${ctaLabel}</center>
+          </v:roundrect>
+          <![endif]-->
+          <!--[if !mso]><!-->
+          <a href="${ctaUrl}" style="display:inline-block;background:${BRAND_GREEN_DARK};color:#ffffff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:600;font-size:14px;letter-spacing:0.01em;line-height:1;">${ctaLabel}</a>
+          <!--<![endif]-->
+        </td>
+      </tr>
+    </table>
+  ` : '';
   return `
 <!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#F3EDE3;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#1a2e1d;">
-<div style="max-width:560px;margin:24px auto;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #e5dcc8;">
-  <div style="background:linear-gradient(135deg,#1a2e1d 0%,#1a5d47 100%);color:#FAF7F2;padding:28px 24px;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-      <div style="width:36px;height:36px;border-radius:8px;background:#25D366;color:#1a2e1d;display:inline-flex;align-items:center;justify-content:center;font-weight:700;">Z</div>
-      <strong style="font-size:18px;">ZapText</strong>
-    </div>
-    <h1 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-0.01em;">${title}</h1>
-  </div>
-  <div style="padding:24px;line-height:1.6;font-size:14px;color:#1a2e1d;">
-    ${body}
-    ${ctaUrl && ctaLabel ? `
-    <div style="margin-top:24px;text-align:center;">
-      <a href="${ctaUrl}" style="display:inline-block;background:#1a5d47;color:#FAF7F2;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:600;font-size:14px;">${ctaLabel}</a>
-    </div>` : ''}
-  </div>
-  <div style="padding:16px 24px;background:#FAF7F2;border-top:1px solid #e5dcc8;font-size:12px;color:#5a6b5d;text-align:center;">
-    ZapText · AI WhatsApp bots for every business
-  </div>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
+<body style="margin:0;padding:0;background:${BRAND_PAGE};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${BRAND_INK};-webkit-font-smoothing:antialiased;">
+<!-- preheader: hidden text that shows up next to subject line in Gmail/Inbox previews -->
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${BRAND_PAGE};opacity:0;">
+  ${title} · ZapText
 </div>
+
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="${BRAND_PAGE}" style="background:${BRAND_PAGE};">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;">
+
+        <!-- Wordmark strip -->
+        <tr>
+          <td style="padding:0 4px 18px;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${BRAND_MUTE};font-weight:600;">
+            <span style="display:inline-block;width:8px;height:8px;background:${BRAND_GREEN};border-radius:2px;margin-right:8px;vertical-align:middle;"></span>ZapText
+          </td>
+        </tr>
+
+        <!-- Card -->
+        <tr>
+          <td bgcolor="${BRAND_CARD}" style="background:${BRAND_CARD};border:1px solid ${BRAND_LINE};border-radius:14px;padding:32px 32px 28px;">
+
+            <!-- Title -->
+            <h1 style="margin:0 0 18px;font-size:22px;font-weight:700;line-height:1.3;letter-spacing:-0.01em;color:${BRAND_INK};">${title}</h1>
+
+            <!-- Body -->
+            <div style="font-size:14.5px;line-height:1.65;color:${BRAND_INK};">
+              ${body}
+            </div>
+
+            ${ctaButton ? `
+            <!-- CTA -->
+            <div style="margin-top:24px;">
+              ${ctaButton}
+            </div>` : ''}
+
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:22px 8px 4px;text-align:center;font-size:12px;color:${BRAND_MUTE};line-height:1.6;">
+            <div style="font-weight:600;color:${BRAND_INK};margin-bottom:4px;">ZapText</div>
+            AI WhatsApp bots for every business<br>
+            <a href="https://www.zaptext.shop" style="color:${BRAND_MUTE};text-decoration:underline;">zaptext.shop</a>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:14px 8px 0;text-align:center;font-size:11px;color:${BRAND_MUTE};line-height:1.5;">
+            You're receiving this because you own a ZapText bot. Replies come to a real person — just hit reply.
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
 </body></html>
   `.trim();
 }
@@ -210,9 +287,20 @@ function esc(s: string | number | undefined | null): string {
     .replace(/'/g, '&#39;');
 }
 
+// Information box — clean table row layout. Label on the left in muted
+// caps, value on the right in regular weight. Used inside `wrap`'s body
+// slot to render structured order / booking / payment details.
 function infoBox(rows: Array<{ label: string; value: string }>): string {
-  const items = rows.map((r) => `<div style="margin-bottom:8px;"><strong>${esc(r.label)}:</strong> ${esc(r.value)}</div>`).join('');
-  return `<div style="background:#F3EDE3;border-radius:8px;padding:14px 16px;margin:16px 0;">${items}</div>`;
+  const items = rows
+    .map(
+      (r) => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid ${BRAND_LINE};font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND_MUTE};font-weight:600;width:38%;vertical-align:top;">${esc(r.label)}</td>
+      <td style="padding:10px 0;border-bottom:1px solid ${BRAND_LINE};font-size:14px;color:${BRAND_INK};vertical-align:top;">${esc(r.value)}</td>
+    </tr>`
+    )
+    .join('');
+  return `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:18px 0 4px;border-top:1px solid ${BRAND_LINE};">${items}</table>`;
 }
 
 // ─── OWNER EMAILS ───

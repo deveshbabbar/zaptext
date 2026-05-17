@@ -123,6 +123,16 @@ const VERTICAL_ITEMS: Record<string, NavItem[]> = {
     { href: '/client/restaurant/qr-codes', icon: '📱', label: 'QR codes' },
     { href: '/client/restaurant/orders', icon: '📦', label: "Today's orders" },
     { href: '/client/restaurant/tables', icon: '🪑', label: 'Reservations' },
+    // Availability = the weekly schedule that drives Reservations. The page
+    // is at /client/availability (not under /restaurant/) because the same
+    // schedule serves salon appointments, gym classes, coaching demos, etc.
+    // — but it's surfaced here next to Reservations so the restaurant owner
+    // doesn't have to hunt for "where do I set my open hours for bookings?".
+    // The webhook ALREADY reads weekly_slots and injects them into the AI
+    // prompt for booking-related messages on paid plans (see
+    // app/api/webhook/route.ts L897-L908) — the only previous gap was that
+    // this UI was unreachable from the sidebar.
+    { href: '/client/availability', icon: '🕒', label: 'Availability' },
     { href: '/client/restaurant/specials', icon: '⭐', label: 'Specials' },
     { href: '/client/restaurant/outlets', icon: '🏢', label: 'Outlets' },
     { href: '/client/restaurant/storefront', icon: '🛒', label: 'Storefront' },

@@ -958,6 +958,10 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
           customer_phone: customerPhone,
           message: msg.text,
           languages: botLanguages,
+          // Pass through the storefront slug so the welcome WhatsApp
+          // contains the branded subdomain link instead of the long
+          // /m/<uuid>/<table>/<session> path.
+          slug: client.slug,
         });
         if (dineRes.handled && dineRes.reply) {
           await sendWhatsAppMessage(phoneNumberId, customerPhone, dineRes.reply);

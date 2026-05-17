@@ -11,7 +11,7 @@
 // for that table.
 
 import { notFound } from 'next/navigation';
-import { getClientById } from '@/lib/db/clients';
+import { getClientByIdOrSlug } from '@/lib/db/clients';
 import { getSessionById, getTable } from '@/lib/db/restaurant-dine-in';
 import { MenuOrderClient } from './menu-order-client';
 
@@ -51,19 +51,28 @@ export default async function PublicMenuPage({
 }) {
   const { clientId, table, session } = await params;
 
-  const [client, sessionRow, tableRow] = await Promise.all([
-    getClientById(clientId).catch(() => null),
+  // Subdomain rewrites land here with `clientId` = the storefront slug
+  // ("tandoortadka"). Resolve via id-or-slug so the same route works
+  // for legacy /m/<uuid>/... bot links AND <slug>.zaptext.shop/<table>/<session>.
+  const client = await getClientByIdOrSlug(clientId).catch(() => null);
+  if (!client || client.type !== 'restaurant') {
+    notFound();
+  }
+  // Downstream lookups need the canonical client_id, not the slug.
+  const canonicalClientId = client.client_id;
+
+  const [sessionRow, tableRow] = await Promise.all([
     getSessionById(session).catch(() => null),
-    getTable(clientId, table).catch(() => null),
+    getTable(canonicalClientId, table).catch(() => null),
   ]);
 
-  if (!client || client.type !== 'restaurant' || !tableRow) {
+  if (!tableRow) {
     notFound();
   }
 
   const sessionValid =
     sessionRow &&
-    sessionRow.client_id === clientId &&
+    sessionRow.client_id === canonicalClientId &&
     sessionRow.table_number === table &&
     sessionRow.status === 'open';
 
@@ -117,7 +126,7 @@ export default async function PublicMenuPage({
   return (
     <MenuOrderClient
       businessName={client.business_name}
-      clientId={clientId}
+      clientId={canonicalClientId}
       tableNumber={table}
       sessionId={session}
       sessionValid={!!sessionValid}

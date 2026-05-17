@@ -49,6 +49,11 @@ export interface DineInIncoming {
   /** Optional knowledge-base hint. If `['English']`, replies skip the
    *  Hinglish half. Defaults to bilingual when undefined / multi. */
   languages?: string[];
+  /** Storefront slug (e.g. "tandoortadka"). When present, the menu link
+   *  uses the branded subdomain (`tandoortadka.zaptext.shop/<table>/<session>`)
+   *  instead of the opaque clientId path. Empty/undefined → falls back
+   *  to the legacy `zaptext.shop/m/<clientId>/<table>/<session>`. */
+  slug?: string;
 }
 
 // All dine-in helper replies below are authored as bilingual blocks
@@ -90,15 +95,36 @@ export interface DineInResult {
   sessionId?: string;
 }
 
-function tablePublicMenuUrl(clientId: string, tableNumber: string, sessionId: string): string {
+function tablePublicMenuUrl(
+  clientId: string,
+  tableNumber: string,
+  sessionId: string,
+  slug?: string,
+): string {
   // NEXT_PUBLIC_APP_URL is baked at build time. If the build was made
   // before the env var was set on Vercel, it'll be undefined here and
   // we'd emit a RELATIVE path like "/m/abc/1/xyz" — WhatsApp doesn't
   // auto-link relative paths, so the menu link arrives as un-tappable
   // text and the customer can't open the menu. Hard fallback to the
   // production origin matches the pattern in app/api/webhook/route.ts.
-  const base =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://zaptext.shop';
+  const base = (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://zaptext.shop').toLowerCase();
+  // When the owner has set a storefront slug, prefer the branded
+  // subdomain (`tandoortadka.zaptext.shop/<table>/<session>`) over the
+  // legacy clientId path — much friendlier link preview on WhatsApp.
+  // The storefront middleware rewrites <slug>.<root>/* to /m/<slug>/*,
+  // so the path stays consistent.
+  const trimmedSlug = (slug || '').trim().toLowerCase();
+  if (trimmedSlug) {
+    // Extract the root domain ("zaptext.shop") from NEXT_PUBLIC_APP_URL
+    // so localhost / preview-deploy URLs don't accidentally get a slug
+    // prepended (slugs only resolve via DNS to the production root).
+    const m = base.match(/^https?:\/\/(?:www\.)?(.+)$/);
+    const host = m ? m[1] : 'zaptext.shop';
+    // Only use the slug subdomain on the production root domain.
+    if (host === 'zaptext.shop' || host.endsWith('.zaptext.shop')) {
+      return `https://${trimmedSlug}.zaptext.shop/${encodeURIComponent(tableNumber)}/${sessionId}`;
+    }
+  }
   return `${base}/m/${clientId}/${encodeURIComponent(tableNumber)}/${sessionId}`;
 }
 
@@ -231,7 +257,7 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
       table_number: table.table_number,
       customer_phone: input.customer_phone,
     });
-    const menuUrl = tablePublicMenuUrl(input.client_id, table.table_number, session.id);
+    const menuUrl = tablePublicMenuUrl(input.client_id, table.table_number, session.id, input.slug);
     return {
       handled: true,
       reply: maybeStripHinglish(welcomeReply(input.business_name, table.table_number, menuUrl), input.languages),

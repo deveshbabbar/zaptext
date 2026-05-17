@@ -2042,25 +2042,24 @@ existing per-message LANGUAGE RULES still apply.
             : '';
           const headline = needsApproval ? '🔔 *Order needs approval*' : '🛍️ *New Order!*';
           const ownerMsg = `${headline}\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}${stockSummary}\n\n🕐 ${timeSlot} · ${todayIst}`;
+          // Strip every non-digit so spaces/parens in owner's saved number
+          // don't trigger Meta #100 Invalid Parameter. Plain `.replace('+', '')`
+          // only handled the leading +.
+          const ownerTo = client.whatsapp_number.replace(/\D/g, '');
           if (needsApproval) {
-            // Send interactive Approve/Decline buttons. Button IDs encode the
-            // booking_id verbatim so the owner-tap handler can dispatch.
-            // Booking IDs are BK_<uuid>; with the appr_ / decl_ prefix we
-            // stay well under WhatsApp's 256-char button-ID limit.
-            await sendWhatsAppButtons(
-              phoneNumberId,
-              client.whatsapp_number.replace('+', ''),
-              ownerMsg,
-              [
-                { id: `appr_${created.booking_id}`, title: '✅ Approve' },
-                { id: `decl_${created.booking_id}`, title: '❌ Decline' },
-              ],
-              // Fallback text if interactive isn't available — owner can
-              // text "approve <booking_id>" / "decline <booking_id>".
-              `${ownerMsg}\n\nReply *approve ${created.booking_id}* or *decline ${created.booking_id}*.`
-            );
+            // Send plain-text approval prompt (NOT interactive buttons —
+            // Meta returns #100 on the buttons API for some accounts/payload
+            // shapes, and the fallback path failed in the same way). Owner
+            // replies with "approve <booking_id>" or "decline <booking_id>"
+            // — the owner-command handler at the top of the loop picks it up.
+            const approvalPrompt =
+              `${ownerMsg}\n\n` +
+              `━━━━━━━━━━━━━━\n` +
+              `*To approve:* reply with\n\`approve ${created.booking_id}\`\n\n` +
+              `*To decline:* reply with\n\`decline ${created.booking_id}\``;
+            await sendWhatsAppMessage(phoneNumberId, ownerTo, approvalPrompt);
           } else {
-            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+            await sendWhatsAppMessage(phoneNumberId, ownerTo, ownerMsg);
           }
 
           // Low-stock alerts (separate message so it stands out)

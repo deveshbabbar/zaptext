@@ -15,6 +15,8 @@ import { PLANS } from '@/lib/plans';
 import { checkBotLimit } from '@/lib/feature-gates';
 import { rateLimit, getClientKey } from '@/lib/rate-limit';
 import { seedGroceryClient } from '@/lib/grocery/seed';
+import { buildSlotsFromHours } from '@/lib/onboarding/seed-slots-from-hours';
+import { setWeeklySchedule } from '@/lib/db/bookings';
 import type { BusinessType } from '@/lib/types';
 
 // Closed allowlist of supported verticals. `clinic` is intentionally absent —
@@ -160,6 +162,26 @@ export async function POST(request: NextRequest) {
 
     await addClient(client);
     await setActiveBotId(clientId);
+
+    // ── Work Item 1: auto-seed bookable slots from workingHours text ──
+    // Without this, the webhook's availabilityContext block reads from an
+    // empty `slots` table and the bot answers "no slots available" on the
+    // very first booking question after onboarding — the single biggest
+    // week-1 churn surface. Parser handles the common Indian formats
+    // ("Mon-Sun: 11 AM to 11 PM", "Daily 12-3 PM, 7-11 PM", "24x7", etc.).
+    // Skip for grocery — that vertical has its own slot model managed by
+    // seedGroceryClient below.
+    if (client.type !== 'grocery' && typeof config.workingHours === 'string' && config.workingHours.trim()) {
+      try {
+        const slots = buildSlotsFromHours(clientId, config.workingHours, 30);
+        if (slots.length > 0) {
+          await setWeeklySchedule(clientId, slots);
+        }
+      } catch (e) {
+        // Non-fatal — owner can still manually set hours via /client/availability.
+        console.error('[onboard] auto-seed slots from workingHours failed:', e);
+      }
+    }
 
     // Seed sane defaults for grocery clients so the admin UI isn't empty
     // on first login (slots, default zone, starter products). Non-blocking

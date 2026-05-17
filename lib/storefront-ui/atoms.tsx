@@ -252,7 +252,97 @@ export function SpiceMeter({ level }: { level?: number }) {
   );
 }
 
-// ─────────────────────────── Photo placeholder (subtle striped)
+// ─────────────────────────── Photo placeholder (emoji + warm gradient)
+//
+// Replaces the old monospace-label-on-grey-stripes placeholder. We now
+// pick a food emoji + a warm gradient based on the dish name. This makes
+// the storefront look approachable on first paint even before the owner
+// has uploaded real photography. Keyword → emoji table is biased toward
+// Indian + popular global cuisine so most owners get a sensible visual
+// for free; unknown names fall back to a plate emoji on a neutral cream.
+
+interface EmojiMatch {
+  emoji: string;
+  /** Two-stop gradient. First color is the main brand-warm tone, second
+   *  is a deeper variant for the diagonal fade. Picked to feel like
+   *  food packaging — never neon, never pastel-baby. */
+  gradient: [string, string];
+  /** When true, the dot in the centre uses a subtle inner shadow so the
+   *  emoji sits in a "spot" rather than floating. Set on richer food
+   *  categories (curry / biryani) where the bowl shape reads well. */
+  bowl?: boolean;
+}
+
+// Order matters: more specific keys (paneer tikka) come before generic
+// (paneer) so we hit the most-specific match first.
+const EMOJI_RULES: Array<[RegExp, EmojiMatch]> = [
+  // ── Non-veg mains
+  [/\b(prawn|shrimp|lobster|crab)\b/i, { emoji: '🦐', gradient: ['#FFC78C', '#FF8A3D'] }],
+  [/\b(fish|pomfret|rohu|salmon|tuna|seafood)\b/i, { emoji: '🐟', gradient: ['#AED9E0', '#5C9EAD'] }],
+  [/\b(egg|omelette|omelet|bhurji)\b/i, { emoji: '🍳', gradient: ['#FFE4A8', '#F4B860'] }],
+  [/\b(mutton|lamb|goat|keema|seekh|kheema)\b/i, { emoji: '🍖', gradient: ['#E8A990', '#C26B4F'] }],
+  [/\b(chicken|murg|murgh|kebab|tikka|tandoori|65)\b/i, { emoji: '🍗', gradient: ['#FFB87A', '#E56B2E'] }],
+  // ── Veg / dairy mains
+  [/\b(paneer|tofu)\b/i, { emoji: '🧀', gradient: ['#FFF1B8', '#F2C94C'] }],
+  [/\b(mushroom|champignon)\b/i, { emoji: '🍄', gradient: ['#D6BFA8', '#A88B6B'] }],
+  // ── Rice / grains
+  [/\b(biryani|biriyani|pulao|pulav|fried rice|jeera rice|rice|khichdi|khichri)\b/i,
+    { emoji: '🍚', gradient: ['#FFE0B2', '#E8A95C'], bowl: true }],
+  // ── Bread
+  [/\b(naan|roti|chapati|paratha|kulcha|bhatura|puri|poori|bread)\b/i,
+    { emoji: '🫓', gradient: ['#FFE8C2', '#E6B86A'] }],
+  // ── South Indian
+  [/\b(dosa|uttapam|uttappam|appam)\b/i, { emoji: '🥞', gradient: ['#FFE4A0', '#D9A04A'] }],
+  [/\b(idli|vada|sambar|rasam)\b/i, { emoji: '🥟', gradient: ['#F4E1C1', '#C99A55'], bowl: true }],
+  // ── Liquid / curry
+  [/\b(curry|gravy|masala|makhani|kadai|kadhai|korma|qorma|tikka masala|butter masala|dal|daal|lentil|sambhar)\b/i,
+    { emoji: '🍛', gradient: ['#FFAA66', '#D9591B'], bowl: true }],
+  [/\b(soup|shorba)\b/i, { emoji: '🍲', gradient: ['#FFC089', '#D87A2A'], bowl: true }],
+  [/\b(salad|kachumber|raita)\b/i, { emoji: '🥗', gradient: ['#C8E6A6', '#7CB04D'] }],
+  // ── Snacks / street food
+  [/\b(samosa|kachori|pakora|pakoda|bhajiya|bhaji)\b/i,
+    { emoji: '🥟', gradient: ['#F4C57B', '#D88C2A'] }],
+  [/\b(chaat|pani puri|gol gappa|bhel|sev puri|aloo tikki)\b/i,
+    { emoji: '🌮', gradient: ['#FFB783', '#E27735'] }],
+  [/\b(spring roll|momo|dimsum|dim sum)\b/i, { emoji: '🥟', gradient: ['#EFD9A8', '#C5934C'] }],
+  // ── Western
+  [/\b(pizza|margherita)\b/i, { emoji: '🍕', gradient: ['#FFC7A0', '#E55B2D'] }],
+  [/\b(burger|sandwich|sub)\b/i, { emoji: '🍔', gradient: ['#FFCB8A', '#D08440'] }],
+  [/\b(fries|chips|wedges)\b/i, { emoji: '🍟', gradient: ['#FFD899', '#E2A24F'] }],
+  [/\b(pasta|spaghetti|noodle|noodles|hakka|maggi|ramen)\b/i,
+    { emoji: '🍜', gradient: ['#FFD391', '#D8923D'], bowl: true }],
+  [/\b(taco|burrito|quesadilla)\b/i, { emoji: '🌮', gradient: ['#FFC07A', '#E08137'] }],
+  // ── Sweets / drinks
+  [/\b(ice cream|kulfi|gelato|sundae|sorbet)\b/i, { emoji: '🍦', gradient: ['#FFD6E1', '#E89AB2'] }],
+  [/\b(cake|pastry|brownie|cupcake|muffin|cheesecake|tiramisu)\b/i,
+    { emoji: '🍰', gradient: ['#FFCFD8', '#E27E92'] }],
+  [/\b(gulab jamun|jamun|jalebi|rasgulla|rasmalai|barfi|laddu|halwa|kheer|firni|payasam|sweet|mithai|dessert)\b/i,
+    { emoji: '🍮', gradient: ['#FFE0C7', '#E8A36B'] }],
+  [/\b(chocolate|cocoa|fudge)\b/i, { emoji: '🍫', gradient: ['#D2A682', '#85553A'] }],
+  [/\b(coffee|espresso|latte|cappuccino|mocha)\b/i,
+    { emoji: '☕', gradient: ['#D4A77A', '#7C4B2A'] }],
+  [/\b(chai|tea|masala chai)\b/i, { emoji: '🍵', gradient: ['#E8C89C', '#A87545'] }],
+  [/\b(lassi|smoothie|shake|milkshake|thandai)\b/i,
+    { emoji: '🥤', gradient: ['#FFD8E0', '#E08BA1'] }],
+  [/\b(juice|sharbat|nimbu|lemonade|cooler|mocktail)\b/i,
+    { emoji: '🧃', gradient: ['#FFD18A', '#E6852E'] }],
+  [/\b(beer|wine|cocktail|whisky|rum|vodka)\b/i,
+    { emoji: '🍹', gradient: ['#FFB179', '#D86A2E'] }],
+  [/\b(water|bisleri|aquafina|bottled)\b/i, { emoji: '💧', gradient: ['#C5E5F0', '#7BB0C7'] }],
+  // ── Fruits
+  [/\b(apple|fruit|banana|mango|orange|watermelon|grape|guava|papaya)\b/i,
+    { emoji: '🍎', gradient: ['#FFC7C5', '#E37576'] }],
+];
+
+const FALLBACK: EmojiMatch = { emoji: '🍽️', gradient: ['#F4E6C3', '#D9B872'] };
+
+// Deterministic so the same dish always gets the same look — server and
+// client SSR produce identical markup.
+function pickEmoji(name: string): EmojiMatch {
+  const s = (name || '').toLowerCase();
+  for (const [re, m] of EMOJI_RULES) if (re.test(s)) return m;
+  return FALLBACK;
+}
 
 export function PhotoSlot({
   size = 96,
@@ -263,6 +353,12 @@ export function PhotoSlot({
   label?: string;
   rounded?: number;
 }) {
+  const m = pickEmoji(label);
+  // Emoji sized at ~58% of the tile so it has visual weight without
+  // touching the rounded corners. The bowl variant uses a soft inset
+  // shadow + slightly lower emoji position so it looks like the food's
+  // sitting in a vessel.
+  const emojiSize = Math.round(size * 0.58);
   return (
     <div
       style={{
@@ -270,10 +366,13 @@ export function PhotoSlot({
         height: size,
         borderRadius: rounded,
         flexShrink: 0,
-        background: `repeating-linear-gradient(135deg, #F0EFE7 0 6px, #E8E6DA 6px 12px)`,
-        border: '0.5px solid #E5E2D6',
+        background: `linear-gradient(135deg, ${m.gradient[0]} 0%, ${m.gradient[1]} 100%)`,
+        border: '0.5px solid rgba(0,0,0,.06)',
         position: 'relative',
         overflow: 'hidden',
+        boxShadow: m.bowl
+          ? 'inset 0 -8px 18px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.20)'
+          : 'inset 0 1px 0 rgba(255,255,255,.22), inset 0 -4px 12px rgba(0,0,0,.06)',
       }}
     >
       <div
@@ -283,13 +382,18 @@ export function PhotoSlot({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          fontSize: 9,
-          color: '#A39E8B',
-          letterSpacing: 0.3,
+          fontSize: emojiSize,
+          // System emoji stack — Apple, Google, Microsoft, fallback.
+          fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif',
+          lineHeight: 1,
+          // Slight drop shadow so emojis pop on warmer gradients.
+          filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.18))',
+          // Lower the emoji slightly when rendered in a "bowl" so it
+          // sits in the bottom half of the tile (like food in a vessel).
+          paddingTop: m.bowl ? `${Math.round(size * 0.08)}px` : 0,
         }}
       >
-        {label}
+        {m.emoji}
       </div>
     </div>
   );

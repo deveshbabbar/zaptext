@@ -66,6 +66,14 @@ function dbRowToClient(row: DbClientRow): ClientRow {
     notify_whatsapp: row.notify_whatsapp ?? true,
     notify_email: row.notify_email ?? true,
     notify_dashboard: row.notify_dashboard ?? true,
+    // Defaults preserve legacy behaviour on environments that haven't
+    // run migration 0010 yet — every existing bot effectively continues
+    // in auto-approve + English-greeting mode.
+    order_approval_mode: (row.order_approval_mode === 'manual' ? 'manual' : 'auto') as 'auto' | 'manual',
+    default_language:
+      row.default_language === 'hindi' || row.default_language === 'hinglish'
+        ? row.default_language
+        : 'english',
   };
 }
 
@@ -286,6 +294,36 @@ export async function updateClientNotificationChannels(
   if (typeof patch.dashboard === 'boolean') set.notify_dashboard = patch.dashboard;
   if (Object.keys(set).length === 0) return;
   await db.update(clientsTable).set(set).where(eq(clientsTable.client_id, clientId));
+}
+
+// Order approval mode (Order Gate). 'auto' = bot emits [ORDER:] directly
+// after stock + capacity check. 'manual' = bot emits [ORDER_PENDING:],
+// booking goes into pending_approval status, owner gets WhatsApp
+// Approve/Decline interactive buttons. Settings POST validates the
+// string before passing through, but we guard here too.
+export async function updateClientOrderApprovalMode(
+  clientId: string,
+  value: 'auto' | 'manual'
+): Promise<void> {
+  const safe = value === 'manual' ? 'manual' : 'auto';
+  await db
+    .update(clientsTable)
+    .set({ order_approval_mode: safe })
+    .where(eq(clientsTable.client_id, clientId));
+}
+
+// Default first-touch greeting language. Per-message language detection
+// (Devanagari + Hinglish keyword scan) still overrides this on subsequent
+// turns — this is the cold-start preference only.
+export async function updateClientDefaultLanguage(
+  clientId: string,
+  value: 'english' | 'hindi' | 'hinglish'
+): Promise<void> {
+  const safe = value === 'hindi' || value === 'hinglish' ? value : 'english';
+  await db
+    .update(clientsTable)
+    .set({ default_language: safe })
+    .where(eq(clientsTable.client_id, clientId));
 }
 
 // Storefront settings update. Separate from updateClientFields because the

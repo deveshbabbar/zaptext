@@ -41,6 +41,15 @@ export default function ClientSettingsPage() {
   const [initialNotifyWhatsapp, setInitialNotifyWhatsapp] = useState(true);
   const [initialNotifyEmail, setInitialNotifyEmail] = useState(true);
   const [initialNotifyDashboard, setInitialNotifyDashboard] = useState(true);
+  // Order Gate. 'auto' = bot confirms orders itself after checking stock.
+  // 'manual' = bot asks the owner first; owner taps Approve / Decline on
+  // WhatsApp before customer is confirmed.
+  const [orderApprovalMode, setOrderApprovalMode] = useState<'auto' | 'manual'>('auto');
+  const [initialOrderApprovalMode, setInitialOrderApprovalMode] = useState<'auto' | 'manual'>('auto');
+  // First-touch greeting language. Per-message detection still overrides
+  // this once the customer speaks — this is the cold-start preference.
+  const [defaultLanguage, setDefaultLanguage] = useState<'english' | 'hindi' | 'hinglish'>('english');
+  const [initialDefaultLanguage, setInitialDefaultLanguage] = useState<'english' | 'hindi' | 'hinglish'>('english');
   const [botName, setBotName] = useState('');
   const [botType, setBotType] = useState('');
   // Business-details fields (live inside knowledge_base_json under
@@ -105,6 +114,8 @@ export default function ClientSettingsPage() {
     notifyWhatsapp !== initialNotifyWhatsapp ||
     notifyEmail !== initialNotifyEmail ||
     notifyDashboard !== initialNotifyDashboard;
+  const approvalModeDirty = orderApprovalMode !== initialOrderApprovalMode;
+  const defaultLanguageDirty = defaultLanguage !== initialDefaultLanguage;
   const dirtySections = useMemo<string[]>(() => {
     const out: string[] = [];
     if (bizDirty) out.push('Business details');
@@ -114,8 +125,10 @@ export default function ClientSettingsPage() {
     if (allergenDirty) out.push('Allergen safety');
     if (capDirty) out.push('Kitchen capacity');
     if (notifyDirty) out.push('Notifications');
+    if (approvalModeDirty) out.push('Order approval');
+    if (defaultLanguageDirty) out.push('Default language');
     return out;
-  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty, notifyDirty]);
+  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty, notifyDirty, approvalModeDirty, defaultLanguageDirty]);
   const anyDirty = dirtySections.length > 0;
 
   useEffect(() => {
@@ -163,6 +176,18 @@ export default function ClientSettingsPage() {
         setInitialNotifyWhatsapp(wh);
         setInitialNotifyEmail(em);
         setInitialNotifyDashboard(dh);
+        // Order Gate + default language. Default 'auto' / 'english' on
+        // un-migrated envs so the UI never starts blank.
+        const nextApprovalMode: 'auto' | 'manual' =
+          data.orderApprovalMode === 'manual' ? 'manual' : 'auto';
+        setOrderApprovalMode(nextApprovalMode);
+        setInitialOrderApprovalMode(nextApprovalMode);
+        const nextDefaultLanguage: 'english' | 'hindi' | 'hinglish' =
+          data.defaultLanguage === 'hindi' || data.defaultLanguage === 'hinglish'
+            ? data.defaultLanguage
+            : 'english';
+        setDefaultLanguage(nextDefaultLanguage);
+        setInitialDefaultLanguage(nextDefaultLanguage);
         // Pull business-detail fields out of the parsed KB so the inputs
         // below are pre-filled. Empty strings are fine — we won't overwrite
         // the saved KB with an empty value unless the user explicitly clears.
@@ -405,6 +430,9 @@ export default function ClientSettingsPage() {
       if (notifyWhatsapp !== initialNotifyWhatsapp) bulk.notify_whatsapp = notifyWhatsapp;
       if (notifyEmail !== initialNotifyEmail) bulk.notify_email = notifyEmail;
       if (notifyDashboard !== initialNotifyDashboard) bulk.notify_dashboard = notifyDashboard;
+      // Order Gate + greeting language — diff-only.
+      if (approvalModeDirty) bulk.order_approval_mode = orderApprovalMode;
+      if (defaultLanguageDirty) bulk.default_language = defaultLanguage;
 
       // If the business-detail fields (address / city / working hours /
       // welcome) were touched, merge them into the KB JSON we send. We
@@ -455,6 +483,9 @@ export default function ClientSettingsPage() {
         setInitialNotifyWhatsapp(notifyWhatsapp);
         setInitialNotifyEmail(notifyEmail);
         setInitialNotifyDashboard(notifyDashboard);
+        // Order Gate + default language baselines.
+        setInitialOrderApprovalMode(orderApprovalMode);
+        setInitialDefaultLanguage(defaultLanguage);
         // Work Item 6: surface inventory auto-sync count when the KB was
         // touched — replaces the old "Click Sync to inventory" instruction
         // which lied (the sync already ran server-side).
@@ -873,6 +904,91 @@ export default function ClientSettingsPage() {
                 </div>
               ))}
               {notifyDirty && (
+                <div className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C] mt-2">
+                  unsaved
+                </div>
+              )}
+            </Panel>
+
+            {/* ── Order Gate ───────────────────────────────────────────────
+                Auto: bot checks stock + capacity and confirms orders itself.
+                Manual: bot pings owner on WhatsApp with Approve/Decline
+                buttons; customer is told to wait until owner confirms. */}
+            <Panel
+              title="Order approval"
+              sub="Bot auto-approves after stock check, or asks you first on WhatsApp."
+            >
+              {([
+                {
+                  v: 'auto' as const,
+                  label: 'Auto-approve (bot decides)',
+                  hint: 'Bot checks live stock + kitchen capacity and confirms the order itself. You still get a WhatsApp / email ping after the fact. Fastest customer experience — recommended for busy kitchens.',
+                },
+                {
+                  v: 'manual' as const,
+                  label: 'Ask me first (manual approve)',
+                  hint: 'Bot tells the customer "Order received — will confirm after the owner approves" and pings you on WhatsApp with Approve / Decline buttons. Customer is only confirmed after you tap Approve. Good for small kitchens, high-ticket orders, or restaurants that want full control.',
+                },
+              ]).map((row) => (
+                <label
+                  key={row.v}
+                  className="flex items-start gap-3 py-2.5 cursor-pointer"
+                  style={{ borderBottom: '1px solid var(--line)' }}
+                >
+                  <input
+                    type="radio"
+                    name="orderApprovalMode"
+                    checked={orderApprovalMode === row.v}
+                    onChange={() => setOrderApprovalMode(row.v)}
+                    style={{ marginTop: 4 }}
+                  />
+                  <div className="flex-1 text-[13px] leading-snug">
+                    <div className="font-semibold mb-0.5">{row.label}</div>
+                    <div className="text-[var(--mute)] text-[12px]">{row.hint}</div>
+                  </div>
+                </label>
+              ))}
+              {approvalModeDirty && (
+                <div className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C] mt-2">
+                  unsaved
+                </div>
+              )}
+            </Panel>
+
+            {/* ── Default greeting language ────────────────────────────────
+                Cold-start language for the welcome / first-touch message.
+                Per-message detection (Devanagari + Hinglish keyword scan in
+                the webhook) still kicks in once the customer speaks — this
+                only governs what the bot uses BEFORE it sees a single
+                customer message. */}
+            <Panel
+              title="Default language"
+              sub="What the bot uses for the welcome message before the customer speaks. Per-message detection still adapts after that."
+            >
+              {([
+                { v: 'english' as const, label: 'English', hint: 'Welcome message in English. Default — most neutral for first-touch.' },
+                { v: 'hindi' as const, label: 'हिंदी (Hindi)', hint: 'Welcome message in Devanagari Hindi. Use if your customers usually message in Hindi script.' },
+                { v: 'hinglish' as const, label: 'Hinglish', hint: 'Welcome message in romanised Hindi-English mix (e.g. "Aapka order kya hoga?"). Most common style on Indian WhatsApp.' },
+              ]).map((row) => (
+                <label
+                  key={row.v}
+                  className="flex items-start gap-3 py-2.5 cursor-pointer"
+                  style={{ borderBottom: '1px solid var(--line)' }}
+                >
+                  <input
+                    type="radio"
+                    name="defaultLanguage"
+                    checked={defaultLanguage === row.v}
+                    onChange={() => setDefaultLanguage(row.v)}
+                    style={{ marginTop: 4 }}
+                  />
+                  <div className="flex-1 text-[13px] leading-snug">
+                    <div className="font-semibold mb-0.5">{row.label}</div>
+                    <div className="text-[var(--mute)] text-[12px]">{row.hint}</div>
+                  </div>
+                </label>
+              ))}
+              {defaultLanguageDirty && (
                 <div className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C] mt-2">
                   unsaved
                 </div>

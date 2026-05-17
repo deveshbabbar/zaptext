@@ -340,6 +340,95 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
       }
     }
 
+    // Owner approval-button taps (manual Order Gate). When the bot pings
+    // the owner with Approve / Decline interactive buttons on a pending
+    // order, Meta echoes the button ID back as msg.interactiveButtonId =
+    // "appr_BK_<uuid>" / "decl_BK_<uuid>". We dispatch here BEFORE the
+    // generic owner-command handler so a misplaced approve / decline
+    // doesn't fall into the AI pipeline.
+    //
+    // Owner can ALSO text "approve <booking_id>" / "decline <booking_id>"
+    // in the same flow (interactive fallback). We accept both.
+    if (isOwner) {
+      const buttonId = msg.interactiveButtonId || '';
+      const textCmd = (msg.text || '').trim().toLowerCase();
+      let action: 'approve' | 'decline' | null = null;
+      let targetBookingId: string | null = null;
+
+      if (buttonId.startsWith('appr_')) {
+        action = 'approve';
+        targetBookingId = buttonId.slice('appr_'.length);
+      } else if (buttonId.startsWith('decl_')) {
+        action = 'decline';
+        targetBookingId = buttonId.slice('decl_'.length);
+      } else {
+        const m = textCmd.match(/^(approve|decline)\s+(bk_[a-z0-9-]+)/i);
+        if (m) {
+          action = m[1].toLowerCase() as 'approve' | 'decline';
+          targetBookingId = m[2];
+        }
+      }
+
+      if (action && targetBookingId) {
+        try {
+          const booking = await getBookingById(targetBookingId);
+          if (!booking || booking.client_id !== client.client_id) {
+            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `Couldn't find order ${targetBookingId} on this bot.`);
+          } else if (booking.status !== 'pending_approval') {
+            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `Order ${targetBookingId} is already ${booking.status}. No change.`);
+          } else if (action === 'approve') {
+            await approveBooking(targetBookingId);
+            // Notify customer the order is confirmed (English fallback —
+            // the bot's first-class language detection will adapt future
+            // turns).
+            await sendWhatsAppMessage(
+              phoneNumberId,
+              booking.customer_phone,
+              `Your order has been confirmed by ${client.business_name}! 🎉 We'll be with you shortly.`
+            );
+            await addConversationMessage({
+              timestamp: getISTTimestamp(),
+              client_id: client.client_id,
+              customer_phone: booking.customer_phone,
+              direction: 'outgoing',
+              message: `Your order has been confirmed by ${client.business_name}! 🎉 We'll be with you shortly.`,
+              message_type: 'text',
+            });
+            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `✅ Approved — customer notified.`);
+          } else {
+            await cancelBooking(targetBookingId, 'Declined by owner via WhatsApp');
+            await sendWhatsAppMessage(
+              phoneNumberId,
+              booking.customer_phone,
+              `Sorry, ${client.business_name} couldn't accept this order right now. Please call us if you'd like to discuss.`
+            );
+            await addConversationMessage({
+              timestamp: getISTTimestamp(),
+              client_id: client.client_id,
+              customer_phone: booking.customer_phone,
+              direction: 'outgoing',
+              message: `Sorry, ${client.business_name} couldn't accept this order right now. Please call us if you'd like to discuss.`,
+              message_type: 'text',
+            });
+            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), `❌ Declined — customer notified.`);
+          }
+          await addConversationMessage({
+            timestamp,
+            client_id: client.client_id,
+            customer_phone: customerPhone,
+            direction: 'incoming',
+            message: buttonId
+              ? `[owner-tap] ${buttonId}`
+              : `[owner-cmd] ${textCmd}`,
+            message_type: msg.type,
+          });
+          continue;
+        } catch (e) {
+          console.error('[owner-approval] failed:', e);
+        }
+      }
+    }
+
     if (isOwner && msg.type === 'text' && msg.text) {
       const handled = await handleOwnerCommand(phoneNumberId, client.client_id, senderDigits, msg.text.trim());
       if (handled) {
@@ -1045,7 +1134,41 @@ PAYMENT INSTRUCTIONS:
       } catch {
         // ignore
       }
-      orderContext = `
+      // Manager approval override. When owner has set order_approval_mode='manual',
+      // the bot must NOT emit [ORDER:] directly — it emits [ORDER_PENDING:]
+      // instead, which the webhook handles by creating a pending_approval
+      // booking and pinging the owner with Approve/Decline interactive
+      // buttons. The customer is told to wait until the owner approves.
+      const approvalMode = client.order_approval_mode === 'manual' ? 'manual' : 'auto';
+      const managerApprovalBlock = approvalMode === 'manual'
+        ? `
+
+═══ MANAGER APPROVAL MODE — READ THIS FIRST ═══
+
+The owner has enabled MANUAL APPROVAL for orders. Until the owner taps
+"Approve" on their phone, the order is NOT confirmed.
+
+Concretely:
+
+  • You collect all four steps (items / mode / address / payment mention)
+    EXACTLY like the regular flow below.
+  • In your final confirmation reply, EMIT [ORDER_PENDING:total:items:address:notes]
+    instead of [ORDER:...]. Same format, same fields — only the tag name
+    changes.
+  • Your customer-facing sentence in that SAME reply MUST be:
+    "Order received — will confirm after the owner has approved."
+    Translate it to the customer's language (Hindi: "Order mil gaya — owner
+    approve karte hi confirm karta hoon." / Hinglish version too). Do NOT
+    say "order placed" / "order confirmed" / "order pakka" — the owner has
+    not yet approved.
+  • The webhook will: create the booking with status=pending_approval,
+    ping the owner on WhatsApp with Approve/Decline buttons, and once the
+    owner taps Approve, the bot will follow up with a "your order is
+    confirmed" message automatically (you don't need to send it).
+
+`
+        : '';
+      orderContext = `${managerApprovalBlock}
 
 ORDER INSTRUCTIONS (food / product orders):
 
@@ -1413,9 +1536,42 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         '- After this reply the conversation flag stays "urgent" until the owner replies — so the dashboard ranks it at the top.';
     }
 
+    // Default greeting language. Per-message detection still adapts the
+    // bot to whatever the customer types — this block only governs the
+    // cold-start case (first turn, or any turn where the LLM has no signal
+    // about the customer's preferred language yet).
+    let languageContext = '';
+    {
+      const defLang = client.default_language === 'hindi' || client.default_language === 'hinglish'
+        ? client.default_language
+        : 'english';
+      if (defLang !== 'english') {
+        const langWord = defLang === 'hindi' ? 'Devanagari Hindi (हिंदी)' : 'romanised Hinglish (Hindi-English mix)';
+        languageContext = `
+
+═══ DEFAULT LANGUAGE ═══
+
+The owner has set the default conversation language to ${langWord}. When the
+customer has not yet sent a message in this conversation (welcome / first-touch),
+reply in ${langWord}. Once the customer speaks, mirror THEIR language — the
+existing per-message LANGUAGE RULES still apply.
+`;
+      } else {
+        languageContext = `
+
+═══ DEFAULT LANGUAGE ═══
+
+The owner has set the default conversation language to English. When the
+customer has not yet sent a message in this conversation (welcome / first-touch),
+reply in English. Once the customer speaks, mirror THEIR language — the
+existing per-message LANGUAGE RULES still apply.
+`;
+      }
+    }
+
     // Generate AI response with booking + payment + order + staff context
     let aiResponse = await generateBotResponse(
-      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext + capacityContext + escalationContext,
+      basePrompt + languageContext + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext + capacityContext + escalationContext,
       pastHistory,
       msg.text
     );
@@ -1439,7 +1595,11 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     // message language — English / Hinglish / Hindi-Devanagari — using a
     // simple heuristic over msg.text (the same signal the LLM uses).
     if (client.type === 'restaurant' && orderCapable && aiResponse) {
-      const hasOrderTag = /\[ORDER:[^\]]+\]/i.test(aiResponse);
+      // Accept either [ORDER:...] (auto mode) or [ORDER_PENDING:...] (manual
+      // mode) as a valid commitment tag. Bot in manual mode is instructed
+      // to emit ORDER_PENDING; we don't want the safety-net to trigger a
+      // bogus override just because the tag name differs.
+      const hasOrderTag = /\[ORDER(?:_PENDING)?:[^\]]+\]/i.test(aiResponse);
       // Audit log — fires every time the safety net runs. Makes
       // post-deploy verification trivial: tail Vercel logs and grep for
       // [order-flow]. If you don't see this line on a restaurant turn,
@@ -1777,9 +1937,17 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
       finalResponse = finalResponse.replace(/\[CANCEL:[^\]]+\]/, '').trim();
     }
 
-    // Order tag: [ORDER:total:items:address:notes]
+    // Order tag: [ORDER:total:items:address:notes] OR
+    //            [ORDER_PENDING:total:items:address:notes] (manual approval mode)
     // items = comma-separated "QTYxNAME" tokens e.g. "2xBiryani,1xVeg Pulao"
-    const orderMatch = aiResponse.match(/\[ORDER:(\d+(?:\.\d+)?):([^:\]]*):([^:\]]*):?([^\]]*)\]/);
+    //
+    // The bot is instructed (in managerApprovalBlock above) to emit
+    // ORDER_PENDING in manual mode. But we ALSO treat an [ORDER:] tag in
+    // a manual-mode bot as pending — owner-set policy beats LLM mistake.
+    const orderMatchPending = aiResponse.match(/\[ORDER_PENDING:(\d+(?:\.\d+)?):([^:\]]*):([^:\]]*):?([^\]]*)\]/);
+    const orderMatchAuto = aiResponse.match(/\[ORDER:(\d+(?:\.\d+)?):([^:\]]*):([^:\]]*):?([^\]]*)\]/);
+    const orderMatch = orderMatchPending || orderMatchAuto;
+    const needsApproval = !!orderMatchPending || (orderMatchAuto && client.order_approval_mode === 'manual');
     if (orderMatch) {
       const total = parseFloat(orderMatch[1]);
       const itemsRaw = (orderMatch[2] || '').slice(0, 300);
@@ -1824,7 +1992,10 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
               message: reply,
               message_type: 'text',
             });
-            finalResponse = finalResponse.replace(/\[ORDER:[^\]]+\]/, '').trim();
+            finalResponse = finalResponse
+              .replace(/\[ORDER_PENDING:[^\]]+\]/, '')
+              .replace(/\[ORDER:[^\]]+\]/, '')
+              .trim();
             continue; // skip order + pay for this message
           }
         }
@@ -1842,7 +2013,7 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         if (address) notesParts.push(`Address: ${address}`);
         if (extraNotes) notesParts.push(extraNotes);
 
-        await createBooking({
+        const created = await createBooking({
           clientId: client.client_id,
           customerPhone,
           customerName: customerPhone,
@@ -1851,6 +2022,13 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
           endTime: timeSlot,
           service: serviceLabel,
           notes: notesParts.join(' | '),
+          // Manual approval: status starts pending_approval, gets flipped
+          // when owner taps Approve on the WhatsApp buttons below.
+          status: needsApproval ? 'pending_approval' : 'confirmed',
+          // Food orders don't live on the reservation slot grid — bypass
+          // SLOT_TAKEN validation. Wall-clock timeSlot ("15:33") will never
+          // match a pre-defined reservation slot ("12:00", "12:30", ...).
+          skipSlotValidation: true,
         });
 
         // Real-time WhatsApp to owner — gated by per-client notify_whatsapp.
@@ -1862,8 +2040,28 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
                 .map((l) => `  • ${l.matchedName}: ${l.stockBefore} → ${l.stockAfter}`)
                 .join('\n')
             : '';
-          const ownerMsg = `🛍️ *New Order!*\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}${stockSummary}\n\n🕐 ${timeSlot} · ${todayIst}`;
-          await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+          const headline = needsApproval ? '🔔 *Order needs approval*' : '🛍️ *New Order!*';
+          const ownerMsg = `${headline}\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}${stockSummary}\n\n🕐 ${timeSlot} · ${todayIst}`;
+          if (needsApproval) {
+            // Send interactive Approve/Decline buttons. Button IDs encode the
+            // booking_id verbatim so the owner-tap handler can dispatch.
+            // Booking IDs are BK_<uuid>; with the appr_ / decl_ prefix we
+            // stay well under WhatsApp's 256-char button-ID limit.
+            await sendWhatsAppButtons(
+              phoneNumberId,
+              client.whatsapp_number.replace('+', ''),
+              ownerMsg,
+              [
+                { id: `appr_${created.booking_id}`, title: '✅ Approve' },
+                { id: `decl_${created.booking_id}`, title: '❌ Decline' },
+              ],
+              // Fallback text if interactive isn't available — owner can
+              // text "approve <booking_id>" / "decline <booking_id>".
+              `${ownerMsg}\n\nReply *approve ${created.booking_id}* or *decline ${created.booking_id}*.`
+            );
+          } else {
+            await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+          }
 
           // Low-stock alerts (separate message so it stands out)
           if (reservation?.lowStockAlerts?.length) {
@@ -1916,7 +2114,32 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         console.error('Order creation failed:', e);
       }
 
-      finalResponse = finalResponse.replace(/\[ORDER:[^\]]+\]/, '').trim();
+      // Strip both possible tag forms from the customer-facing reply.
+      finalResponse = finalResponse
+        .replace(/\[ORDER_PENDING:[^\]]+\]/, '')
+        .replace(/\[ORDER:[^\]]+\]/, '')
+        .trim();
+      // Manual approval: override the customer reply to the "wait for owner"
+      // line in the customer's most-likely language. We use the same simple
+      // heuristic the safety-net uses (Devanagari script + Hinglish keyword
+      // count on the customer's last message) so an English customer doesn't
+      // get a Hindi sentence.
+      if (needsApproval) {
+        const customerText = (msg.text || '').toLowerCase();
+        const hasDevanagari = /[ऀ-ॿ]/.test(msg.text || '');
+        const hinglishKeywords = ['bhai', 'kya', 'kaise', 'kaisa', 'chahiye', 'hai', 'hain', 'kar', 'karo', 'karna', 'kitna', 'kitne', 'haan', 'nahi', 'nahin', 'abhi', 'aap', 'mera', 'meri', 'mere', 'mujhe', 'mujhko', 'order', 'plate', 'ek'];
+        const hinglishHits = hinglishKeywords.filter((k) => customerText.includes(` ${k} `) || customerText.startsWith(`${k} `) || customerText.endsWith(` ${k}`)).length;
+        const lang: 'hindi' | 'hinglish' | 'english' = hasDevanagari
+          ? 'hindi'
+          : hinglishHits >= 2
+            ? 'hinglish'
+            : 'english';
+        finalResponse = lang === 'hindi'
+          ? 'Order mil gaya — owner approve karte hi confirm kar dunga. Thodi der intezaar karein 🙏'
+          : lang === 'hinglish'
+            ? 'Order received — owner approve karte hi confirm karta hoon. Thoda wait kar lijiye 🙏'
+            : 'Order received — will confirm after the owner has approved. Please hold on for a moment 🙏';
+      }
     }
 
     // Payment tag: [PAY:amount:note] — bot asks customer to pay X amount

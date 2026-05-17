@@ -23,6 +23,8 @@ export {
   updateClientAllergenStrictMode,
   updateClientConcurrentOrderCap,
   updateClientNotificationChannels,
+  updateClientOrderApprovalMode,
+  updateClientDefaultLanguage,
 } from './db/clients';
 
 export {

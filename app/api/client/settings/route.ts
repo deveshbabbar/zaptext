@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
-import { updateClientField, updateClientFields, updateClientAllergenStrictMode, updateClientConcurrentOrderCap, updateClientNotificationChannels } from '@/lib/google-sheets';
+import { updateClientField, updateClientFields, updateClientAllergenStrictMode, updateClientConcurrentOrderCap, updateClientNotificationChannels, updateClientOrderApprovalMode, updateClientDefaultLanguage } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
@@ -58,6 +58,17 @@ export async function GET() {
     notifyWhatsapp: bot.notify_whatsapp !== false,
     notifyEmail: bot.notify_email !== false,
     notifyDashboard: bot.notify_dashboard !== false,
+    // Order Gate. 'auto' (default) = bot emits [ORDER:] immediately after
+    // stock + capacity check. 'manual' = bot emits [ORDER_PENDING:],
+    // booking goes to pending_approval, owner gets Approve/Decline
+    // interactive buttons on WhatsApp.
+    orderApprovalMode: (bot.order_approval_mode === 'manual' ? 'manual' : 'auto') as 'auto' | 'manual',
+    // First-touch greeting language. Per-message detection still overrides
+    // this once the customer speaks — cold-start preference only.
+    defaultLanguage:
+      bot.default_language === 'hindi' || bot.default_language === 'hinglish'
+        ? bot.default_language
+        : ('english' as 'english' | 'hindi' | 'hinglish'),
   });
 }
 
@@ -197,7 +208,29 @@ export async function POST(request: NextRequest) {
       if (typeof bulk.notify_dashboard === 'boolean') notifyPatch.dashboard = bulk.notify_dashboard;
       const hasNotifyPatch = Object.keys(notifyPatch).length > 0;
 
-      if (Object.keys(writes).length === 0 && allergenStrictWritten === null && capWritten === null && !hasNotifyPatch) {
+      // Order Gate + default language. Validated to a fixed enum so a
+      // malformed value falls through to null and isn't written.
+      let approvalModeWritten: 'auto' | 'manual' | null = null;
+      if (bulk.order_approval_mode === 'auto' || bulk.order_approval_mode === 'manual') {
+        approvalModeWritten = bulk.order_approval_mode;
+      }
+      let defaultLanguageWritten: 'english' | 'hindi' | 'hinglish' | null = null;
+      if (
+        bulk.default_language === 'english' ||
+        bulk.default_language === 'hindi' ||
+        bulk.default_language === 'hinglish'
+      ) {
+        defaultLanguageWritten = bulk.default_language;
+      }
+
+      if (
+        Object.keys(writes).length === 0 &&
+        allergenStrictWritten === null &&
+        capWritten === null &&
+        !hasNotifyPatch &&
+        approvalModeWritten === null &&
+        defaultLanguageWritten === null
+      ) {
         return NextResponse.json({ error: 'Nothing to save' }, { status: 400 });
       }
 
@@ -212,6 +245,12 @@ export async function POST(request: NextRequest) {
       }
       if (hasNotifyPatch) {
         await updateClientNotificationChannels(bot.client_id, notifyPatch);
+      }
+      if (approvalModeWritten !== null) {
+        await updateClientOrderApprovalMode(bot.client_id, approvalModeWritten);
+      }
+      if (defaultLanguageWritten !== null) {
+        await updateClientDefaultLanguage(bot.client_id, defaultLanguageWritten);
       }
 
       // Auto-sync inventory whenever the KB is updated. The owner's edits to
@@ -244,6 +283,8 @@ export async function POST(request: NextRequest) {
       if (allergenStrictWritten !== null) savedKeys.push('allergen_strict_mode');
       if (capWritten !== null) savedKeys.push('concurrent_order_cap');
       if (hasNotifyPatch) savedKeys.push(...Object.keys(notifyPatch).map((k) => `notify_${k}`));
+      if (approvalModeWritten !== null) savedKeys.push('order_approval_mode');
+      if (defaultLanguageWritten !== null) savedKeys.push('default_language');
       return NextResponse.json({
         success: true,
         systemPrompt: writes.system_prompt,

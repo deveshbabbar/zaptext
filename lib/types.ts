@@ -1745,6 +1745,15 @@ export interface ClientRow {
   notify_whatsapp?: boolean;
   notify_email?: boolean;
   notify_dashboard?: boolean;
+  // Order approval mode (Order Gate). 'auto' = bot checks stock and
+  // emits [ORDER:] directly (current behaviour). 'manual' = bot emits
+  // [ORDER_PENDING:], booking goes pending_approval, owner gets
+  // Approve/Decline buttons on WhatsApp + email + dashboard alert.
+  order_approval_mode?: 'auto' | 'manual';
+  // First-touch / welcome message language preference. Per-message
+  // detection (Devanagari + Hinglish keyword count) overrides this
+  // once the customer speaks — this is the cold-start default only.
+  default_language?: 'english' | 'hindi' | 'hinglish';
 }
 
 // Conversation priority (Work Item 7). Per-message classification produced

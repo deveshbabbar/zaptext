@@ -95,6 +95,19 @@ export const clients = pgTable(
     notify_whatsapp: boolean('notify_whatsapp').notNull().default(true),
     notify_email: boolean('notify_email').notNull().default(true),
     notify_dashboard: boolean('notify_dashboard').notNull().default(true),
+    // Order approval mode. 'auto' (default): bot checks stock + capacity
+    // and emits [ORDER:] directly; owner is notified after the fact.
+    // 'manual': bot emits [ORDER_PENDING:], creates the booking in
+    // pending_approval status, pings the owner on WhatsApp with
+    // interactive Approve/Decline buttons, and tells the customer to
+    // wait. Owner's button click flips status to confirmed/cancelled
+    // and the bot relays the outcome to the customer.
+    order_approval_mode: varchar('order_approval_mode', { length: 16 }).notNull().default('auto'),
+    // Default conversation language for the WELCOME / first-touch
+    // message. Per-message detection (Devanagari script + Hinglish
+    // keyword scan in webhook) still overrides this once the customer
+    // speaks. Values: 'english' | 'hindi' | 'hinglish'.
+    default_language: varchar('default_language', { length: 16 }).notNull().default('english'),
   },
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every

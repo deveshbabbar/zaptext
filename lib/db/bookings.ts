@@ -455,13 +455,23 @@ export async function createBooking(params: {
   // (getAvailableSlotsForStaff) and tag the booking with this staff_id.
   // When unset, fall back to gym-wide weekly_schedule (legacy behavior).
   staffId?: string | null;
+  // Skip reservation-slot validation. Food orders / takeaway / dine-in
+  // orders reuse this table but don't live on the weekly_schedule grid —
+  // their time_slot is just the wall-clock minute the order arrived.
+  // Set true from the webhook order pipeline to bypass both the
+  // slot-existence check and the race-detect (which compares time_slot).
+  skipSlotValidation?: boolean;
 }): Promise<Booking> {
-  // Double-check slot is still available — per-trainer if staffId, else gym-wide
-  const available = params.staffId
-    ? await getAvailableSlotsForStaff(params.clientId, params.staffId, params.date)
-    : await getAvailableSlots(params.clientId, params.date);
-  const slotExists = available.find((s) => s.start_time === params.timeSlot);
-  if (!slotExists) throw new Error('SLOT_TAKEN');
+  // Double-check slot is still available — per-trainer if staffId, else gym-wide.
+  // Skipped entirely for food orders (skipSlotValidation=true) since their
+  // time_slot is wall-clock and doesn't map to the reservation grid.
+  if (!params.skipSlotValidation) {
+    const available = params.staffId
+      ? await getAvailableSlotsForStaff(params.clientId, params.staffId, params.date)
+      : await getAvailableSlots(params.clientId, params.date);
+    const slotExists = available.find((s) => s.start_time === params.timeSlot);
+    if (!slotExists) throw new Error('SLOT_TAKEN');
+  }
 
   const booking: Booking = {
     booking_id: `BK_${uuid()}`,
@@ -499,7 +509,10 @@ export async function createBooking(params: {
 
   // Race-detect: two requests that both passed availability can both
   // insert. Per-trainer races only count rows with THE SAME staff_id;
-  // generic races only count rows with NULL staff_id.
+  // generic races only count rows with NULL staff_id. Food orders bypass
+  // this entirely — two customers ordering at the same minute is normal,
+  // not a slot collision.
+  if (params.skipSlotValidation) return booking;
   try {
     const sameSlot = (await getBookingsForDate(params.clientId, params.date))
       .filter(

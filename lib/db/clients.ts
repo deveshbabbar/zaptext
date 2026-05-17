@@ -53,6 +53,10 @@ function dbRowToClient(row: DbClientRow): ClientRow {
     slug: row.slug ?? '',
     service_pincodes: row.service_pincodes ?? '[]',
     storefront_enabled: row.storefront_enabled ?? false,
+    // Default TRUE so legacy rows on environments that haven't run the
+    // 0006 migration yet still get the safer behaviour. Once the column
+    // is in place, row.allergen_strict_mode is the source of truth.
+    allergen_strict_mode: row.allergen_strict_mode ?? true,
   };
 }
 
@@ -231,6 +235,20 @@ export async function updateClientFields(clientId: string, fields: Record<string
 
 export async function updateClientField(clientId: string, field: string, value: string): Promise<void> {
   await updateClientFields(clientId, { [field]: value });
+}
+
+// FSSAI allergen-safety toggle (Work Item 4). Boolean column updates can't
+// go through updateClientFields() because that helper's PATCHABLE_FIELDS
+// allowlist is string-typed. Separate function keeps the type signature
+// honest.
+export async function updateClientAllergenStrictMode(
+  clientId: string,
+  value: boolean
+): Promise<void> {
+  await db
+    .update(clientsTable)
+    .set({ allergen_strict_mode: value })
+    .where(eq(clientsTable.client_id, clientId));
 }
 
 // Storefront settings update. Separate from updateClientFields because the

@@ -1219,9 +1219,39 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
       }
     }
 
+    // ── Allergen-safety guardrail (Work Item 4) ─────────────────────────
+    // FSSAI 2020 Menu Labelling Regulations make allergen declaration
+    // mandatory for chains with 10+ outlets / Central License holders.
+    // Owners are supposed to populate allergens[] on every menu item, but
+    // most onboarding flows leave it blank. The bot used to politely
+    // defer ("please confirm with kitchen") which can read as "probably
+    // safe" to a customer with a nut allergy.
+    //
+    // When allergen_strict_mode is on (default for every bot), we inject
+    // a hard refusal instruction. The bot reads stockBlock + menu context
+    // already; this just teaches the right wording when allergens[] is
+    // missing. Cheap — adds ~120 tokens to the prompt.
+    let allergenContext = '';
+    if (client.type === 'restaurant' && client.allergen_strict_mode !== false) {
+      const ownerCallNumber =
+        (client.contact_number && client.contact_number.trim()) ||
+        client.whatsapp_number ||
+        '';
+      const phoneLine = ownerCallNumber
+        ? ` Tell them to call ${ownerCallNumber} for a definitive answer.`
+        : ' Tell them to call the kitchen directly for a definitive answer.';
+      allergenContext =
+        '\n\nALLERGEN SAFETY (FSSAI / customer health — STRICT, do not relax):\n' +
+        '- Allergen keywords to watch for in customer messages: nut, peanut, mungphali, almond, badam, cashew, kaju, walnut, akhrot, pistachio, pista, hazelnut, brazil, sesame, til, dairy, milk, doodh, lactose, cheese, paneer (when asked about dairy), butter, cream, ghee, egg, anda, andaa, gluten, wheat, atta, maida, soy, soya, fish, machhi, shellfish, prawn, jhinga, crab, mustard, sarson, kasundi.\n' +
+        '- When the customer asks whether an item is safe for any of these allergens AND the item\'s declared allergen list in your menu data is empty / missing for that allergen: REFUSE to confirm safety. Reply (in the customer\'s language): "Sorry, I cannot confirm allergen information for that item." then suggest they call to confirm.' + phoneLine + '\n' +
+        '- When the item\'s declared allergen list explicitly INCLUDES the asked allergen: say so plainly ("Yes, [item] contains [allergen]. Please avoid if you\'re allergic.").\n' +
+        '- When the item\'s declared allergen list explicitly EXCLUDES it (e.g. allergens=["dairy"] and the customer asks about peanuts, AND the item is NOT in a typical peanut category like Thai/Chinese): you may confirm the absence — but still recommend calling for severe allergies.\n' +
+        '- NEVER guess. NEVER say "should be safe" / "I think so" / "probably not" / "it should be fine". A wrong allergen answer can cause anaphylaxis — refusal is always the safer choice when data is missing.';
+    }
+
     // Generate AI response with booking + payment + order + staff context
     let aiResponse = await generateBotResponse(
-      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext,
+      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext,
       pastHistory,
       msg.text
     );

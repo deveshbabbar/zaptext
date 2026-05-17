@@ -1725,6 +1725,13 @@ export interface ClientRow {
   // subdomain returns 404 even if a slug is set, so accidental DNS
   // hits never expose a half-configured menu.
   storefront_enabled?: boolean;
+  // FSSAI allergen-safety guardrail (Work Item 4). When TRUE (default
+  // for every new bot), the webhook injects an instruction telling the
+  // bot to REFUSE allergen-safety confirmations for menu items whose
+  // allergens[] is empty — and route the customer to call the kitchen.
+  // Owners with fully-populated allergen data can toggle OFF from
+  // /client/settings -> Allergen safety.
+  allergen_strict_mode?: boolean;
 }
 
 export interface ConversationRow {

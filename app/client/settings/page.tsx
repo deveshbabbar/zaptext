@@ -24,6 +24,10 @@ export default function ClientSettingsPage() {
   const [exportFormat, setExportFormat] = useState<Format>('csv');
   const [upiId, setUpiId] = useState('');
   const [upiName, setUpiName] = useState('');
+  // FSSAI allergen-safety guardrail (Work Item 4). Defaults TRUE in the
+  // GET response unless the owner has explicitly toggled it off.
+  const [allergenStrictMode, setAllergenStrictMode] = useState(true);
+  const [initialAllergenStrict, setInitialAllergenStrict] = useState(true);
   const [botName, setBotName] = useState('');
   const [botType, setBotType] = useState('');
   // Business-details fields (live inside knowledge_base_json under
@@ -82,14 +86,16 @@ export default function ClientSettingsPage() {
   // Derived list of sections with unsaved changes — drives the sticky
   // bottom save bar and the count badge on the topbar save button. Order
   // matches the on-page panel order so the labels read top-to-bottom.
+  const allergenDirty = allergenStrictMode !== initialAllergenStrict;
   const dirtySections = useMemo<string[]>(() => {
     const out: string[] = [];
     if (bizDirty) out.push('Business details');
     if (ptDirty) out.push('Personal training');
     if (promptDirty) out.push('System prompt');
     if (kbDirty) out.push('Business knowledge');
+    if (allergenDirty) out.push('Allergen safety');
     return out;
-  }, [bizDirty, ptDirty, promptDirty, kbDirty]);
+  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty]);
   const anyDirty = dirtySections.length > 0;
 
   useEffect(() => {
@@ -113,6 +119,12 @@ export default function ClientSettingsPage() {
         setUpiName(data.upiName || '');
         setBotName(data.botName || '');
         setBotType(data.botType || '');
+        // Default TRUE if the server doesn't yet send the field (legacy
+        // env without migration 0006 applied) — safer than defaulting off.
+        const nextAllergenStrict =
+          typeof data.allergenStrictMode === 'boolean' ? data.allergenStrictMode : true;
+        setAllergenStrictMode(nextAllergenStrict);
+        setInitialAllergenStrict(nextAllergenStrict);
         // Pull business-detail fields out of the parsed KB so the inputs
         // below are pre-filled. Empty strings are fine — we won't overwrite
         // the saved KB with an empty value unless the user explicitly clears.
@@ -331,6 +343,11 @@ export default function ClientSettingsPage() {
       // Only send system_prompt if the user actually edited it — otherwise let
       // the server regenerate from the (possibly new) languages array / KB.
       if (promptDirty) bulk.system_prompt = prompt;
+      // Allergen-safety toggle (Work Item 4) — only send if changed, so
+      // we don't fire a needless boolean write on every save.
+      if (allergenStrictMode !== initialAllergenStrict) {
+        bulk.allergen_strict_mode = allergenStrictMode;
+      }
 
       // If the business-detail fields (address / city / working hours /
       // welcome) were touched, merge them into the KB JSON we send. We
@@ -371,6 +388,9 @@ export default function ClientSettingsPage() {
         setPtDirty(false);
         setKbError('');
         setLastSavedAt(Date.now());
+        // Resync the allergen baseline so the diff-check fires fresh on
+        // the next save.
+        setInitialAllergenStrict(allergenStrictMode);
         if (kbDirty) {
           toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
         } else {
@@ -640,6 +660,59 @@ export default function ClientSettingsPage() {
                 Read-only snapshot. To change the static part, edit the System prompt or Business knowledge below. Staff/inventory parts come live from <b>/client/staff</b> and <b>/client/inventory</b>.
               </p>
             </Panel>
+
+            {/* ── Allergen safety (Work Item 4) ────────────────────────────
+                FSSAI 2020 Menu Labelling Regulations compliance toggle.
+                Default-on. Owners with fully-populated allergens[] on
+                every item can turn it off; everyone else benefits from
+                the guardrail. */}
+            {botType === 'restaurant' && (
+              <Panel title="Allergen safety" sub="FSSAI guardrail — bot refuses to confirm allergen safety when item data is missing.">
+                <div className="flex items-start gap-3.5">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={allergenStrictMode}
+                    aria-label="Toggle allergen strict mode"
+                    onClick={() => setAllergenStrictMode((v) => !v)}
+                    className="relative rounded-full cursor-pointer flex-shrink-0"
+                    style={{
+                      width: 38,
+                      height: 22,
+                      background: allergenStrictMode ? 'var(--ink)' : 'var(--bg-2)',
+                      transition: 'background .2s',
+                      marginTop: 2,
+                    }}
+                  >
+                    <span
+                      className="absolute top-[3px] rounded-full transition-all"
+                      style={{
+                        width: 16,
+                        height: 16,
+                        left: allergenStrictMode ? 19 : 3,
+                        background: allergenStrictMode ? 'var(--accent)' : 'var(--card)',
+                        boxShadow: '0 1px 3px #00000022',
+                      }}
+                    />
+                  </button>
+                  <div className="flex-1 text-[13px] leading-snug">
+                    <div className="font-semibold mb-1">
+                      Strict mode {allergenStrictMode ? 'ON' : 'OFF'}
+                      {allergenDirty && (
+                        <span className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C] ml-2">
+                          unsaved
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[var(--mute)] text-[12px]">
+                      {allergenStrictMode
+                        ? 'When a customer asks about an allergen (peanut, dairy, gluten, etc.) and the matching menu item has no declared allergen list, the bot refuses to confirm safety and routes the customer to call you directly. Required for FSSAI compliance on chains with 10+ outlets — recommended for everyone else too.'
+                        : 'The bot will rely on whatever allergen data is in your menu and may answer "please confirm with kitchen" when fields are blank. Only safe if you have populated allergens[] on EVERY menu item — otherwise customers may interpret a soft defer as "probably safe".'}
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            )}
 
             <Panel title="System prompt" sub="The instructions your bot follows. Edit carefully.">
               <textarea

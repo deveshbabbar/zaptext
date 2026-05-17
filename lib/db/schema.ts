@@ -69,6 +69,16 @@ export const clients = pgTable(
     // the subdomain rewrite serves real orders — prevents accidental
     // exposure of half-configured menus.
     storefront_enabled: boolean('storefront_enabled').notNull().default(false),
+    // FSSAI allergen-safety guardrail (Work Item 4). When ON (default),
+    // the bot is instructed to REFUSE allergen-safety confirmations for
+    // any menu item whose declared allergens[] is empty — instead routes
+    // the customer to call the kitchen. Mandatory for chains with 10+
+    // outlets under FSSAI 2020 Menu Labelling Regulations; default-on
+    // for everyone because the downside (a refusal) is cheap and the
+    // upside (avoiding an anaphylaxis claim) is unbounded. Owners can
+    // toggle OFF from /client/settings if they've populated allergen
+    // data on every item.
+    allergen_strict_mode: boolean('allergen_strict_mode').notNull().default(true),
   },
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every

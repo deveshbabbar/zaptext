@@ -20,6 +20,7 @@ export {
   updateClientStatus,
   updateClientFields,
   updateClientField,
+  updateClientAllergenStrictMode,
 } from './db/clients';
 
 export {

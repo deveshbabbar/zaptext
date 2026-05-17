@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
-import { updateClientField, updateClientFields } from '@/lib/google-sheets';
+import { updateClientField, updateClientFields, updateClientAllergenStrictMode } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
@@ -46,6 +46,9 @@ export async function GET() {
     existingSystem: bot.existing_system || '',
     exportFormat: (bot.export_format || 'csv') as 'csv' | 'json',
     languages: langs.length > 0 ? langs : ['English'],
+    // Default TRUE — see migration 0006_allergen_strict_mode.sql for the
+    // FSSAI rationale. The settings UI uses this to render the toggle.
+    allergenStrictMode: bot.allergen_strict_mode !== false,
   });
 }
 
@@ -154,11 +157,25 @@ export async function POST(request: NextRequest) {
         writes.export_format = bulk.export_format;
       }
 
-      if (Object.keys(writes).length === 0) {
+      // FSSAI allergen-safety toggle (Work Item 4). Separate from `writes`
+      // because updateClientFields only accepts string values — booleans
+      // route through their own dedicated helper. Tracked here so the
+      // "saved" response array includes it for UI confirmation.
+      let allergenStrictWritten: boolean | null = null;
+      if (typeof bulk.allergen_strict_mode === 'boolean') {
+        allergenStrictWritten = bulk.allergen_strict_mode;
+      }
+
+      if (Object.keys(writes).length === 0 && allergenStrictWritten === null) {
         return NextResponse.json({ error: 'Nothing to save' }, { status: 400 });
       }
 
-      await updateClientFields(bot.client_id, writes);
+      if (Object.keys(writes).length > 0) {
+        await updateClientFields(bot.client_id, writes);
+      }
+      if (allergenStrictWritten !== null) {
+        await updateClientAllergenStrictMode(bot.client_id, allergenStrictWritten);
+      }
 
       // Auto-sync inventory whenever the KB is updated. The owner's edits to
       // menu items / services / membership plans / courses / products /
@@ -178,10 +195,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const savedKeys = Object.keys(writes);
+      if (allergenStrictWritten !== null) savedKeys.push('allergen_strict_mode');
       return NextResponse.json({
         success: true,
         systemPrompt: writes.system_prompt,
-        saved: Object.keys(writes),
+        saved: savedKeys,
       });
     }
 

@@ -1440,11 +1440,29 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
     // simple heuristic over msg.text (the same signal the LLM uses).
     if (client.type === 'restaurant' && orderCapable && aiResponse) {
       const hasOrderTag = /\[ORDER:[^\]]+\]/i.test(aiResponse);
-      // Catches English + Hinglish + Hindi confirmation patterns the LLM
-      // tends to use. Restricted to "placed/done/confirmed" verbs so we
-      // don't false-positive on the customer's own intent reflections.
-      const confirmationLikePattern = /\b(order (is |has been )?placed|order (?:is )?confirmed|order (?:is )?done|order successfully|order ho gaya|order pakka|order place ho gaya|order successful)\b/i;
-      if (confirmationLikePattern.test(aiResponse) && !hasOrderTag) {
+      // Audit log — fires every time the safety net runs. Makes
+      // post-deploy verification trivial: tail Vercel logs and grep for
+      // [order-flow]. If you don't see this line on a restaurant turn,
+      // the deploy hasn't gone live yet.
+      console.log('[order-flow] safety-net check', {
+        client_id: client.client_id,
+        customer_phone: customerPhone,
+        has_order_tag: hasOrderTag,
+        ai_reply_first_200: aiResponse.slice(0, 200),
+      });
+      // Sentence-level detection so wording like "Your order for 1 plate of
+      // Chicken 65 is placed" (which has noise between 'order' and 'is
+      // placed') still trips the safety net. We split on sentence-enders,
+      // then check each sentence for the noun 'order' (or Hindi/Hinglish
+      // equivalents) co-occurring with an affirmation verb. False-positive
+      // risk is low because we restrict to a tight verb whitelist.
+      const sentences = aiResponse.split(/[.!?\n]+/).map((s) => s.toLowerCase().trim()).filter(Boolean);
+      const orderNounRe = /\border\b|\border for\b|\border has\b|\border is\b|आपका ऑर्डर|आर्डर|आर्डर/;
+      // English + Hinglish + Devanagari affirmation verbs / phrases that
+      // signal "we accepted and finalised the order" from the bot side.
+      const affirmationRe = /\b(placed|confirmed|booked|done|successful|successfully|received and|noted and|finalised|finalized)\b|ho gaya|pakka|place ho gaya|confirm ho gaya|ho chuk|tay ho gay|पक्का|हो गया|हो चुक|तय हो|कन्फर्म/i;
+      const confirmedClaim = sentences.some((s) => orderNounRe.test(s) && affirmationRe.test(s));
+      if (confirmedClaim && !hasOrderTag) {
         console.warn('[order-flow] Bot claimed order placed without [ORDER:] tag. Course-correcting.', {
           client_id: client.client_id,
           customer_phone: customerPhone,

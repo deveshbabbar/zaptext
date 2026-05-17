@@ -24,13 +24,13 @@ export default function AdminSidebar({ name, email, initials }: AdminSidebarProp
         className="flex items-center gap-2.5 pb-4 border-b border-white/10 mb-3.5"
         style={{ padding: '4px 8px 16px' }}
       >
-        {/* Brand logo — uses /public/logo.png. White tile keeps the
-            logo's green strokes legible against the dark sidebar. */}
-        <span style={{ width: 32, height: 32, borderRadius: 8, background: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          <Image src="/logo.png" alt="ZapText" width={26} height={26} priority style={{ width: 26, height: 26, objectFit: 'contain' }} />
-        </span>
-        <div>
-          <div className="font-bold tracking-[-0.01em]">ZapText</div>
+        {/* Full Zaptext.shop wordmark from /public/logo.png. Wrapped in
+            a white pill so the logo's dark-green text stays legible on
+            the dark sidebar background. */}
+        <div className="flex flex-col gap-1.5">
+          <span style={{ background: '#fff', borderRadius: 8, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start' }}>
+            <Image src="/logo.png" alt="Zaptext.shop" width={120} height={28} priority style={{ width: 'auto', height: 26, objectFit: 'contain' }} />
+          </span>
           <div className="text-[10.5px] text-white/55 zt-mono uppercase tracking-[.08em]">
             Admin workspace
           </div>

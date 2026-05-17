@@ -8,19 +8,20 @@ import type React from "react";
 import Link from "next/link";
 import Image from "next/image";
 
-// Brand mark — renders /public/logo.png at 30px square. Replaced the
-// styled "Z" letter mark when the actual brand logo (green Z-bolt)
-// was added; keeps the same outer 30x30 box so existing nav layouts
-// don't shift.
+// Brand mark — renders the full Zaptext.shop wordmark logo from
+// /public/logo.png. Aspect ratio is roughly 3.5:1 (Z bolt + wordmark),
+// so we render at 140x36 to keep the wordmark legible. Callers should
+// NOT also render a "ZapText" text label next to <Mark/> — the logo
+// image already contains the wordmark.
 export function Mark() {
   return (
     <Image
       src="/logo.png"
-      alt="ZapText"
-      width={30}
-      height={30}
+      alt="Zaptext.shop"
+      width={140}
+      height={36}
       priority
-      style={{ width: 30, height: 30, objectFit: 'contain' }}
+      style={{ width: 'auto', height: 32, maxHeight: 36, objectFit: 'contain' }}
     />
   );
 }

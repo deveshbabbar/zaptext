@@ -29,6 +29,9 @@ function dbRowToConvo(row: DbConvoRow): ConversationRow {
     direction: row.direction as ConversationRow['direction'],
     message: row.message,
     message_type: row.message_type,
+    // Default 'normal' so legacy rows on environments that haven't run
+    // the 0008 migration still produce a valid ConversationRow.
+    priority_level: (row.priority_level as ConversationRow['priority_level']) ?? 'normal',
   };
 }
 
@@ -65,6 +68,11 @@ export async function addConversationMessage(msg: ConversationRow): Promise<void
     direction: msg.direction,
     message: msg.message,
     message_type: msg.message_type || 'text',
+    // Outbound rows are always 'normal' (bot/owner replies don't get
+    // classified). Inbound rows carry whatever the webhook classifier
+    // produced. Default 'normal' if the caller didn't pass one — keeps
+    // pre-WI7 call sites working unchanged.
+    priority_level: msg.priority_level ?? 'normal',
   });
 }
 

@@ -1740,6 +1740,12 @@ export interface ClientRow {
   concurrent_order_cap?: number | null;
 }
 
+// Conversation priority (Work Item 7). Per-message classification produced
+// by lib/conversation-priority.ts. The conversations dashboard surfaces
+// threads whose last inbound row is non-normal at the top, with a colored
+// dot. Owner reply (next outbound) implicitly clears the alert.
+export type PriorityLevel = 'normal' | 'attention' | 'urgent';
+
 export interface ConversationRow {
   timestamp: string;
   client_id: string;
@@ -1747,6 +1753,7 @@ export interface ConversationRow {
   direction: 'incoming' | 'outgoing';
   message: string;
   message_type: string;
+  priority_level?: PriorityLevel;
 }
 
 export interface AnalyticsRow {

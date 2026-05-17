@@ -121,6 +121,14 @@ export const conversations = pgTable(
     direction: varchar('direction', { length: 16 }).notNull(), // 'incoming' | 'outgoing'
     message: text('message').notNull(),
     message_type: varchar('message_type', { length: 32 }).notNull().default('text'),
+    // Conversation priority (Work Item 7). Per-message classification:
+    //   'normal'    — routine message
+    //   'attention' — refund / wrong-order / late / aggregator-threat
+    //   'urgent'    — food poisoning / illness / legal / police / FSSAI
+    // The conversations list page surfaces threads whose LAST inbound
+    // is non-normal at the top — owner reply (next outbound) implicitly
+    // clears the alert. Always 'normal' for outbound rows.
+    priority_level: varchar('priority_level', { length: 16 }).notNull().default('normal'),
   },
   (t) => ({
     clientIdIdx: index('conversations_client_id_idx').on(t.client_id),

@@ -17,6 +17,7 @@ import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
 import { countActiveKitchenOrders } from '@/lib/db/restaurant-dine-in';
+import { classifyPriority } from '@/lib/conversation-priority';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
 import {
   buildUpiLink,
@@ -433,6 +434,14 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // message if transcription fails (no GEMINI_API_KEY, network error,
     // unintelligible audio, etc.).
     let inboundAlreadyLogged = false;
+    // Conversation priority (Work Item 7). Classified once per inbound
+    // turn using lib/conversation-priority.ts. Stored on the inbound
+    // conversations row + used to inject an escalationContext block into
+    // the bot prompt for urgent threads. Defaults 'normal' for non-text
+    // turns (location pins, payment screenshots — those routes have their
+    // own log path and don't need classification).
+    let inboundPriority: 'normal' | 'attention' | 'urgent' = 'normal';
+    let inboundPriorityMatched: string[] = [];
     if (msg.type === 'audio' && msg.audioId) {
       let transcript = '';
       try {
@@ -453,6 +462,9 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         // voice from typed without us needing a separate message_type.
         msg.text = transcript;
         msg.type = 'text';
+        const voicePriority = classifyPriority(transcript);
+        inboundPriority = voicePriority.level;
+        inboundPriorityMatched = voicePriority.matched;
         await addConversationMessage({
           timestamp,
           client_id: client.client_id,
@@ -460,6 +472,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
           direction: 'incoming',
           message: `🎙️ ${transcript}`,
           message_type: 'audio',
+          priority_level: inboundPriority,
         });
         // Mark inbound as logged so the fall-through "Log incoming message"
         // step below doesn't double-insert the same turn as text. Without
@@ -525,6 +538,9 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // logged this turn — otherwise the same customer turn shows up twice
     // in the operator UI and in the prompt's conversation history).
     if (!inboundAlreadyLogged) {
+      const textPriority = classifyPriority(msg.text);
+      inboundPriority = textPriority.level;
+      inboundPriorityMatched = textPriority.matched;
       await addConversationMessage({
         timestamp,
         client_id: client.client_id,
@@ -532,6 +548,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
         direction: 'incoming',
         message: msg.text,
         message_type: 'text',
+        priority_level: inboundPriority,
       });
     }
 
@@ -1299,9 +1316,37 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
       }
     }
 
+    // ── Escalation block (Work Item 7) ──────────────────────────────────
+    // Only fires for the 'urgent' priority tier — health emergency, legal
+    // threat, regulator complaint. The bot must NOT continue acting like
+    // a salesperson; it acknowledges, apologises, promises an owner
+    // callback, and refuses to emit any commercial tag. The 'attention'
+    // tier still flows through the normal prompt — most refund / wrong-
+    // order issues have a clear bot-handleable resolution.
+    let escalationContext = '';
+    if (inboundPriority === 'urgent') {
+      const ownerCall =
+        (client.contact_number && client.contact_number.trim()) ||
+        client.whatsapp_number ||
+        '';
+      const callbackLine = ownerCall
+        ? `The owner / manager will call back personally within 1 hour on ${ownerCall}.`
+        : 'The owner / manager will call back personally within 1 hour.';
+      escalationContext =
+        '\n\nESCALATION (customer flagged a serious complaint — HIGHEST PRIORITY, override default behaviour):\n' +
+        `- Customer's message contains escalation keywords: ${inboundPriorityMatched.slice(0, 5).join(', ')}.\n` +
+        '- Do NOT minimise. Acknowledge what they said in their own words.\n' +
+        '- Apologise sincerely in the customer\'s language. No corporate phrasing ("we regret any inconvenience" sounds like a brush-off — say "main bahut sorry hoon, aapko aisa experience mila").\n' +
+        `- ${callbackLine} Mention this exact phrasing.\n` +
+        '- Do NOT emit any [ORDER:...], [PAY:...], [BOOK:...] tag in this reply. Do NOT offer a discount, refund amount, or coupon — the owner makes those calls.\n' +
+        '- Do NOT ask follow-up questions about the order — the owner will gather details themselves.\n' +
+        '- Keep the reply short: 2-3 sentences. Anything longer feels evasive.\n' +
+        '- After this reply the conversation flag stays "urgent" until the owner replies — so the dashboard ranks it at the top.';
+    }
+
     // Generate AI response with booking + payment + order + staff context
     let aiResponse = await generateBotResponse(
-      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext + capacityContext,
+      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext + capacityContext + escalationContext,
       pastHistory,
       msg.text
     );

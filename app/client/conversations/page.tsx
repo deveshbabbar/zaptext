@@ -8,6 +8,25 @@ interface Message {
   customer_phone: string;
   direction: string;
   message: string;
+  // Per-message priority (Work Item 7). The dashboard uses the LAST
+  // message of a thread to decide the thread's "needs attention" state.
+  // 'normal' is the default and is omitted on most server responses.
+  priority_level?: 'normal' | 'attention' | 'urgent';
+}
+
+// Compute a thread's surfaced priority. Rule: the thread is at the level
+// of its LAST INBOUND message — and the alert clears as soon as the next
+// outbound (owner / bot reply) lands AFTER that inbound. Implicit
+// acknowledgement; no separate Mark-as-handled button for v1.
+function threadPriority(msgs: Message[]): 'normal' | 'attention' | 'urgent' {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.direction === 'outgoing') return 'normal'; // owner replied after the flag
+    if (m.direction === 'incoming') {
+      return (m.priority_level as 'normal' | 'attention' | 'urgent' | undefined) || 'normal';
+    }
+  }
+  return 'normal';
 }
 
 // Parse the timestamp shape this endpoint returns. The data layer writes
@@ -163,7 +182,14 @@ export default function ConversationsPage() {
 
   // Most-recently-active first (better than insertion order)
   const sortedPhones = useMemo(() => {
+    // Priority-first sort (Work Item 7): urgent → attention → normal,
+    // recency within each tier. So a 3-day-old "food poisoning" thread
+    // still floats above a 2-min-old "what's your menu" greeting.
+    const rank: Record<string, number> = { urgent: 0, attention: 1, normal: 2 };
     return [...phones].sort((a, b) => {
+      const pa = rank[threadPriority(conversations[a] || [])] ?? 2;
+      const pb = rank[threadPriority(conversations[b] || [])] ?? 2;
+      if (pa !== pb) return pa - pb;
       const la = parseTs(conversations[a].at(-1)?.timestamp || '')?.getTime() ?? 0;
       const lb = parseTs(conversations[b].at(-1)?.timestamp || '')?.getTime() ?? 0;
       return lb - la;
@@ -292,6 +318,14 @@ export default function ConversationsPage() {
                   const lastDate = parseTs(last?.timestamp || '');
                   const isOn = phone === activePhone;
                   const lastIsBot = last?.direction === 'outgoing';
+                  // Work Item 7: surface thread priority as a colored dot.
+                  // Red = urgent (food poisoning / legal / police / FSSAI),
+                  // amber = attention (refund / wrong order / aggregator
+                  // review threat). Cleared automatically once the owner
+                  // sends an outbound after the flagged inbound.
+                  const priority = threadPriority(msgs);
+                  const dotColor =
+                    priority === 'urgent' ? '#E14B4B' : priority === 'attention' ? '#E89A1C' : null;
                   return (
                     <button
                       key={phone}
@@ -300,13 +334,22 @@ export default function ConversationsPage() {
                         isOn ? 'bg-[var(--accent)]' : 'hover:bg-[var(--bg-2)]'
                       }`}
                       style={{ padding: '14px 16px' }}
+                      aria-label={`${phone}${priority !== 'normal' ? ' · needs ' + priority : ''}`}
                     >
                       <div
-                        className={`w-[38px] h-[38px] rounded-full grid place-items-center font-bold text-[13px] flex-shrink-0 ${
+                        className={`relative w-[38px] h-[38px] rounded-full grid place-items-center font-bold text-[13px] flex-shrink-0 ${
                           isOn ? 'bg-[var(--ink)] text-[var(--accent)]' : 'bg-[var(--bg-2)] text-[var(--ink)]'
                         }`}
                       >
                         {initials(phone)}
+                        {dotColor && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--card)]"
+                            style={{ background: dotColor }}
+                            title={priority === 'urgent' ? 'Urgent — needs personal reply within 1 hr' : 'Needs attention'}
+                          />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline gap-1.5">

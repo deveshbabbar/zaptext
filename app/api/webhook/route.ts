@@ -2047,16 +2047,22 @@ existing per-message LANGUAGE RULES still apply.
           // only handled the leading +.
           const ownerTo = client.whatsapp_number.replace(/\D/g, '');
           if (needsApproval) {
-            // Send plain-text approval prompt (NOT interactive buttons —
-            // Meta returns #100 on the buttons API for some accounts/payload
-            // shapes, and the fallback path failed in the same way). Owner
-            // replies with "approve <booking_id>" or "decline <booking_id>"
+            // Plain-text approval prompt. NO heavy box-drawing chars, NO
+            // backticks — Meta's WhatsApp API returns #100 Invalid Parameter
+            // on free-form text containing those tokens for some accounts.
+            // Owner replies with "approve <booking_id>" / "decline <booking_id>"
             // — the owner-command handler at the top of the loop picks it up.
             const approvalPrompt =
               `${ownerMsg}\n\n` +
-              `━━━━━━━━━━━━━━\n` +
-              `*To approve:* reply with\n\`approve ${created.booking_id}\`\n\n` +
-              `*To decline:* reply with\n\`decline ${created.booking_id}\``;
+              `--- Action needed ---\n` +
+              `Reply "approve ${created.booking_id}" to confirm\n` +
+              `Reply "decline ${created.booking_id}" to cancel`;
+            console.log('[approval-prompt] sending', {
+              client_id: client.client_id,
+              owner_to_redacted: ownerTo ? `${ownerTo.slice(0, 4)}…${ownerTo.slice(-2)}` : '(empty)',
+              owner_to_len: ownerTo.length,
+              prompt_len: approvalPrompt.length,
+            });
             await sendWhatsAppMessage(phoneNumberId, ownerTo, approvalPrompt);
           } else {
             await sendWhatsAppMessage(phoneNumberId, ownerTo, ownerMsg);

@@ -16,6 +16,7 @@ import { recordConsentEvent } from '@/lib/db/consent-log';
 import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
 import { getISTTimestamp } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
+import { countActiveKitchenOrders } from '@/lib/db/restaurant-dine-in';
 import { sendTemplate, tplNewBooking, tplBookingCancelled } from '@/lib/email';
 import {
   buildUpiLink,
@@ -1249,9 +1250,58 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
         '- NEVER guess. NEVER say "should be safe" / "I think so" / "probably not" / "it should be fine". A wrong allergen answer can cause anaphylaxis — refusal is always the safer choice when data is missing.';
     }
 
+    // ── Kitchen capacity gate (Work Item 5) ─────────────────────────────
+    // Restaurant-only. Count in-flight kitchen orders (status placed /
+    // preparing / ready, created in the last 15 min). When the count
+    // reaches the owner-configured ceiling (default 8), inject a hard
+    // instruction telling the bot NOT to emit [ORDER:] and instead
+    // quote a wait time. Suggested fallback time = 20 min from now,
+    // which is a reasonable lunch-rush recovery window.
+    //
+    // Why a soft prompt-gate not a hard tag-strip: the existing strip
+    // pipeline is plan-feature based (free vs paid). Capacity is
+    // operational, not commercial. Trust the prompt; if the LLM still
+    // emits [ORDER:] under capacity-mode, the downstream reservation
+    // code is the floor (it will still attempt the order, just one
+    // extra above cap — kitchen survives one). Hardening to a tag
+    // strip is a Phase 2 sharpening.
+    let capacityContext = '';
+    if (client.type === 'restaurant' && orderCapable) {
+      try {
+        const PLATFORM_DEFAULT_CAP = 8;
+        const rawCap = client.concurrent_order_cap;
+        const cap = typeof rawCap === 'number' && rawCap > 0
+          ? Math.min(200, Math.floor(rawCap))
+          : PLATFORM_DEFAULT_CAP;
+        const activeNow = await countActiveKitchenOrders(client.client_id);
+        if (activeNow >= cap) {
+          // Compute a wait quote: 20 min from now, rounded to nearest 5
+          // for readability. IST formatting because that's what owners
+          // and customers expect.
+          const wait = new Date(Date.now() + 20 * 60 * 1000);
+          const istTime = new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          }).format(wait);
+          capacityContext =
+            '\n\nKITCHEN AT CAPACITY (operational gate — IGNORE menu/order requests right now):\n' +
+            `- ${activeNow} orders are currently in the kitchen (cap: ${cap}). The team can't take another order this moment.\n` +
+            '- For ANY new order request reply (in the customer\'s language) with EXACTLY this pattern: ' +
+            `"Bahut zyaada orders chal rahe hain right now — agar aap ${istTime} ya baad ke liye order place kar sakein toh seedha confirm ho jayega. Tab tak kuch aur puchna ho toh batayein."\n` +
+            '- Translate that template into the customer\'s language. The KEY parts to keep: (a) busy now, (b) offer to schedule for ' + istTime + ', (c) keep the conversation open for non-order questions (menu lookup, hours, etc. are still fine).\n' +
+            '- Do NOT emit any [ORDER:...] tag while capacity is full. Do NOT promise a delivery time. Do NOT take partial orders.\n' +
+            '- Menu queries, table reservations, allergen questions, opening-hours questions, and existing-order status checks are ALL fine — only NEW orders are paused.';
+        }
+      } catch (e) {
+        console.error('[webhook] capacity-gate check failed (non-fatal):', e);
+      }
+    }
+
     // Generate AI response with booking + payment + order + staff context
     let aiResponse = await generateBotResponse(
-      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext,
+      basePrompt + availabilityContext + paymentContext + orderContext + staffContext + dineInContext + allergenContext + capacityContext,
       pastHistory,
       msg.text
     );

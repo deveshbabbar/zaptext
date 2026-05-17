@@ -545,6 +545,32 @@ export async function listOrdersForToday(
   return rows.map(dbRowToOrder);
 }
 
+// Kitchen capacity gate (Work Item 5). Returns the count of in-flight
+// orders the kitchen is currently working on. "In-flight" =
+//   status IN ('placed','preparing','ready')
+//   AND created_at > now() - interval '15 minutes'
+//
+// The 15-min window keeps the count from getting stuck on stale rows
+// (status was never transitioned because the owner didn't touch the
+// Kanban) — those fall out naturally even if they never reach 'served'.
+// 'ready' is included because the kitchen worked on it (a partially-
+// ready order still occupies plating space); excluding it would let
+// the cap be bypassed by orders sitting in pickup limbo.
+export async function countActiveKitchenOrders(clientId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+  const rows = await db
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.client_id, clientId),
+        gte(ordersTable.created_at, cutoff),
+        inArray(ordersTable.status, ['placed', 'preparing', 'ready'])
+      )
+    );
+  return rows.length;
+}
+
 export async function updateOrderStatus(orderId: string, status: DineInOrderStatus): Promise<void> {
   // served_at marks the moment the kitchen completed the order. Set it
   // for any "completed" status (served / delivered / picked_up), not just

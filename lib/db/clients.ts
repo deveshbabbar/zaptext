@@ -57,6 +57,10 @@ function dbRowToClient(row: DbClientRow): ClientRow {
     // 0006 migration yet still get the safer behaviour. Once the column
     // is in place, row.allergen_strict_mode is the source of truth.
     allergen_strict_mode: row.allergen_strict_mode ?? true,
+    // Kitchen capacity gate (Work Item 5). NULL passes through so the
+    // webhook can apply the platform default (8) without confusing
+    // "owner explicitly set 0" with "owner left it default".
+    concurrent_order_cap: row.concurrent_order_cap ?? null,
   };
 }
 
@@ -248,6 +252,19 @@ export async function updateClientAllergenStrictMode(
   await db
     .update(clientsTable)
     .set({ allergen_strict_mode: value })
+    .where(eq(clientsTable.client_id, clientId));
+}
+
+// Kitchen capacity gate (Work Item 5). NULL = clear the override and fall
+// back to the platform default. The caller (settings POST) is responsible
+// for clamping to [1, 200].
+export async function updateClientConcurrentOrderCap(
+  clientId: string,
+  value: number | null
+): Promise<void> {
+  await db
+    .update(clientsTable)
+    .set({ concurrent_order_cap: value })
     .where(eq(clientsTable.client_id, clientId));
 }
 

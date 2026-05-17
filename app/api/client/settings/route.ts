@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
-import { updateClientField, updateClientFields, updateClientAllergenStrictMode } from '@/lib/google-sheets';
+import { updateClientField, updateClientFields, updateClientAllergenStrictMode, updateClientConcurrentOrderCap } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
@@ -49,6 +49,11 @@ export async function GET() {
     // Default TRUE — see migration 0006_allergen_strict_mode.sql for the
     // FSSAI rationale. The settings UI uses this to render the toggle.
     allergenStrictMode: bot.allergen_strict_mode !== false,
+    // Kitchen capacity gate (Work Item 5). Null/undefined → use platform
+    // default (8) at the webhook layer. UI shows the actual stored value
+    // or null so the owner can tell "I haven't set this" from "I picked 8".
+    concurrentOrderCap:
+      typeof bot.concurrent_order_cap === 'number' ? bot.concurrent_order_cap : null,
   });
 }
 
@@ -166,7 +171,21 @@ export async function POST(request: NextRequest) {
         allergenStrictWritten = bulk.allergen_strict_mode;
       }
 
-      if (Object.keys(writes).length === 0 && allergenStrictWritten === null) {
+      // Kitchen capacity gate (Work Item 5). Same separate-helper rationale
+      // as the boolean above. `null` from the client = clear the override
+      // and fall back to the platform default 8.
+      let capWritten: 'set' | 'cleared' | null = null;
+      let capValue: number | null = null;
+      if (bulk.concurrent_order_cap === null) {
+        capWritten = 'cleared';
+        capValue = null;
+      } else if (typeof bulk.concurrent_order_cap === 'number' && Number.isFinite(bulk.concurrent_order_cap)) {
+        const clamped = Math.max(1, Math.min(200, Math.floor(bulk.concurrent_order_cap)));
+        capWritten = 'set';
+        capValue = clamped;
+      }
+
+      if (Object.keys(writes).length === 0 && allergenStrictWritten === null && capWritten === null) {
         return NextResponse.json({ error: 'Nothing to save' }, { status: 400 });
       }
 
@@ -175,6 +194,9 @@ export async function POST(request: NextRequest) {
       }
       if (allergenStrictWritten !== null) {
         await updateClientAllergenStrictMode(bot.client_id, allergenStrictWritten);
+      }
+      if (capWritten !== null) {
+        await updateClientConcurrentOrderCap(bot.client_id, capValue);
       }
 
       // Auto-sync inventory whenever the KB is updated. The owner's edits to
@@ -197,6 +219,7 @@ export async function POST(request: NextRequest) {
 
       const savedKeys = Object.keys(writes);
       if (allergenStrictWritten !== null) savedKeys.push('allergen_strict_mode');
+      if (capWritten !== null) savedKeys.push('concurrent_order_cap');
       return NextResponse.json({
         success: true,
         systemPrompt: writes.system_prompt,

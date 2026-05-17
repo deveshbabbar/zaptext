@@ -28,6 +28,11 @@ export default function ClientSettingsPage() {
   // GET response unless the owner has explicitly toggled it off.
   const [allergenStrictMode, setAllergenStrictMode] = useState(true);
   const [initialAllergenStrict, setInitialAllergenStrict] = useState(true);
+  // Kitchen capacity gate (Work Item 5). null = "not set, use platform
+  // default 8". Stored as string in the input for free editing; parsed
+  // back to int on save.
+  const [concurrentOrderCap, setConcurrentOrderCap] = useState<string>('');
+  const [initialConcurrentOrderCap, setInitialConcurrentOrderCap] = useState<string>('');
   const [botName, setBotName] = useState('');
   const [botType, setBotType] = useState('');
   // Business-details fields (live inside knowledge_base_json under
@@ -87,6 +92,7 @@ export default function ClientSettingsPage() {
   // bottom save bar and the count badge on the topbar save button. Order
   // matches the on-page panel order so the labels read top-to-bottom.
   const allergenDirty = allergenStrictMode !== initialAllergenStrict;
+  const capDirty = concurrentOrderCap.trim() !== initialConcurrentOrderCap.trim();
   const dirtySections = useMemo<string[]>(() => {
     const out: string[] = [];
     if (bizDirty) out.push('Business details');
@@ -94,8 +100,9 @@ export default function ClientSettingsPage() {
     if (promptDirty) out.push('System prompt');
     if (kbDirty) out.push('Business knowledge');
     if (allergenDirty) out.push('Allergen safety');
+    if (capDirty) out.push('Kitchen capacity');
     return out;
-  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty]);
+  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty]);
   const anyDirty = dirtySections.length > 0;
 
   useEffect(() => {
@@ -125,6 +132,13 @@ export default function ClientSettingsPage() {
           typeof data.allergenStrictMode === 'boolean' ? data.allergenStrictMode : true;
         setAllergenStrictMode(nextAllergenStrict);
         setInitialAllergenStrict(nextAllergenStrict);
+        // Empty string represents "use platform default" — the UI shows
+        // a placeholder "8 (default)" so the owner sees what the bot
+        // will actually use.
+        const nextCap =
+          typeof data.concurrentOrderCap === 'number' ? String(data.concurrentOrderCap) : '';
+        setConcurrentOrderCap(nextCap);
+        setInitialConcurrentOrderCap(nextCap);
         // Pull business-detail fields out of the parsed KB so the inputs
         // below are pre-filled. Empty strings are fine — we won't overwrite
         // the saved KB with an empty value unless the user explicitly clears.
@@ -348,6 +362,21 @@ export default function ClientSettingsPage() {
       if (allergenStrictMode !== initialAllergenStrict) {
         bulk.allergen_strict_mode = allergenStrictMode;
       }
+      // Kitchen capacity cap (Work Item 5) — same diff-only pattern. Empty
+      // string means "clear the override and use the platform default";
+      // we send `null` to the server in that case (different from "didn't
+      // change" which sends nothing).
+      if (capDirty) {
+        const trimmed = concurrentOrderCap.trim();
+        if (trimmed === '') {
+          bulk.concurrent_order_cap = null;
+        } else {
+          const n = parseInt(trimmed, 10);
+          if (Number.isFinite(n) && n > 0) {
+            bulk.concurrent_order_cap = Math.min(200, n);
+          }
+        }
+      }
 
       // If the business-detail fields (address / city / working hours /
       // welcome) were touched, merge them into the KB JSON we send. We
@@ -391,6 +420,9 @@ export default function ClientSettingsPage() {
         // Resync the allergen baseline so the diff-check fires fresh on
         // the next save.
         setInitialAllergenStrict(allergenStrictMode);
+        // Same for the capacity cap. If the owner cleared the input we
+        // store '' in the baseline so the empty-state diff is right.
+        setInitialConcurrentOrderCap(concurrentOrderCap.trim());
         if (kbDirty) {
           toast.success('Saved — knowledge updated. Click "Sync to inventory" if menu items changed.');
         } else {
@@ -709,6 +741,49 @@ export default function ClientSettingsPage() {
                         ? 'When a customer asks about an allergen (peanut, dairy, gluten, etc.) and the matching menu item has no declared allergen list, the bot refuses to confirm safety and routes the customer to call you directly. Required for FSSAI compliance on chains with 10+ outlets — recommended for everyone else too.'
                         : 'The bot will rely on whatever allergen data is in your menu and may answer "please confirm with kitchen" when fields are blank. Only safe if you have populated allergens[] on EVERY menu item — otherwise customers may interpret a soft defer as "probably safe".'}
                     </div>
+                  </div>
+                </div>
+              </Panel>
+            )}
+
+            {/* ── Kitchen capacity gate (Work Item 5) ──────────────────────
+                Restaurant-only. Number input + "use default" reset link.
+                Empty string in state = use platform default 8. Owner
+                bumps this up for busy days, down for weak kitchen days. */}
+            {botType === 'restaurant' && (
+              <Panel title="Kitchen capacity" sub="Cap on concurrent in-flight orders. Bot stops accepting new orders when this many are already cooking — quotes a 20-min wait instead.">
+                <div className="flex items-end flex-wrap gap-3.5">
+                  <div>
+                    <div className="text-[11.5px] font-semibold mb-1">Concurrent order cap</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={concurrentOrderCap}
+                        onChange={(e) => setConcurrentOrderCap(e.target.value)}
+                        placeholder="8 (default)"
+                        className="w-[120px] rounded-[10px] border border-[var(--line)] bg-[var(--card)] focus:border-[var(--ink)] focus:outline-none text-[13.5px] font-semibold"
+                        style={{ padding: '9px 12px' }}
+                      />
+                      {concurrentOrderCap.trim() !== '' && (
+                        <button
+                          type="button"
+                          onClick={() => setConcurrentOrderCap('')}
+                          className="text-[11.5px] text-[var(--mute)] hover:text-[var(--ink)] underline"
+                        >
+                          Reset to default
+                        </button>
+                      )}
+                      {capDirty && (
+                        <span className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C]">
+                          unsaved
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-[260px] text-[12px] text-[var(--mute)] leading-snug">
+                    Counted across orders in the last 15 minutes that aren&apos;t yet served / delivered / picked up. <b>Default 8</b> covers a typical single-kitchen dhaba; large QSRs can raise to 20–30, cloud kitchens with packing crews to 40+. Stay realistic — accepting more than the kitchen can ship on time triggers cancellations and bad reviews.
                   </div>
                 </div>
               </Panel>

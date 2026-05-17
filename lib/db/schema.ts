@@ -79,6 +79,14 @@ export const clients = pgTable(
     // toggle OFF from /client/settings if they've populated allergen
     // data on every item.
     allergen_strict_mode: boolean('allergen_strict_mode').notNull().default(true),
+    // Kitchen capacity gate (Work Item 5). Maximum number of concurrent
+    // in-flight orders (status placed/preparing/ready, created in the
+    // last 15 minutes) the kitchen can handle. When the live count
+    // reaches this number the webhook injects a "kitchen at capacity"
+    // instruction and the bot quotes a wait-time instead of accepting
+    // the [ORDER:] tag. NULL = use platform default (8). Clamped to
+    // [1, 200] at the API boundary.
+    concurrent_order_cap: integer('concurrent_order_cap'),
   },
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every

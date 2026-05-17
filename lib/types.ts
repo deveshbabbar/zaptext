@@ -1732,6 +1732,12 @@ export interface ClientRow {
   // Owners with fully-populated allergen data can toggle OFF from
   // /client/settings -> Allergen safety.
   allergen_strict_mode?: boolean;
+  // Kitchen capacity gate (Work Item 5). Maximum concurrent in-flight
+  // orders the kitchen can absorb. NULL/undefined → platform default
+  // (8). When the live count reaches this number the webhook tells the
+  // bot to quote a wait-time instead of accepting a new [ORDER:] tag.
+  // Clamped to [1, 200] at the API boundary.
+  concurrent_order_cap?: number | null;
 }
 
 export interface ConversationRow {

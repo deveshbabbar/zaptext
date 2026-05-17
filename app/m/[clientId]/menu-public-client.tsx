@@ -101,6 +101,10 @@ interface Props {
   prefillLng?: number | null;
   outletMarkers?: OutletMarker[];
   bypassRecentOrderGuard?: boolean;
+  /** QR-scan / table-session lock — forces dine-in mode and pre-fills
+   *  the table number. Set only by the /m/<clientId>/<table>/<session>
+   *  route; left undefined by the plain storefront. */
+  dineInLock?: { tableNumber: string; sessionId: string };
 }
 
 export function MenuPublicClient({
@@ -122,6 +126,7 @@ export function MenuPublicClient({
   takeawayEnabled = true,
   compliance,
   pricing,
+  dineInLock,
 }: Props) {
   // Viewport split. SSR defaults to mobile (false) so the initial
   // payload is the smaller mobile shell; the matchMedia effect
@@ -161,6 +166,7 @@ export function MenuPublicClient({
     dineInEnabled,
     items,
     prefillPhone,
+    dineInLock,
   };
 
   return isDesktop ? <DesktopView {...sharedProps} /> : <MobileView {...sharedProps} />;

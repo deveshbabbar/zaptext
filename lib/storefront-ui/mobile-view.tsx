@@ -44,10 +44,14 @@ export function MobileView(props: MobileViewProps) {
     city, cuisineType, workingHours, address,
     deliveryRadius, minimumOrder,
     deliveryAvailable, takeawayEnabled, dineInEnabled,
-    items, prefillPhone,
+    items, prefillPhone, dineInLock,
   } = props;
 
-  const initialMode: OrderMode = deliveryAvailable ? 'delivery'
+  // QR-scan flow forces dine-in mode — customer is physically at the
+  // table, offering Delivery here would be confusing.
+  const initialMode: OrderMode = dineInLock
+    ? 'dine_in'
+    : deliveryAvailable ? 'delivery'
     : takeawayEnabled ? 'takeaway'
     : dineInEnabled ? 'dine_in'
     : 'delivery';
@@ -72,7 +76,7 @@ export function MobileView(props: MobileViewProps) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone || '');
   const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [tableNumber, setTableNumber] = useState('');
+  const [tableNumber, setTableNumber] = useState(dineInLock?.tableNumber || '');
   const [notes, setNotes] = useState('');
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -201,6 +205,8 @@ export function MobileView(props: MobileViewProps) {
           notes: notes.trim(),
           items: cartLines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit })),
           marketingOptIn,
+          // QR-scan flow: link to the open dine-in session for this table.
+          sessionId: dineInLock?.sessionId,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {

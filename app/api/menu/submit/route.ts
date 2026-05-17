@@ -45,6 +45,10 @@ interface SubmitBody {
    *  second one (e.g. for a colleague at a different address). The
    *  short window is anti-double-tap, not a hard cap. */
   bypassRecent?: boolean;
+  /** QR-scan flow: the open dine-in session id for the table. When
+   *  present + valid, the created order is linked to it so the table
+   *  tab + manager dashboard "Live tables" view stay accurate. */
+  sessionId?: string;
 }
 
 const MAX_ITEMS_PER_ORDER = 40;
@@ -338,9 +342,33 @@ export async function POST(request: NextRequest) {
     console.error('[menu-submit] outlet resolution failed (fallback to main)', err);
   }
 
+  // Validate the optional QR-scan sessionId. We only link the order to
+  // the session when it really exists, belongs to THIS client, matches
+  // the table number the customer is checking out for, AND is still
+  // open. Anything malformed / mismatched silently falls back to a
+  // session-less order — the order still goes through, it just doesn't
+  // join the live-tables session view.
+  let linkedSessionId: string | null = null;
+  if (body.sessionId && mode === 'dine_in') {
+    try {
+      const { getSessionById } = await import('@/lib/db/restaurant-dine-in');
+      const sess = await getSessionById(String(body.sessionId)).catch(() => null);
+      if (
+        sess &&
+        sess.client_id === clientId &&
+        sess.table_number === tableNumber &&
+        sess.status === 'open'
+      ) {
+        linkedSessionId = sess.id;
+      }
+    } catch (err) {
+      console.error('[menu-submit] session lookup failed (continuing without link):', err);
+    }
+  }
+
   const order = await createOrder({
     client_id: clientId,
-    session_id: null,
+    session_id: linkedSessionId,
     table_number: mode === 'dine_in' ? tableNumber : null,
     customer_phone: customerPhone,
     customer_name: String(body.customerName || '').trim(),

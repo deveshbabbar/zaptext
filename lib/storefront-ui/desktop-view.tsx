@@ -68,6 +68,15 @@ export interface DesktopViewProps {
   dineInEnabled: boolean;
   items: FlatItem[];
   prefillPhone?: string;
+  /** QR-scan / table-session lock. When set, the view skips the
+   *  "How would you like it?" mode picker and the table-number input
+   *  — the customer is physically at the table, that conversation is
+   *  already settled. Submit POST body includes sessionId so the order
+   *  links into the open dine-in session for that table. */
+  dineInLock?: {
+    tableNumber: string;
+    sessionId: string;
+  };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -96,10 +105,15 @@ export function DesktopView(props: DesktopViewProps) {
     city, cuisineType, workingHours, phone, address, deliveryRadius, minimumOrder,
     fssaiLicenseNumber, gstin,
     deliveryAvailable, takeawayEnabled, dineInEnabled,
-    items, prefillPhone,
+    items, prefillPhone, dineInLock,
   } = props;
 
-  const initialMode: OrderMode = deliveryAvailable ? 'delivery'
+  // QR-scan flow forces dine-in mode regardless of the global serviceModes
+  // — the customer's already at the table; offering Delivery here would be
+  // confusing. The non-QR storefront keeps the existing fallback chain.
+  const initialMode: OrderMode = dineInLock
+    ? 'dine_in'
+    : deliveryAvailable ? 'delivery'
     : takeawayEnabled ? 'takeaway'
     : dineInEnabled ? 'dine_in'
     : 'delivery';
@@ -117,7 +131,7 @@ export function DesktopView(props: DesktopViewProps) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState(prefillPhone || '');
   const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [tableNumber, setTableNumber] = useState('');
+  const [tableNumber, setTableNumber] = useState(dineInLock?.tableNumber || '');
   const [notes, setNotes] = useState('');
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -248,6 +262,9 @@ export function DesktopView(props: DesktopViewProps) {
           notes: notes.trim(),
           items: cartLines.map((l) => ({ name: l.name, qty: l.qty, price: l.unit })),
           marketingOptIn,
+          // QR-scan flow: link the order to its open dine-in session
+          // so /api/menu/submit can attach it to the table's running tab.
+          sessionId: dineInLock?.sessionId,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {

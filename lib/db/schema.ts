@@ -87,6 +87,14 @@ export const clients = pgTable(
     // the [ORDER:] tag. NULL = use platform default (8). Clamped to
     // [1, 200] at the API boundary.
     concurrent_order_cap: integer('concurrent_order_cap'),
+    // Per-channel owner notification toggles. All default ON; owner can
+    // mute individual channels in Bot Settings. Webhook checks these
+    // before firing the corresponding outbound for every order /
+    // booking / payment event. Defaults TRUE so legacy bots on
+    // un-migrated environments behave as they always did.
+    notify_whatsapp: boolean('notify_whatsapp').notNull().default(true),
+    notify_email: boolean('notify_email').notNull().default(true),
+    notify_dashboard: boolean('notify_dashboard').notNull().default(true),
   },
   (t) => ({
     // The webhook hot-path looks up clients by phone_number_id on every

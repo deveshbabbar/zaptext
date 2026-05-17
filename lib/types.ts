@@ -1738,6 +1738,13 @@ export interface ClientRow {
   // bot to quote a wait-time instead of accepting a new [ORDER:] tag.
   // Clamped to [1, 200] at the API boundary.
   concurrent_order_cap?: number | null;
+  // Per-channel owner notification toggles (Default-Prompt Rewrite).
+  // Default TRUE for every bot — owner can mute individual channels
+  // in Bot Settings. The webhook checks the corresponding flag before
+  // firing the outbound for each event type (order / booking / payment).
+  notify_whatsapp?: boolean;
+  notify_email?: boolean;
+  notify_dashboard?: boolean;
 }
 
 // Conversation priority (Work Item 7). Per-message classification produced

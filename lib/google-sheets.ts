@@ -22,6 +22,7 @@ export {
   updateClientField,
   updateClientAllergenStrictMode,
   updateClientConcurrentOrderCap,
+  updateClientNotificationChannels,
 } from './db/clients';
 
 export {

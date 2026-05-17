@@ -61,6 +61,11 @@ function dbRowToClient(row: DbClientRow): ClientRow {
     // webhook can apply the platform default (8) without confusing
     // "owner explicitly set 0" with "owner left it default".
     concurrent_order_cap: row.concurrent_order_cap ?? null,
+    // Owner notification toggles. Default TRUE on legacy rows that
+    // haven't run migration 0009 yet — preserves existing behaviour.
+    notify_whatsapp: row.notify_whatsapp ?? true,
+    notify_email: row.notify_email ?? true,
+    notify_dashboard: row.notify_dashboard ?? true,
   };
 }
 
@@ -266,6 +271,21 @@ export async function updateClientConcurrentOrderCap(
     .update(clientsTable)
     .set({ concurrent_order_cap: value })
     .where(eq(clientsTable.client_id, clientId));
+}
+
+// Per-channel notification toggles (Default-Prompt Rewrite). Partial
+// update — only present keys are applied so the settings UI can flip
+// one toggle at a time without re-asserting the others.
+export async function updateClientNotificationChannels(
+  clientId: string,
+  patch: { whatsapp?: boolean; email?: boolean; dashboard?: boolean }
+): Promise<void> {
+  const set: Record<string, boolean> = {};
+  if (typeof patch.whatsapp === 'boolean') set.notify_whatsapp = patch.whatsapp;
+  if (typeof patch.email === 'boolean') set.notify_email = patch.email;
+  if (typeof patch.dashboard === 'boolean') set.notify_dashboard = patch.dashboard;
+  if (Object.keys(set).length === 0) return;
+  await db.update(clientsTable).set(set).where(eq(clientsTable.client_id, clientId));
 }
 
 // Storefront settings update. Separate from updateClientFields because the

@@ -224,10 +224,17 @@ function wrap(title: string, body: string, ctaUrl?: string, ctaLabel?: string): 
     <td align="center" style="padding:32px 16px;">
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;">
 
-        <!-- Wordmark strip -->
+        <!-- Wordmark strip — actual brand logo image (served from
+             /public/logo.png on production). Absolute URL is mandatory
+             in email; relative paths won't resolve in any client. The
+             URL falls back to www.zaptext.shop when NEXT_PUBLIC_APP_URL
+             isn't set so a build before-env-was-configured can't break
+             the header. -->
         <tr>
-          <td style="padding:0 4px 18px;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${BRAND_MUTE};font-weight:600;">
-            <span style="display:inline-block;width:8px;height:8px;background:${BRAND_GREEN};border-radius:2px;margin-right:8px;vertical-align:middle;"></span>ZapText
+          <td style="padding:0 4px 18px;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://www.zaptext.shop'}" style="text-decoration:none;display:inline-block;">
+              <img src="${process.env.NEXT_PUBLIC_APP_URL || 'https://www.zaptext.shop'}/logo.png" alt="ZapText" width="120" height="32" style="display:block;border:0;outline:none;width:120px;height:auto;max-width:140px;" />
+            </a>
           </td>
         </tr>
 

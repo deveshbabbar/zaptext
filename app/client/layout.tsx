@@ -10,6 +10,7 @@ import { findActiveMembershipForEmail } from '@/lib/db/team-members';
 import { getClientById } from '@/lib/db/clients';
 import { getOutletById } from '@/lib/db/outlets';
 import Link from 'next/link';
+import Image from 'next/image';
 import { WelcomeTrigger } from '@/components/welcome-trigger';
 import { AppShell } from '@/components/app/app-shell';
 
@@ -109,8 +110,12 @@ export default async function ClientLayout({ children }: { children: React.React
           className="flex items-center gap-2.5 pb-4 border-b border-white/10 mb-3.5"
           style={{ padding: '4px 8px 16px' }}
         >
-          <span className="w-8 h-8 rounded-[8px] bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center zt-mono font-extrabold text-[18px]">
-            Z
+          {/* Brand logo — uses the actual PNG from /public/logo.png
+              instead of the old styled "Z" letter. Background is the
+              dark sidebar so we keep a soft white tile behind the logo
+              for contrast (logo's green strokes need light backdrop). */}
+          <span style={{ width: 32, height: 32, borderRadius: 8, background: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Image src="/logo.png" alt="ZapText" width={26} height={26} priority style={{ width: 26, height: 26, objectFit: 'contain' }} />
           </span>
           <div>
             <div className="font-bold tracking-[-0.01em]">ZapText</div>

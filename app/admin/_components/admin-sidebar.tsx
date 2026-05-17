@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 
@@ -23,8 +24,10 @@ export default function AdminSidebar({ name, email, initials }: AdminSidebarProp
         className="flex items-center gap-2.5 pb-4 border-b border-white/10 mb-3.5"
         style={{ padding: '4px 8px 16px' }}
       >
-        <span className="w-8 h-8 rounded-[8px] bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center zt-mono font-extrabold text-[18px]">
-          Z
+        {/* Brand logo — uses /public/logo.png. White tile keeps the
+            logo's green strokes legible against the dark sidebar. */}
+        <span style={{ width: 32, height: 32, borderRadius: 8, background: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Image src="/logo.png" alt="ZapText" width={26} height={26} priority style={{ width: 26, height: 26, objectFit: 'contain' }} />
         </span>
         <div>
           <div className="font-bold tracking-[-0.01em]">ZapText</div>

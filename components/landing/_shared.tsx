@@ -6,12 +6,22 @@
 
 import type React from "react";
 import Link from "next/link";
+import Image from "next/image";
 
+// Brand mark — renders /public/logo.png at 30px square. Replaced the
+// styled "Z" letter mark when the actual brand logo (green Z-bolt)
+// was added; keeps the same outer 30x30 box so existing nav layouts
+// don't shift.
 export function Mark() {
   return (
-    <span className="w-[30px] h-[30px] rounded-[8px] bg-[var(--ink)] text-[var(--accent)] grid place-items-center zt-mono font-bold text-[17px] shadow-[2px_2px_0_0_var(--accent)]">
-      Z
-    </span>
+    <Image
+      src="/logo.png"
+      alt="ZapText"
+      width={30}
+      height={30}
+      priority
+      style={{ width: 30, height: 30, objectFit: 'contain' }}
+    />
   );
 }
 

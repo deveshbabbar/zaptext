@@ -391,7 +391,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
             try {
               // Find most-recent pending_approval booking for this client.
               const todayIst = getTodayIST();
-              const yesterdayIst = getDateOffset(-1);
+              const yesterdayIst = getDateOffset(todayIst, -1);
               const recent = [
                 ...(await getBookingsForDate(client.client_id, todayIst).catch(() => [])),
                 ...(await getBookingsForDate(client.client_id, yesterdayIst).catch(() => [])),

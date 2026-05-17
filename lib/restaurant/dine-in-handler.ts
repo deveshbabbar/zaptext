@@ -100,6 +100,7 @@ function tablePublicMenuUrl(
   tableNumber: string,
   sessionId: string,
   slug?: string,
+  customerPhone?: string,
 ): string {
   // NEXT_PUBLIC_APP_URL is baked at build time. If the build was made
   // before the env var was set on Vercel, it'll be undefined here and
@@ -108,6 +109,13 @@ function tablePublicMenuUrl(
   // text and the customer can't open the menu. Hard fallback to the
   // production origin matches the pattern in app/api/webhook/route.ts.
   const base = (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://zaptext.shop').toLowerCase();
+  // The bot already knows the customer's WhatsApp number (it's `msg.from`
+  // on the inbound). Forward it as `?p=<digits>` so the storefront's
+  // prefillPhone fills the checkout WhatsApp field automatically — saves
+  // the customer one annoying step ("why do I have to retype my number,
+  // you just messaged me on it"). Strip non-digits defensively.
+  const phoneDigits = (customerPhone || '').replace(/\D/g, '');
+  const prefillSuffix = phoneDigits.length >= 10 ? `?p=${phoneDigits}` : '';
   // When the owner has set a storefront slug, prefer the branded
   // subdomain (`tandoortadka.zaptext.shop/<table>/<session>`) over the
   // legacy clientId path — much friendlier link preview on WhatsApp.
@@ -122,10 +130,10 @@ function tablePublicMenuUrl(
     const host = m ? m[1] : 'zaptext.shop';
     // Only use the slug subdomain on the production root domain.
     if (host === 'zaptext.shop' || host.endsWith('.zaptext.shop')) {
-      return `https://${trimmedSlug}.zaptext.shop/${encodeURIComponent(tableNumber)}/${sessionId}`;
+      return `https://${trimmedSlug}.zaptext.shop/${encodeURIComponent(tableNumber)}/${sessionId}${prefillSuffix}`;
     }
   }
-  return `${base}/m/${clientId}/${encodeURIComponent(tableNumber)}/${sessionId}`;
+  return `${base}/m/${clientId}/${encodeURIComponent(tableNumber)}/${sessionId}${prefillSuffix}`;
 }
 
 function welcomeReply(businessName: string, tableNumber: string, menuUrl: string): string {
@@ -257,7 +265,7 @@ export async function handleDineInIncoming(input: DineInIncoming): Promise<DineI
       table_number: table.table_number,
       customer_phone: input.customer_phone,
     });
-    const menuUrl = tablePublicMenuUrl(input.client_id, table.table_number, session.id, input.slug);
+    const menuUrl = tablePublicMenuUrl(input.client_id, table.table_number, session.id, input.slug, input.customer_phone);
     return {
       handled: true,
       reply: maybeStripHinglish(welcomeReply(input.business_name, table.table_number, menuUrl), input.languages),

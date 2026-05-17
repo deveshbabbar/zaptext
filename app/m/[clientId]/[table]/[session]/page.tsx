@@ -48,10 +48,17 @@ function parseSizesFromPriceString(raw: string): Array<{ label: string; price: n
 
 export default async function TableSessionMenuPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clientId: string; table: string; session: string }>;
+  searchParams: Promise<{ p?: string }>;
 }) {
   const { clientId, table, session } = await params;
+  // ?p=<digits> arrives from the bot's welcome WhatsApp link (it knows the
+  // customer's WhatsApp number from msg.from). Forwarded into the
+  // storefront's prefillPhone so checkout's "WhatsApp number" field is
+  // already filled in — saves the customer typing it back to the bot.
+  const { p: prefillPhone = '' } = await searchParams;
 
   // Subdomain rewrites land here with `clientId` = the storefront slug
   // ("tandoortadka"). Resolve via id-or-slug so the same route works
@@ -255,6 +262,7 @@ export default async function TableSessionMenuPage({
         phone={client.contact_number || client.whatsapp_number}
         address={address}
         palette={palette}
+        prefillPhone={prefillPhone}
         // QR-scan customer is physically at the table — only dine-in
         // makes sense. The MenuPublicClient + DesktopView/MobileView
         // honour these flags to suppress the mode picker for delivery

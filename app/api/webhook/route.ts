@@ -1504,32 +1504,37 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
           console.error('Trainer booking notify failed:', e);
         }
 
-        // Notify owner via WhatsApp
-        const ownerMsg = `🔔 *New Booking!*\n\n👤 ${name}\n📞 ${customerPhone}\n📅 ${date}\n🕐 ${time}\n${service ? `💼 ${service}\n` : ''}`;
-        await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
-        // Notify owner via email
-        try {
-          const cc = await clerkClient();
-          const owner = await cc.users.getUser(client.owner_user_id);
-          const ownerEmail = owner.emailAddresses[0]?.emailAddress;
-          const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
-          if (ownerEmail) {
-            await sendTemplate(
-              ownerEmail,
-              tplNewBooking({
+        // Notify owner via WhatsApp — gated by per-client notify_whatsapp.
+        // Default TRUE if undefined (legacy clients).
+        if (client.notify_whatsapp !== false) {
+          const ownerMsg = `🔔 *New Booking!*\n\n👤 ${name}\n📞 ${customerPhone}\n📅 ${date}\n🕐 ${time}\n${service ? `💼 ${service}\n` : ''}`;
+          await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+        }
+        // Notify owner via email — gated by per-client notify_email.
+        if (client.notify_email !== false) {
+          try {
+            const cc = await clerkClient();
+            const owner = await cc.users.getUser(client.owner_user_id);
+            const ownerEmail = owner.emailAddresses[0]?.emailAddress;
+            const ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'there';
+            if (ownerEmail) {
+              await sendTemplate(
+                ownerEmail,
+                tplNewBooking({
+                  ownerName,
+                  businessName: client.business_name,
+                  customerName: name || customerPhone,
+                  customerPhone,
+                  date,
+                  time,
+                  service: service || undefined,
+                }),
                 ownerName,
-                businessName: client.business_name,
-                customerName: name || customerPhone,
-                customerPhone,
-                date,
-                time,
-                service: service || undefined,
-              }),
-              ownerName,
-            );
+              );
+            }
+          } catch (e) {
+            console.error('Booking email failed:', e);
           }
-        } catch (e) {
-          console.error('Booking email failed:', e);
         }
       } catch (e) {
         if ((e as Error).message === 'SLOT_TAKEN') {
@@ -1702,31 +1707,33 @@ If the customer asks about a ${roleLabel.singular.toLowerCase()}, follow the emp
           notes: notesParts.join(' | '),
         });
 
-        // Real-time WhatsApp to owner
-        const itemsList = items.length ? items.map((i) => `  • ${i}`).join('\n') : '  (no items parsed)';
-        const stockSummary = reservation?.success
-          ? '\n\n📦 Stock updated:\n' +
-            reservation.lines
-              .map((l) => `  • ${l.matchedName}: ${l.stockBefore} → ${l.stockAfter}`)
-              .join('\n')
-          : '';
-        const ownerMsg = `🛍️ *New Order!*\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}${stockSummary}\n\n🕐 ${timeSlot} · ${todayIst}`;
-        await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
+        // Real-time WhatsApp to owner — gated by per-client notify_whatsapp.
+        if (client.notify_whatsapp !== false) {
+          const itemsList = items.length ? items.map((i) => `  • ${i}`).join('\n') : '  (no items parsed)';
+          const stockSummary = reservation?.success
+            ? '\n\n📦 Stock updated:\n' +
+              reservation.lines
+                .map((l) => `  • ${l.matchedName}: ${l.stockBefore} → ${l.stockAfter}`)
+                .join('\n')
+            : '';
+          const ownerMsg = `🛍️ *New Order!*\n\n📞 ${customerPhone}\n💰 *₹${total.toFixed(2)}* · ${itemCount} item${itemCount === 1 ? '' : 's'}\n\n${itemsList}${address ? `\n\n📍 ${address}` : ''}${extraNotes ? `\n\n📝 ${extraNotes}` : ''}${stockSummary}\n\n🕐 ${timeSlot} · ${todayIst}`;
+          await sendWhatsAppMessage(phoneNumberId, client.whatsapp_number.replace('+', ''), ownerMsg);
 
-        // Low-stock alerts (separate message so it stands out)
-        if (reservation?.lowStockAlerts?.length) {
-          const alertLines = reservation.lowStockAlerts
-            .map((a) => `• ${a.name}: ${a.stock} left (threshold: ${a.threshold})`)
-            .join('\n');
-          await sendWhatsAppMessage(
-            phoneNumberId,
-            client.whatsapp_number.replace('+', ''),
-            `⚠️ *Low stock alert*\n${alertLines}\n\nText *stock ${reservation.lowStockAlerts[0].sku} <qty>* to set new count.`
-          );
+          // Low-stock alerts (separate message so it stands out)
+          if (reservation?.lowStockAlerts?.length) {
+            const alertLines = reservation.lowStockAlerts
+              .map((a) => `• ${a.name}: ${a.stock} left (threshold: ${a.threshold})`)
+              .join('\n');
+            await sendWhatsAppMessage(
+              phoneNumberId,
+              client.whatsapp_number.replace('+', ''),
+              `⚠️ *Low stock alert*\n${alertLines}\n\nText *stock ${reservation.lowStockAlerts[0].sku} <qty>* to set new count.`
+            );
+          }
         }
 
-        // Email owner
-        try {
+        // Email owner — gated by per-client notify_email.
+        if (client.notify_email !== false) try {
           const cc = await clerkClient();
           const owner = await cc.users.getUser(client.owner_user_id);
           const ownerEmail = owner.emailAddresses[0]?.emailAddress;

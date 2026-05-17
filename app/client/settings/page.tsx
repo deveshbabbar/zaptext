@@ -33,6 +33,14 @@ export default function ClientSettingsPage() {
   // back to int on save.
   const [concurrentOrderCap, setConcurrentOrderCap] = useState<string>('');
   const [initialConcurrentOrderCap, setInitialConcurrentOrderCap] = useState<string>('');
+  // Per-channel notification toggles (Default-Prompt Rewrite). All
+  // default ON server-side; owner can mute individually.
+  const [notifyWhatsapp, setNotifyWhatsapp] = useState(true);
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [notifyDashboard, setNotifyDashboard] = useState(true);
+  const [initialNotifyWhatsapp, setInitialNotifyWhatsapp] = useState(true);
+  const [initialNotifyEmail, setInitialNotifyEmail] = useState(true);
+  const [initialNotifyDashboard, setInitialNotifyDashboard] = useState(true);
   const [botName, setBotName] = useState('');
   const [botType, setBotType] = useState('');
   // Business-details fields (live inside knowledge_base_json under
@@ -93,6 +101,10 @@ export default function ClientSettingsPage() {
   // matches the on-page panel order so the labels read top-to-bottom.
   const allergenDirty = allergenStrictMode !== initialAllergenStrict;
   const capDirty = concurrentOrderCap.trim() !== initialConcurrentOrderCap.trim();
+  const notifyDirty =
+    notifyWhatsapp !== initialNotifyWhatsapp ||
+    notifyEmail !== initialNotifyEmail ||
+    notifyDashboard !== initialNotifyDashboard;
   const dirtySections = useMemo<string[]>(() => {
     const out: string[] = [];
     if (bizDirty) out.push('Business details');
@@ -101,8 +113,9 @@ export default function ClientSettingsPage() {
     if (kbDirty) out.push('Business knowledge');
     if (allergenDirty) out.push('Allergen safety');
     if (capDirty) out.push('Kitchen capacity');
+    if (notifyDirty) out.push('Notifications');
     return out;
-  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty]);
+  }, [bizDirty, ptDirty, promptDirty, kbDirty, allergenDirty, capDirty, notifyDirty]);
   const anyDirty = dirtySections.length > 0;
 
   useEffect(() => {
@@ -139,6 +152,17 @@ export default function ClientSettingsPage() {
           typeof data.concurrentOrderCap === 'number' ? String(data.concurrentOrderCap) : '';
         setConcurrentOrderCap(nextCap);
         setInitialConcurrentOrderCap(nextCap);
+        // Per-channel notification defaults — TRUE if missing (legacy
+        // env without migration 0009 applied).
+        const wh = typeof data.notifyWhatsapp === 'boolean' ? data.notifyWhatsapp : true;
+        const em = typeof data.notifyEmail === 'boolean' ? data.notifyEmail : true;
+        const dh = typeof data.notifyDashboard === 'boolean' ? data.notifyDashboard : true;
+        setNotifyWhatsapp(wh);
+        setNotifyEmail(em);
+        setNotifyDashboard(dh);
+        setInitialNotifyWhatsapp(wh);
+        setInitialNotifyEmail(em);
+        setInitialNotifyDashboard(dh);
         // Pull business-detail fields out of the parsed KB so the inputs
         // below are pre-filled. Empty strings are fine — we won't overwrite
         // the saved KB with an empty value unless the user explicitly clears.
@@ -377,6 +401,10 @@ export default function ClientSettingsPage() {
           }
         }
       }
+      // Per-channel notification toggles — only send the keys that changed.
+      if (notifyWhatsapp !== initialNotifyWhatsapp) bulk.notify_whatsapp = notifyWhatsapp;
+      if (notifyEmail !== initialNotifyEmail) bulk.notify_email = notifyEmail;
+      if (notifyDashboard !== initialNotifyDashboard) bulk.notify_dashboard = notifyDashboard;
 
       // If the business-detail fields (address / city / working hours /
       // welcome) were touched, merge them into the KB JSON we send. We
@@ -423,6 +451,10 @@ export default function ClientSettingsPage() {
         // Same for the capacity cap. If the owner cleared the input we
         // store '' in the baseline so the empty-state diff is right.
         setInitialConcurrentOrderCap(concurrentOrderCap.trim());
+        // Same for the notification channel baselines.
+        setInitialNotifyWhatsapp(notifyWhatsapp);
+        setInitialNotifyEmail(notifyEmail);
+        setInitialNotifyDashboard(notifyDashboard);
         // Work Item 6: surface inventory auto-sync count when the KB was
         // touched — replaces the old "Click Sync to inventory" instruction
         // which lied (the sync already ran server-side).
@@ -795,6 +827,57 @@ export default function ClientSettingsPage() {
                 </div>
               </Panel>
             )}
+
+            {/* ── Notification channels (Default-Prompt Rewrite) ────────────
+                Owner picks which channels fire for new orders / bookings /
+                payment events. All default ON. Useful for high-volume
+                restaurants who want to mute email (inbox floods) or keep
+                only the dashboard. */}
+            <Panel title="Owner notifications" sub="Pick which channels ping you on new orders, bookings, and payments. All default ON.">
+              {[
+                { key: 'whatsapp', label: 'WhatsApp', value: notifyWhatsapp, set: setNotifyWhatsapp, hint: 'Bot pings your WhatsApp number on every event. Most important — don\'t mute unless you have a dedicated staff dashboard.' },
+                { key: 'email', label: 'Email', value: notifyEmail, set: setNotifyEmail, hint: 'Email digest of orders / bookings. Useful for record-keeping; high-volume restaurants often mute this to keep the inbox clean.' },
+                { key: 'dashboard', label: 'Dashboard', value: notifyDashboard, set: setNotifyDashboard, hint: 'Browser / sound alert on /client/restaurant/orders when a new order lands. Always shows in the Kanban regardless; this only governs the alert.' },
+              ].map((row) => (
+                <div key={row.key} className="flex items-start gap-3.5 py-2.5" style={{ borderBottom: '1px solid var(--line)' }}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={row.value}
+                    aria-label={`Toggle ${row.label} notifications`}
+                    onClick={() => row.set(!row.value)}
+                    className="relative rounded-full cursor-pointer flex-shrink-0"
+                    style={{
+                      width: 38,
+                      height: 22,
+                      background: row.value ? 'var(--ink)' : 'var(--bg-2)',
+                      transition: 'background .2s',
+                      marginTop: 2,
+                    }}
+                  >
+                    <span
+                      className="absolute top-[3px] rounded-full transition-all"
+                      style={{
+                        width: 16,
+                        height: 16,
+                        left: row.value ? 19 : 3,
+                        background: row.value ? 'var(--accent)' : 'var(--card)',
+                        boxShadow: '0 1px 3px #00000022',
+                      }}
+                    />
+                  </button>
+                  <div className="flex-1 text-[13px] leading-snug">
+                    <div className="font-semibold mb-0.5">{row.label}</div>
+                    <div className="text-[var(--mute)] text-[12px]">{row.hint}</div>
+                  </div>
+                </div>
+              ))}
+              {notifyDirty && (
+                <div className="text-[10.5px] zt-mono uppercase tracking-[.08em] text-[#E89A1C] mt-2">
+                  unsaved
+                </div>
+              )}
+            </Panel>
 
             <Panel title="System prompt" sub="The instructions your bot follows. Edit carefully.">
               <textarea

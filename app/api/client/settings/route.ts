@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { resolveActiveBot } from '@/lib/active-bot';
-import { updateClientField, updateClientFields, updateClientAllergenStrictMode, updateClientConcurrentOrderCap } from '@/lib/google-sheets';
+import { updateClientField, updateClientFields, updateClientAllergenStrictMode, updateClientConcurrentOrderCap, updateClientNotificationChannels } from '@/lib/google-sheets';
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
@@ -54,6 +54,10 @@ export async function GET() {
     // or null so the owner can tell "I haven't set this" from "I picked 8".
     concurrentOrderCap:
       typeof bot.concurrent_order_cap === 'number' ? bot.concurrent_order_cap : null,
+    // Per-channel notification toggles. Default TRUE on un-migrated bots.
+    notifyWhatsapp: bot.notify_whatsapp !== false,
+    notifyEmail: bot.notify_email !== false,
+    notifyDashboard: bot.notify_dashboard !== false,
   });
 }
 
@@ -185,7 +189,15 @@ export async function POST(request: NextRequest) {
         capValue = clamped;
       }
 
-      if (Object.keys(writes).length === 0 && allergenStrictWritten === null && capWritten === null) {
+      // Per-channel notification toggles. Same boolean-via-dedicated-helper
+      // pattern as the two above. Partial patch — only present keys flip.
+      const notifyPatch: { whatsapp?: boolean; email?: boolean; dashboard?: boolean } = {};
+      if (typeof bulk.notify_whatsapp === 'boolean') notifyPatch.whatsapp = bulk.notify_whatsapp;
+      if (typeof bulk.notify_email === 'boolean') notifyPatch.email = bulk.notify_email;
+      if (typeof bulk.notify_dashboard === 'boolean') notifyPatch.dashboard = bulk.notify_dashboard;
+      const hasNotifyPatch = Object.keys(notifyPatch).length > 0;
+
+      if (Object.keys(writes).length === 0 && allergenStrictWritten === null && capWritten === null && !hasNotifyPatch) {
         return NextResponse.json({ error: 'Nothing to save' }, { status: 400 });
       }
 
@@ -197,6 +209,9 @@ export async function POST(request: NextRequest) {
       }
       if (capWritten !== null) {
         await updateClientConcurrentOrderCap(bot.client_id, capValue);
+      }
+      if (hasNotifyPatch) {
+        await updateClientNotificationChannels(bot.client_id, notifyPatch);
       }
 
       // Auto-sync inventory whenever the KB is updated. The owner's edits to
@@ -228,6 +243,7 @@ export async function POST(request: NextRequest) {
       const savedKeys = Object.keys(writes);
       if (allergenStrictWritten !== null) savedKeys.push('allergen_strict_mode');
       if (capWritten !== null) savedKeys.push('concurrent_order_cap');
+      if (hasNotifyPatch) savedKeys.push(...Object.keys(notifyPatch).map((k) => `notify_${k}`));
       return NextResponse.json({
         success: true,
         systemPrompt: writes.system_prompt,

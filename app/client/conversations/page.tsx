@@ -114,7 +114,47 @@ export default function ConversationsPage() {
   }
 
   useEffect(() => {
+    // Initial fetch on mount, then keep the thread live by re-polling
+    // every 5s while the tab is visible. New inbound customer messages
+    // appear without the owner having to refresh the page. Polling
+    // pauses when the tab is hidden so we don't burn Sheets / Neon
+    // quota on a background tab; on show we fire a fresh fetch
+    // immediately so the owner sees the latest state right away.
+    //
+    // Owner state (composer, activePhone, sending, sendError) is held
+    // in independent useState slots — re-setting `conversations` does
+    // NOT clobber the draft message or the currently-open chat. The
+    // existing send-reply path already calls `reload()` after 800ms;
+    // this just makes the same reload run on a timer too.
+    //
+    // 5s is a deliberate middle ground: fast enough that "live"
+    // really feels live (WhatsApp Web is in the same range), slow
+    // enough that a busy owner doesn't hammer the API. If this gets
+    // expensive on a Scale-plan owner with 10k+ messages per bot,
+    // the right next step is a delta endpoint `?since=<iso>` —
+    // current `reload()` re-pulls the full conversations map.
     reload();
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (!timer) timer = setInterval(reload, 5000); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        reload();
+        start();
+      }
+    };
+
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   async function togglePause(phone: string, paused: boolean) {

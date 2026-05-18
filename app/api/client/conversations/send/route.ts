@@ -18,7 +18,7 @@ import { isWithinCustomerServiceWindow } from '@/lib/whatsapp-templates';
 import { getConversationHistory, addConversationMessage } from '@/lib/google-sheets';
 import { canUse } from '@/lib/feature-gates';
 import { getActiveSubscription } from '@/lib/subscription';
-import { getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
+import { getISTTimestamp } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
   const user = await getUserRole();
@@ -46,13 +46,18 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  // Normalise to E.164 (+91XXXXXXXXXX) before any downstream use. The
-  // webhook path always stores phones in E.164; this manual-send path
-  // previously trusted whatever the caller typed, so a stored number
-  // like '+91-9876-543-210' would hit the WhatsApp API with garbage
-  // and surface to the owner as SEND_FAILED with no clear reason.
+  // Strip any non-digit characters (defends against an owner pasting
+  // "+91-9876-543-210"-style values) but DO NOT add a leading "+".
+  // The webhook writes phones to `conversations.customer_phone` in
+  // digits-only form (e.g. "919999123296") because that's what Meta's
+  // Cloud API delivers in `msg.from`. A previous version of this
+  // route ran the input through formatPhoneNumber() which prepended
+  // a "+", causing every history lookup to miss → the route then
+  // bogusly returned OUTSIDE_24HR_WINDOW even when the customer had
+  // messaged seconds earlier. Keeping the format aligned with the DB
+  // is the actual fix; Meta's API accepts digits-only just fine.
   const rawPhone = (body.customer_phone || '').trim();
-  const phone = rawPhone ? formatPhoneNumber(rawPhone) : '';
+  const phone = rawPhone ? rawPhone.replace(/\D/g, '') : '';
   const message = (body.message || '').trim();
   if (!phone) return NextResponse.json({ error: 'customer_phone required' }, { status: 400 });
   if (!message) return NextResponse.json({ error: 'message required' }, { status: 400 });

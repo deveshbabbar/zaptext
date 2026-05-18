@@ -245,16 +245,29 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
   // active plan (paid plan lapsed, or trial not yet started). We don't burn
   // Gemini quota on a non-paying account — send a polite single-shot reply
   // and stop. Owner messages bypass so they can still issue control commands.
-  const ownerDigits = client.whatsapp_number.replace(/\D/g, '');
-  // Owner-notification destination. Prefer `contact_number` (the owner's
-  // personal phone, set in /client/settings). Fall back to whatsapp_number
-  // for legacy bots. When the bot's WABA number IS the owner's whatsapp_number
-  // (common in single-number demo setups), Meta refuses send-to-self with
-  // #100 Invalid Parameter — so a separate contact_number is required.
-  // Empty string here = owner-WhatsApp notifications get skipped at every
-  // call site (email/dashboard still fire).
-  const ownerNotifyDigits = (client.contact_number || '').replace(/\D/g, '');
-  const ownerWhatsApp = ownerNotifyDigits.length >= 10 ? ownerNotifyDigits : ownerDigits;
+  //
+  // Owner identification uses `contact_number` (the owner's PERSONAL
+  // WhatsApp number, set in /client/settings → "Owner WhatsApp number").
+  // Earlier versions of this code used `whatsapp_number` here, but that's
+  // the BOT's own number (the WABA number customers reach the bot at) —
+  // an owner messaging the bot from their personal phone could NEVER
+  // match the bot's own number, so they got treated as a customer and
+  // commands like "approve" fell through to the AI chat handler.
+  //
+  // Fallback to whatsapp_number is preserved for legacy single-number
+  // demos where the owner uses the bot's own number as their personal
+  // phone too — in real production, owners always set contact_number.
+  const ownerPersonalDigits = (client.contact_number || '').replace(/\D/g, '');
+  const botNumberDigits = client.whatsapp_number.replace(/\D/g, '');
+  const ownerDigits = ownerPersonalDigits.length >= 10 ? ownerPersonalDigits : botNumberDigits;
+  // Outbound notification destination. When the bot's WABA number IS the
+  // owner's whatsapp_number (common in single-number demo setups), Meta
+  // refuses send-to-self with #100 Invalid Parameter — so a separate
+  // contact_number is required. Empty string here = owner-WhatsApp
+  // notifications get skipped at every call site (email/dashboard still
+  // fire).
+  const ownerNotifyDigits = ownerPersonalDigits;
+  const ownerWhatsApp = ownerNotifyDigits.length >= 10 ? ownerNotifyDigits : botNumberDigits;
   const isSubscriptionExpired = !ownerSubscription;
 
   for (const msg of messages) {

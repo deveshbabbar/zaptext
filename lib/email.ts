@@ -189,7 +189,6 @@ const BRAND_MUTE  = '#6F6A5F';     // captions / labels
 const BRAND_LINE  = '#E8E1C8';     // dividers / borders
 const BRAND_PAGE  = '#F8F4E3';     // outer page bg (cream)
 const BRAND_CARD  = '#FFFFFF';     // card bg
-const BRAND_GREEN = '#25D366';     // WhatsApp green — used sparingly
 const BRAND_GREEN_DARK = '#1A8A47';// CTA button (better contrast than pure green)
 
 function wrap(title: string, body: string, ctaUrl?: string, ctaLabel?: string): string {

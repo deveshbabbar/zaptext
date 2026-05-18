@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBookingsForTomorrow, getDateOffset, getTodayIST } from '@/lib/booking';
 import { getClientById } from '@/lib/google-sheets';
+import type { ClientRow } from '@/lib/types';
 import { sendWhatsAppTemplate, TEMPLATE_NAMES } from '@/lib/whatsapp-templates';
 import { claimCronRun, finishCronRun } from '@/lib/db/cron-runs';
 
@@ -32,11 +33,23 @@ export async function GET(request: NextRequest) {
   let smsSent = 0;
   const errors: string[] = [];
 
+  // Memoise getClientById across the loop. 50 bookings often span only
+  // 5-10 unique clients, but the old code fetched each client_id
+  // freshly per booking — 5× extra Sheets API calls minimum, easily
+  // tripping the per-user 60 reads/min quota on a busy evening.
+  const clientCache = new Map<string, ClientRow | null>();
+  const resolveClient = async (id: string): Promise<ClientRow | null> => {
+    if (clientCache.has(id)) return clientCache.get(id) ?? null;
+    const row = await getClientById(id).catch(() => null);
+    clientCache.set(id, row);
+    return row;
+  };
+
   try {
     for (const b of bookings) {
       if (b.reminded) continue;
       try {
-        const client = await getClientById(b.client_id);
+        const client = await resolveClient(b.client_id);
         if (!client) continue;
         if (!client.phone_number_id || !b.customer_phone) continue;
 

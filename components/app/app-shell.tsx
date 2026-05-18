@@ -36,7 +36,7 @@ export function AppShell({ aside, children, brandSub = 'Workspace' }: Props) {
   return (
     <div className="flex h-[100dvh] relative overflow-hidden">
       {/* Mobile topbar */}
-      <header className="md:hidden fixed top-0 inset-x-0 z-40 h-16 flex items-center justify-between px-2 bg-[var(--sidebar)] text-[var(--sidebar-foreground)] border-b border-white/10">
+      <header className="md:hidden fixed top-0 inset-x-0 z-40 h-16 flex items-center justify-between px-2 bg-[var(--sidebar)] text-[var(--sidebar-foreground)] border-b border-white/10 overflow-hidden">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

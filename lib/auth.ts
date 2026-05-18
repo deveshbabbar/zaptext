@@ -19,15 +19,45 @@ export interface ClientUserInfo extends UserInfo {
   allBots: ClientRow[];
 }
 
+// Defense-in-depth admin allowlist. Set in env as:
+//   ADMIN_EMAIL_ALLOWLIST="alice@zaptext.shop,bob@zaptext.shop"
+// When set, only users whose primary email is on this list can hold
+// the `admin` role even if Clerk's publicMetadata.role says "admin".
+// When UNSET, role comes from Clerk metadata alone — backward
+// compatible, no rollout breakage if the env isn't configured yet.
+//
+// Protects against: misconfigured Clerk dashboard, accidental
+// metadata writes, test users with role:'admin' bleeding into prod,
+// and any future leak path that lets someone flip the metadata flag.
+const ADMIN_EMAIL_ALLOWLIST: Set<string> | null = (() => {
+  const raw = (process.env.ADMIN_EMAIL_ALLOWLIST || '').trim();
+  if (!raw) return null;
+  const list = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.includes('@'));
+  return list.length > 0 ? new Set(list) : null;
+})();
+
 export async function getUserRole(): Promise<UserInfo | null> {
   const user = await currentUser();
   if (!user) return null;
   const meta = user.publicMetadata as Record<string, string>;
-  const role = (meta.role as 'admin' | 'client') || 'client';
+  let role = (meta.role as 'admin' | 'client') || 'client';
+  const email = user.emailAddresses[0]?.emailAddress || '';
+
+  if (role === 'admin' && ADMIN_EMAIL_ALLOWLIST && !ADMIN_EMAIL_ALLOWLIST.has(email.toLowerCase())) {
+    console.warn('[auth] demoting admin → client; email not in ADMIN_EMAIL_ALLOWLIST', {
+      userId: user.id,
+      email,
+    });
+    role = 'client';
+  }
+
   return {
     userId: user.id,
     role,
-    email: user.emailAddresses[0]?.emailAddress || '',
+    email,
     name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
   };
 }

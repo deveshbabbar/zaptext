@@ -33,6 +33,48 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
+      // Baseline security headers applied to EVERY response. Defense-
+      // in-depth — Clerk + middleware already handle auth; this layer
+      // mitigates clickjacking (X-Frame-Options), MIME-sniffing
+      // (X-Content-Type-Options), insecure referer leakage
+      // (Referrer-Policy), aggressive prefetch (X-DNS-Prefetch-Control),
+      // and forces HTTPS for return visits (HSTS).
+      //
+      // The CSP is intentionally permissive on script-src because the
+      // app uses Razorpay's checkout SDK and Clerk's frontend SDK,
+      // both of which inject scripts at runtime — we whitelist their
+      // hosts instead of blocking them outright. 'unsafe-inline' is
+      // required by Next.js hydration bootstrap; 'unsafe-eval' is
+      // required by Clerk's runtime. If you tighten further, test
+      // sign-in, payment flow, and Razorpay's checkout iframe.
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-DNS-Prefetch-Control", value: "off" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.clerk.accounts.dev https://*.clerk.dev https://clerk.com https://challenges.cloudflare.com https://www.googletagmanager.com",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "img-src 'self' data: blob: https:",
+              "font-src 'self' data: https://fonts.gstatic.com",
+              "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.clerk.accounts.dev https://*.clerk.dev https://clerk.com https://vitals.vercel-insights.com wss:",
+              "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "object-src 'none'",
+              "upgrade-insecure-requests",
+            ].join("; "),
+          },
+        ],
+      },
     ];
   },
 };

@@ -126,8 +126,8 @@ export default async function ClientLayout({ children }: { children: React.React
               <Image
                 src="/favicon.png"
                 alt=""
-                width={88}
-                height={88}
+                width={72}
+                height={72}
                 priority
                 style={{ width: 72, height: 72, objectFit: 'contain', marginLeft: -10, marginRight: -4, flexShrink: 0 }}
               />

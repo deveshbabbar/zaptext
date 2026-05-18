@@ -60,20 +60,25 @@ function detectStorefrontSlug(req: NextRequest): string | null {
 }
 
 // Clerk handler — runs only when the request is NOT a storefront subdomain.
-// Wrapping it as a named handler lets the outer middleware short-circuit
+// Wrapping it as a named handler lets the outer proxy short-circuit
 // subdomain traffic BEFORE Clerk does any session work. Previously the
 // subdomain detection ran INSIDE clerkMiddleware, which meant Clerk still
 // initialised its handshake state on storefront hosts and bounced visitors
 // through clerk.zaptext.shop (a satellite domain that doesn't exist),
 // ending in a generic 404. Hoisting the subdomain check above Clerk fully
 // removes that auth path for public storefronts.
+//
+// File renamed from middleware.ts → proxy.ts for Next.js 16. The Clerk
+// `clerkMiddleware()` factory itself still works under this convention —
+// only the file name and exported function name change. (Next.js 16
+// deprecated the `middleware` filename in favour of `proxy`.)
 const clerkHandler = clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) {
     await auth.protect();
   }
 });
 
-export default async function middleware(req: NextRequest, event: NextFetchEvent) {
+export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   const slug = detectStorefrontSlug(req);
   if (slug) {
     const url = req.nextUrl.clone();

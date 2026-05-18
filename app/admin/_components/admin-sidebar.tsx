@@ -36,8 +36,8 @@ export default function AdminSidebar({ name, email, initials }: AdminSidebarProp
             <Image
               src="/favicon.png"
               alt=""
-              width={88}
-              height={88}
+              width={72}
+              height={72}
               priority
               style={{ width: 72, height: 72, objectFit: 'contain', marginLeft: -10, marginRight: -4, flexShrink: 0 }}
             />

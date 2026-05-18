@@ -16,15 +16,23 @@ export async function GET() {
       getSubscriptionHistory(user.userId),
     ]);
 
-    // On trial: sum outbound replies across the user's bots for the usage meter.
+    // On trial: sum outbound replies across the user's bots for the
+    // usage meter. The old sequential loop hit the Sheets API once
+    // per bot serially — a user on a Scale plan with 10 bots paid
+    // 10× the latency before the subscription page rendered AND was
+    // at risk of tripping Sheets' 60-reads/user/minute quota. Parallel
+    // fan-out cuts wall time to ~max(per-bot latency).
     let trialUsage: { messagesUsed: number; messagesLimit: number } | null = null;
     if (current && isTrialPlan(current.plan)) {
       const bots = await getBotsByOwner(user.userId).catch(() => []);
-      let count = 0;
-      for (const bot of bots) {
-        const convos = await getClientConversations(bot.client_id).catch(() => []);
-        count += convos.filter((c) => c.direction === 'outgoing').length;
-      }
+      const counts = await Promise.all(
+        bots.map((bot) =>
+          getClientConversations(bot.client_id)
+            .then((convos) => convos.filter((c) => c.direction === 'outgoing').length)
+            .catch(() => 0),
+        ),
+      );
+      const count = counts.reduce((s, n) => s + n, 0);
       trialUsage = { messagesUsed: count, messagesLimit: TRIAL_MESSAGE_LIMIT };
     }
 

@@ -17,13 +17,15 @@ export async function POST(
     const { message } = await request.json();
 
     const client = await getClientById(id);
-    if (!client) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-    }
 
-    // Only allow admin or the bot's owner to test
-    if (user.role !== 'admin' && client.owner_user_id !== user.userId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Return the SAME 404 for both "no such client" and "exists but
+    // not yours". Returning 404 vs 403 was an ID-enumeration oracle —
+    // a caller probing arbitrary client_id values could distinguish
+    // "this client exists, just not mine" from "this client doesn't
+    // exist", letting them confirm valid IDs across tenants. With one
+    // shared 404 they get no signal.
+    if (!client || (user.role !== 'admin' && client.owner_user_id !== user.userId)) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
     const response = await generateBotResponse(client.system_prompt, [], message);

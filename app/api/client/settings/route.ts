@@ -5,6 +5,7 @@ import { updateClientField, updateClientFields, updateClientAllergenStrictMode, 
 import { generateSystemPrompt } from '@/lib/prompt-generator';
 import { ClientConfig } from '@/lib/types';
 import { isValidUpiId } from '@/lib/payments';
+import { formatPhoneNumber } from '@/lib/utils';
 import { syncProductsFromConfig } from '@/lib/inventory-sync';
 import { getActiveSubscription } from '@/lib/subscription';
 import { canUse } from '@/lib/feature-gates';
@@ -379,7 +380,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await updateClientField(bot.client_id, field, value);
+    // whatsapp_number guard. Owner-typed values like "+91-9876-543-210"
+    // would land in the DB verbatim and silently garble every
+    // downstream consumer that does NOT re-normalise (e.g. the
+    // approve-bot email's formatPhoneNumber rendering). Canonicalise
+    // here to the same E.164 form the webhook path uses, and reject
+    // shapes that obviously can't be a phone number.
+    let writeValue = value;
+    if (field === 'whatsapp_number' && typeof value === 'string') {
+      const digits = value.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 15) {
+        return NextResponse.json(
+          { error: 'INVALID_PHONE', message: 'whatsapp_number must be a 10-15 digit phone number.' },
+          { status: 400 }
+        );
+      }
+      writeValue = formatPhoneNumber(value);
+    }
+
+    await updateClientField(bot.client_id, field, writeValue);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

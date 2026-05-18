@@ -5,21 +5,29 @@
 // Brand mark is the real `public/logo.png` wordmark, loaded once from
 // disk and embedded as a data URL — Satori inside ImageResponse can't
 // fetch local /public assets at build time, so we hand it the bytes.
+//
+// `readFile` lives inside the default export per Next.js 16 docs to
+// avoid a module-init IIFE that could fail if CWD differs at import
+// time. Module-level cache memoises the result for warm lambdas.
 
 import { ImageResponse } from 'next/og';
-import { readFileSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 
 export const alt = 'ZapText — AI WhatsApp Bots for Indian SMBs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-const LOGO_DATA_URL = (() => {
-  const buf = readFileSync(join(process.cwd(), 'public', 'logo.png'));
-  return `data:image/png;base64,${buf.toString('base64')}`;
-})();
+let cachedLogoDataUrl: string | null = null;
+async function loadLogoDataUrl(): Promise<string> {
+  if (cachedLogoDataUrl) return cachedLogoDataUrl;
+  const buf = await readFile(join(process.cwd(), 'public', 'logo.png'));
+  cachedLogoDataUrl = `data:image/png;base64,${buf.toString('base64')}`;
+  return cachedLogoDataUrl;
+}
 
 export default async function OpengraphImage() {
+  const logoDataUrl = await loadLogoDataUrl();
   return new ImageResponse(
     (
       <div
@@ -47,7 +55,7 @@ export default async function OpengraphImage() {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={LOGO_DATA_URL}
+              src={logoDataUrl}
               alt=""
               width={260}
               height={72}

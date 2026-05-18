@@ -8,31 +8,66 @@
 import { useEffect, useRef, useState } from "react";
 import { Sticker } from "./_shared";
 
-type ChatMsg = { who: "in" | "out"; t: string; time?: string; typing?: boolean };
+// Tokenised message body so we can render with React JSX instead of
+// `dangerouslySetInnerHTML`. Even though the source array is static
+// and authored in this file (zero XSS risk today), the dangerouslySet
+// pattern is a footgun the next person extending this component
+// shouldn't have to think about. "br" inserts a line break; "b" wraps
+// text in <b>; "t" is plain text.
+type ChatToken = { kind: "t"; v: string } | { kind: "b"; v: string } | { kind: "br" };
+type ChatMsg = { who: "in" | "out"; tokens: ChatToken[]; time?: string; typing?: boolean };
+
+const t = (v: string): ChatToken => ({ kind: "t", v });
+const b = (v: string): ChatToken => ({ kind: "b", v });
+const br: ChatToken = { kind: "br" };
 
 const RESTAURANT_CHAT: ChatMsg[] = [
-  { who: "in", t: "Bhaiya menu dikhao please", time: "7:42 PM" },
+  { who: "in", tokens: [t("Bhaiya menu dikhao please")], time: "7:42 PM" },
   {
     who: "out",
-    t: "Namaste 👋 Aaj ke specials —<br/><b>• Hyderabadi Dum Biryani</b> ₹280<br/><b>• Chicken 65</b> ₹240<br/><b>• Veg Pulao</b> ₹180<br/><br/>Full menu bhejun?",
+    tokens: [
+      t("Namaste 👋 Aaj ke specials —"), br,
+      b("• Hyderabadi Dum Biryani"), t(" ₹280"), br,
+      b("• Chicken 65"), t(" ₹240"), br,
+      b("• Veg Pulao"), t(" ₹180"), br, br,
+      t("Full menu bhejun?"),
+    ],
     time: "7:42 PM",
     typing: true,
   },
-  { who: "in", t: "Haan bhejo, 2 biryani order karna hai", time: "7:43 PM" },
+  { who: "in", tokens: [t("Haan bhejo, 2 biryani order karna hai")], time: "7:43 PM" },
   {
     who: "out",
-    t: "Done boss. 2× Dum Biryani = <b>₹560</b>. Delivery address last time ka use karun (Koramangala 5th Block)?",
+    tokens: [
+      t("Done boss. 2× Dum Biryani = "), b("₹560"),
+      t(". Delivery address last time ka use karun (Koramangala 5th Block)?"),
+    ],
     time: "7:43 PM",
     typing: true,
   },
-  { who: "in", t: "Haan same address", time: "7:43 PM" },
+  { who: "in", tokens: [t("Haan same address")], time: "7:43 PM" },
   {
     who: "out",
-    t: "Order placed ✓ ETA <b>32 min</b>. UPI link: pay.zpt.shop/a9x2<br/>Track: wa.me/track/8821",
+    tokens: [
+      t("Order placed ✓ ETA "), b("32 min"), t(". UPI link: pay.zpt.shop/a9x2"), br,
+      t("Track: wa.me/track/8821"),
+    ],
     time: "7:44 PM",
     typing: true,
   },
 ];
+
+function ChatBody({ tokens }: { tokens: ChatToken[] }) {
+  return (
+    <>
+      {tokens.map((tok, i) => {
+        if (tok.kind === "br") return <br key={i} />;
+        if (tok.kind === "b") return <b key={i}>{tok.v}</b>;
+        return <span key={i}>{tok.v}</span>;
+      })}
+    </>
+  );
+}
 
 const HEADER = {
   name: "Rohit's Biryani · Bot",
@@ -174,7 +209,7 @@ export function PhoneChat() {
                   }`}
                   style={{ boxShadow: "0 1px 0.5px rgba(0,0,0,0.13)" }}
                 >
-                  <span dangerouslySetInnerHTML={{ __html: m.t }} />
+                  <span><ChatBody tokens={m.tokens} /></span>
                   <div className="text-[10px] text-black/40 text-right mt-0.5 font-medium">
                     {m.time || ""} {m.who === "out" && <span style={{ color: "#53bdeb" }}>✓✓</span>}
                   </div>

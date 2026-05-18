@@ -243,7 +243,19 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    console.error('Onboard error:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    // Log the full error server-side; return a generic message + an
+    // opaque correlation id to the client. Previously we returned
+    // `{ error: String(error) }`, which leaked DB constraint names,
+    // Sheets API messages, and internal identifiers useful for
+    // attacker reconnaissance. Support can still correlate the user's
+    // ref with the server log via the printed id.
+    const ref = (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36)).replace(/-/g, '').slice(0, 8);
+    console.error(`[onboard] error ref=${ref}`, error);
+    return NextResponse.json(
+      { error: `Bot creation failed. Please try again. (ref: ${ref})` },
+      { status: 500 }
+    );
   }
 }

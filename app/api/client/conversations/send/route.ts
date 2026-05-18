@@ -18,7 +18,7 @@ import { isWithinCustomerServiceWindow } from '@/lib/whatsapp-templates';
 import { getConversationHistory, addConversationMessage } from '@/lib/google-sheets';
 import { canUse } from '@/lib/feature-gates';
 import { getActiveSubscription } from '@/lib/subscription';
-import { getISTTimestamp } from '@/lib/utils';
+import { getISTTimestamp, formatPhoneNumber } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
   const user = await getUserRole();
@@ -46,7 +46,13 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  const phone = (body.customer_phone || '').trim();
+  // Normalise to E.164 (+91XXXXXXXXXX) before any downstream use. The
+  // webhook path always stores phones in E.164; this manual-send path
+  // previously trusted whatever the caller typed, so a stored number
+  // like '+91-9876-543-210' would hit the WhatsApp API with garbage
+  // and surface to the owner as SEND_FAILED with no clear reason.
+  const rawPhone = (body.customer_phone || '').trim();
+  const phone = rawPhone ? formatPhoneNumber(rawPhone) : '';
   const message = (body.message || '').trim();
   if (!phone) return NextResponse.json({ error: 'customer_phone required' }, { status: 400 });
   if (!message) return NextResponse.json({ error: 'message required' }, { status: 400 });

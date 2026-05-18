@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
 import { getBotsByOwner } from '@/lib/owner-clients';
 import { addConversationMessage } from '@/lib/db/conversations';
-import { getISTTimestamp } from '@/lib/utils';
+import { getISTTimestamp, redactPhone } from '@/lib/utils';
 import { parseContactsCSV, CsvSource } from '@/lib/migrate-csv';
 import { rateLimit, getClientKey } from '@/lib/rate-limit';
 
@@ -90,24 +90,40 @@ export async function POST(request: NextRequest) {
 
   const ts = getISTTimestamp();
   let written = 0;
-  for (const c of toImport) {
-    const tagSuffix = c.tags.length > 0 ? ` · tags: ${c.tags.join(', ')}` : '';
-    const nameBit = c.name ? ` · ${c.name}` : '';
-    try {
-      await addConversationMessage({
-        timestamp: ts,
-        client_id: clientId,
-        customer_phone: c.phone,
-        direction: 'incoming',
-        message: `[migrated from ${c.source}]${nameBit}${tagSuffix}`,
-        message_type: 'system',
-      });
-      written++;
-    } catch (e) {
-      // Don't fail the whole import if one row collides with an
-      // existing conversation — log and continue.
-      console.error('[migrate-contacts] insert failed for', c.phone, e);
-    }
+  // Sequential `for...await` (the old behaviour) is ~1 round-trip per
+  // insert. Against Neon HTTP that's ~20-40 ms each, so 25 000
+  // contacts ran 8-16 minutes — well past Vercel's 30 s timeout.
+  // Resolution: chunk into batches of 25 in parallel. Throughput
+  // jumps ~25×; Neon's HTTP driver handles it without saturation
+  // (it pools at the edge). Per-row errors stay isolated via the
+  // inner try/catch.
+  const CHUNK = 25;
+  for (let i = 0; i < toImport.length; i += CHUNK) {
+    const slice = toImport.slice(i, i + CHUNK);
+    const results = await Promise.all(
+      slice.map(async (c) => {
+        const tagSuffix = c.tags.length > 0 ? ` · tags: ${c.tags.join(', ')}` : '';
+        const nameBit = c.name ? ` · ${c.name}` : '';
+        try {
+          await addConversationMessage({
+            timestamp: ts,
+            client_id: clientId,
+            customer_phone: c.phone,
+            direction: 'incoming',
+            message: `[migrated from ${c.source}]${nameBit}${tagSuffix}`,
+            message_type: 'system',
+          });
+          return true;
+        } catch (e) {
+          // Don't fail the whole import if one row collides with an
+          // existing conversation — log redacted phone and continue.
+          // DPDPA: raw phones leak to Vercel logs / log shippers.
+          console.error('[migrate-contacts] insert failed for', redactPhone(c.phone), e);
+          return false;
+        }
+      })
+    );
+    written += results.filter(Boolean).length;
   }
 
   return NextResponse.json({

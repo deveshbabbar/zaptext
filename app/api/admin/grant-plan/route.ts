@@ -17,7 +17,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email and valid plan required' }, { status: 400 });
     }
 
-    const durationMonths = typeof months === 'number' && months > 0 ? months : 12;
+    // Clamp [1, 24] so an admin typo (`months: 1000`) doesn't grant a
+    // subscription ending in the year 3026. 24 months covers the
+    // longest legitimate manual grant (2-year promo / strategic
+    // partner deal); anything beyond that is treated as a mistake.
+    const rawMonths = typeof months === 'number' && Number.isFinite(months) ? Math.floor(months) : 12;
+    const durationMonths = Math.min(Math.max(rawMonths, 1), 24);
 
     const cc = await clerkClient();
     const found = await cc.users.getUserList({ emailAddress: [email], limit: 5 });

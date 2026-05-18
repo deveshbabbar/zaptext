@@ -154,7 +154,12 @@ export async function POST(req: NextRequest) {
     // ─── 3. Create subscription record ───
     const now = new Date();
     const end = new Date(now);
-    end.setDate(end.getDate() + months * 30);
+    // Calendar months (not 30-day months) — matches /api/payment/verify,
+    // /api/payment/webhook, and /api/admin/grant-plan. The legacy
+    // setDate(+months*30) silently shorted owners by ~5 days on a 12-
+    // month plan and produced off-by-month errors (Jan + 6 → early Jul
+    // instead of late Jun).
+    end.setMonth(end.getMonth() + months);
     const planAmount = computePlanPrice(validPlan, months);
 
     await createSubscription({

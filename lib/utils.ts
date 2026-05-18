@@ -14,6 +14,24 @@ export function formatPhoneNumber(phone: string): string {
   return '+' + cleaned;
 }
 
+// DPDPA-friendly phone redaction for server logs. Customer phone
+// numbers are Sensitive Personal Data under India's DPDPA 2023; raw
+// phones in Vercel logs leak to whatever log shipper is configured.
+// Keep enough prefix/suffix for support to still recognise the same
+// number across multiple log lines, redact the middle digits.
+//
+//   "+919876543210" → "+919***10"
+//   "919876543210"  → "9198***10"
+//   "98765"         → "98765" (too short to safely redact)
+export function redactPhone(phone: string | null | undefined): string {
+  if (!phone) return '';
+  const s = String(phone);
+  if (s.length <= 6) return s;
+  const head = s.slice(0, 4);
+  const tail = s.slice(-2);
+  return `${head}***${tail}`;
+}
+
 // Returns an ISO-8601 UTC timestamp. Name is historical ("IST") but the
 // callers ALL pipe this into DB `timestamptz` columns or into `new Date()`
 // constructors — both of which need an ISO-parseable string.

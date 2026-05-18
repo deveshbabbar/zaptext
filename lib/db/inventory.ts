@@ -17,7 +17,7 @@
 // - Stock is clamped to >= 0 on every write to preserve legacy behavior
 //   (the bot logic doesn't handle negative stock).
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from './index';
 import { inventory as inventoryTable } from './schema';
 import type { InventoryItem } from '../types';
@@ -200,16 +200,63 @@ export async function adjustStock(
   sku: string,
   delta: number
 ): Promise<{ item: InventoryItem | null; previous: number; crossedLowThreshold: boolean }> {
+  const intDelta = Math.floor(delta);
+
+  // Atomic decrement. The previous implementation was a read-then-write
+  // (getItem + upsertItem) with a wide-open TOCTOU window: two
+  // concurrent webhook reserveOrder() handlers against the last unit
+  // in stock would both read stock=1, both write stock=0, and both
+  // succeed — overselling the item by 1.
+  //
+  // Fix: a single CTE that (a) takes a row-level FOR UPDATE lock on
+  // the inventory row, (b) UPDATEs stock atomically with GREATEST
+  // clamping (matches the legacy Math.max(0, prev+delta) semantics),
+  // (c) RETURNINGs both the previous and new stock values so the
+  // caller (reserveOrder) can still detect over-sell attempts via
+  // the `previous` field.
+  //
+  // FOR UPDATE inside the locked CTE serialises concurrent runs at
+  // the row level — Postgres makes the second statement wait for
+  // the first to commit, then re-reads the post-commit stock. The
+  // entire statement is one HTTP round-trip, so neon-http's lack of
+  // client-side transactions is not a problem here (the implicit
+  // single-statement transaction holds the lock for the statement's
+  // lifetime).
+  const result = await db.execute(sql`
+    WITH locked AS (
+      SELECT stock AS old_stock, low_stock_threshold AS low_threshold
+      FROM inventory
+      WHERE client_id = ${clientId} AND sku = ${sku}
+      FOR UPDATE
+    ),
+    updated AS (
+      UPDATE inventory
+      SET stock = GREATEST(inventory.stock + ${intDelta}, 0),
+          updated_at = NOW()
+      WHERE client_id = ${clientId} AND sku = ${sku}
+      RETURNING stock AS new_stock
+    )
+    SELECT updated.new_stock, locked.old_stock, locked.low_threshold
+    FROM updated, locked
+  `);
+
+  const rows = (result as unknown as { rows?: Array<Record<string, unknown>> }).rows
+    ?? (result as unknown as Array<Record<string, unknown>>);
+  const row = Array.isArray(rows) ? rows[0] : undefined;
+  if (!row) {
+    return { item: null, previous: 0, crossedLowThreshold: false };
+  }
+
+  const previous = Number(row.old_stock ?? 0);
+  const next = Number(row.new_stock ?? 0);
+  const low = Number(row.low_threshold ?? 0);
+  const crossedLowThreshold = low > 0 && previous > low && next <= low;
+
+  // Re-read the full row so callers that pass `item` back to the UI
+  // still get every InventoryItem field populated. The atomic UPDATE
+  // above already committed; this second read is just for display.
   const item = await getItem(clientId, sku);
-  if (!item) return { item: null, previous: 0, crossedLowThreshold: false };
-  const previous = item.stock;
-  const next = Math.max(0, previous + Math.floor(delta));
-  const crossedLowThreshold =
-    item.low_stock_threshold > 0 &&
-    previous > item.low_stock_threshold &&
-    next <= item.low_stock_threshold;
-  const updated = await upsertItem({ ...item, stock: next });
-  return { item: updated, previous, crossedLowThreshold };
+  return { item, previous, crossedLowThreshold };
 }
 
 // Bulk upsert. With the composite PK (client_id, sku) and ON CONFLICT, a

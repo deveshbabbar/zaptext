@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
+import { redactPhone } from '@/lib/utils';
 import { getClientById } from '@/lib/db/clients';
 import { createOrder, getRecentOrderForCustomer, RECENT_ORDER_WINDOW_MS, type DineInOrderItem, type DineInOrderType } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
@@ -53,6 +54,18 @@ interface SubmitBody {
 
 const MAX_ITEMS_PER_ORDER = 40;
 const MAX_LINE_QTY = 30;
+
+// Deterministic cart fingerprint for duplicate-detection. Two carts
+// with the same (name, qty, price) tuples in any order produce the
+// same string. Used to distinguish "spam re-submit of same order"
+// (reject) from "legitimately different second order" (allow) —
+// since we no longer trust the client's bypassRecent flag.
+function fingerprintCart(items: Array<{ name: string; qty: number; price: number }>): string {
+  return items
+    .map((it) => `${it.name.trim().toLowerCase()}|${it.qty}|${it.price.toFixed(2)}`)
+    .sort()
+    .join('::');
+}
 
 // Returns a SINGLE-language confirmation. ENGLISH IS THE DEFAULT —
 // we only switch to Hinglish when the bot is explicitly configured
@@ -228,22 +241,34 @@ export async function POST(request: NextRequest) {
     console.error('[menu-submit] availability gate failed (allowing):', err);
   }
 
-  // Double-tap / spam guard. If a customer phone has placed a
-  // non-cancelled order in the last 2 minutes against this client,
-  // reject a second submit UNLESS the caller explicitly set
-  // bypassRecent (the "/m page Place a different order" button).
-  // 2 minutes is the sweet spot: catches accidental duplicate
-  // submits without trapping a legitimate second order (different
-  // address, second person at the table, etc.).
-  if (!body.bypassRecent) {
-    const dupe = await getRecentOrderForCustomer(clientId, customerPhone, RECENT_ORDER_WINDOW_MS);
-    if (dupe) {
+  // Double-tap / spam guard.
+  //
+  // We DO NOT trust `body.bypassRecent` any more — that flag was the
+  // only thing standing between a single tap and unlimited duplicate
+  // orders, and any attacker could set it to true. Instead, always
+  // check for a recent non-cancelled order from this phone and
+  // compare the incoming cart fingerprint against it:
+  //   - Same fingerprint (same items + qty + price) → reject. This is
+  //     the accidental-double-tap or "I refreshed and resubmitted"
+  //     case, AND the spam vector — blocked even if the malicious
+  //     caller forges bypassRecent.
+  //   - Different fingerprint → allow. This is the legitimate "second
+  //     order for a colleague" case the old flag was trying to model,
+  //     except now we infer it from the cart instead of trusting the
+  //     client to tell us the truth.
+  // Per-phone rate limit at line ~162 also caps 6 attempts/minute, so
+  // even legitimate "different orders" can't be machine-spammed.
+  const dupe = await getRecentOrderForCustomer(clientId, customerPhone, RECENT_ORDER_WINDOW_MS);
+  if (dupe) {
+    const incomingFp = fingerprintCart(cleanItems);
+    const recentFp = fingerprintCart(dupe.items);
+    if (incomingFp === recentFp) {
       return NextResponse.json(
         {
           ok: false,
           error: 'duplicate_recent',
           message:
-            'You already placed an order moments ago. If this is a new order (different address or for someone else), tap "Place a different order" to continue.',
+            'You already placed this exact order moments ago. If this is a new order (different items, different address, or for someone else), change at least one item and resubmit.',
         },
         { status: 409 }
       );
@@ -333,7 +358,7 @@ export async function POST(request: NextRequest) {
       // Multi-outlet delivery without a location pin — we can't
       // route correctly. Accept the order but flag for owner triage.
       // (Customer service window stays open; manager can route.)
-      console.warn('[menu-submit] multi-outlet delivery with no location — manual routing required', { clientId, customerPhone });
+      console.warn('[menu-submit] multi-outlet delivery with no location — manual routing required', { clientId, customerPhone: redactPhone(customerPhone) });
     }
   } catch (err) {
     // Fail open — never block an order because of outlet-resolution
@@ -417,7 +442,7 @@ export async function POST(request: NextRequest) {
     try {
       await sendWhatsAppMessage(client.phone_number_id, customerPhone, confirmation);
     } catch (err) {
-      console.error('[menu submit] WA confirmation failed', { customerPhone, err });
+      console.error('[menu submit] WA confirmation failed', { customerPhone: redactPhone(customerPhone), err });
     }
   }
 

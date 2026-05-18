@@ -195,7 +195,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[razorpay-webhook] handler error:', err);
-    // Return 200 to avoid Razorpay retry storms; log for manual reconciliation.
-    return NextResponse.json({ ok: true, error: String(err).slice(0, 200) });
+    // Return 500 (NOT 200) so Razorpay retries the delivery within its
+    // 24h retry budget. The previous 200 here turned a real
+    // "money captured, subscription never created" outage into a
+    // silent failure — if Neon was flaky for 30 seconds during the
+    // first delivery, the customer paid but never got their plan.
+    // Razorpay caps retries at ~5 attempts so we won't get hammered;
+    // anything still failing after that lands in the dashboard
+    // webhook log for manual reconciliation, which is what we want.
+    return NextResponse.json(
+      { ok: false, error: String(err).slice(0, 200) },
+      { status: 500 }
+    );
   }
 }

@@ -14,7 +14,7 @@ import { markMessageProcessedIfNew } from '@/lib/db/processed-messages';
 import { incrementUsageAtomic, monthKey } from '@/lib/db/usage-counters';
 import { recordConsentEvent } from '@/lib/db/consent-log';
 import { generateBotResponse, transcribeAudio } from '@/lib/gemini';
-import { getISTTimestamp } from '@/lib/utils';
+import { getISTTimestamp, redactPhone } from '@/lib/utils';
 import { getAvailableSlots, createBooking, cancelBooking, getBookingsByCustomer, getBookingById, getBookingsForDate, getTodayIST, getDateOffset, calculateEndTime, approveBooking, getBookingsForStaff, getStalePendingBookings } from '@/lib/booking';
 import { countActiveKitchenOrders, createOrder as createDineInOrder } from '@/lib/db/restaurant-dine-in';
 import { classifyPriority } from '@/lib/conversation-priority';
@@ -994,7 +994,7 @@ async function processMessages(phoneNumberId: string, messages: Array<{ id: stri
     // but do NOT run AI. The owner is responsible for replying via the
     // /api/client/conversations/send endpoint.
     if (await isCustomerPaused(client.client_id, customerPhone).catch(() => false)) {
-      console.log(`[paused-customer] AI skipped for ${client.client_id}/${customerPhone}`);
+      console.log(`[paused-customer] AI skipped for ${client.client_id}/${redactPhone(customerPhone)}`);
       continue;
     }
 
@@ -2028,7 +2028,7 @@ existing per-message LANGUAGE RULES still apply.
           console.error('Cancel owner-notify (email) failed:', e);
         }
       } else {
-        console.warn('[CANCEL] scope-check failed', { cancelId, clientId: client.client_id, customerPhone });
+        console.warn('[CANCEL] scope-check failed', { cancelId, clientId: client.client_id, customerPhone: redactPhone(customerPhone) });
       }
       finalResponse = finalResponse.replace(/\[CANCEL:[^\]]+\]/, '').trim();
     }

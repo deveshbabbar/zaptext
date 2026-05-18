@@ -38,11 +38,27 @@ const TASK_PIPELINES: Record<string, string[]> = {
 };
 
 function pickOrigin(req: NextRequest): string {
-  // Prefer NEXT_PUBLIC_APP_URL (always set in prod/local). Fallback to
-  // request URL's origin so the dispatcher works even if the env var
-  // is missing on a fresh deploy.
-  const env = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (env) return env.replace(/\/+$/, '');
+  // Prefer the SERVER-ONLY env var. The legacy NEXT_PUBLIC_APP_URL
+  // path is kept as a transitional fallback (so an existing deploy
+  // doesn't break the moment this code lands) but we warn so ops
+  // moves it off — the danger is that anything prefixed with
+  // NEXT_PUBLIC_ is bundled into client JS and can be substituted
+  // by a compromised pipeline / extension. If an attacker can change
+  // NEXT_PUBLIC_APP_URL, every internal cron sub-request would carry
+  // the CRON_SECRET Bearer token to an attacker-controlled origin.
+  const serverEnv = process.env.SERVER_BASE_URL?.trim();
+  if (serverEnv) return serverEnv.replace(/\/+$/, '');
+
+  const publicEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (publicEnv) {
+    console.warn(
+      '[cron/dispatch] using NEXT_PUBLIC_APP_URL as base origin — move to SERVER_BASE_URL to keep the internal base URL off the client bundle.'
+    );
+    return publicEnv.replace(/\/+$/, '');
+  }
+  // Last resort — the request's own host. Works for any HTTPS
+  // deployment Vercel serves; on hosts that proxy weirdly this can
+  // be spoofed via Host header, so prefer setting SERVER_BASE_URL.
   return new URL(req.url).origin;
 }
 

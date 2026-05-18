@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { PageTopbar, PageHead, MonoLabel } from '@/components/app/primitives';
 
 interface Message {
@@ -86,6 +87,17 @@ interface ThreadEntry {
 }
 
 export default function ConversationsPage() {
+  // Deep-link support: /client/conversations?phone=919999123296 opens
+  // that customer's thread on load. Used by the Customers directory's
+  // "Open chat →" link and any external bookmark / share. Stored as
+  // digits-only so it matches conversations.customer_phone regardless
+  // of whether the inbound URL has "+" / dashes / spaces.
+  const searchParams = useSearchParams();
+  const requestedPhone = useMemo(() => {
+    const raw = searchParams?.get('phone') || '';
+    return raw ? raw.replace(/\D/g, '') : '';
+  }, [searchParams]);
+
   const [conversations, setConversations] = useState<Record<string, Message[]>>({});
   const [loading, setLoading] = useState(true);
   const [activePhone, setActivePhone] = useState<string | null>(null);
@@ -237,8 +249,25 @@ export default function ConversationsPage() {
   }, [phones, conversations]);
 
   useEffect(() => {
-    if (!activePhone && sortedPhones.length) setActivePhone(sortedPhones[0]);
-  }, [sortedPhones, activePhone]);
+    if (activePhone) return;
+    if (sortedPhones.length === 0) return;
+
+    // Prefer the ?phone= query param when present — that's the deep-
+    // link path from the Customers directory's "Open chat →" button.
+    // We match on the digits-only form so any phone format (with "+",
+    // with dashes, etc.) resolves correctly against the DB-stored
+    // digits. Fall back to the top-of-list (most recently active)
+    // chat only when the URL doesn't request a specific phone or the
+    // requested phone has no conversation yet.
+    if (requestedPhone) {
+      const match = sortedPhones.find((p) => p.replace(/\D/g, '') === requestedPhone);
+      if (match) {
+        setActivePhone(match);
+        return;
+      }
+    }
+    setActivePhone(sortedPhones[0]);
+  }, [sortedPhones, activePhone, requestedPhone]);
 
   const filtered = useMemo(
     () =>

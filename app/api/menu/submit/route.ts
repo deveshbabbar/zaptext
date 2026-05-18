@@ -19,7 +19,7 @@ import { redactPhone } from '@/lib/utils';
 import { getClientById } from '@/lib/db/clients';
 import { createOrder, getRecentOrderForCustomer, RECENT_ORDER_WINDOW_MS, type DineInOrderItem, type DineInOrderType } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
-import { notifyOwnerOfNewOrder } from '@/lib/restaurant/notify-order';
+import { notifyOwnerOfNewOrder, notifyOwnerOnWhatsApp } from '@/lib/restaurant/notify-order';
 import { recordConsentEvent } from '@/lib/db/consent-log';
 
 interface SubmitBody {
@@ -391,6 +391,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Honour the per-bot order_approval_mode. When the owner has chosen
+  // "Ask me first (manual approve)" the order starts in pending_approval
+  // and the dashboard / WhatsApp ping below surface an explicit
+  // approve / decline. Default mode 'auto' keeps the legacy behaviour
+  // (status = 'placed' from createOrder's default).
+  const approvalMode = client.order_approval_mode === 'manual' ? 'manual' : 'auto';
+  const initialStatus = approvalMode === 'manual' ? 'pending_approval' : 'placed';
+
   const order = await createOrder({
     client_id: clientId,
     session_id: linkedSessionId,
@@ -404,6 +412,7 @@ export async function POST(request: NextRequest) {
     outlet_id: resolvedOutletId,
     delivery_lat: deliveryLat,
     delivery_lng: deliveryLng,
+    status: initialStatus,
   });
 
   // Resolve the bot's configured languages + FSSAI licence so the
@@ -449,6 +458,14 @@ export async function POST(request: NextRequest) {
   // Email the owner so they have a permanent, searchable record + a
   // one-click CTA into /client/restaurant/orders. Best-effort.
   await notifyOwnerOfNewOrder(client, order, 'menu_link');
+
+  // Live WhatsApp ping to the owner. Previously this path was
+  // email-only — the owner had no in-pocket alert that a /m page
+  // order had landed, so they'd miss orders until they next looked at
+  // the dashboard. Best-effort; respects notify_whatsapp toggle and
+  // skips silently when contact_number isn't set (the owner stays
+  // unmessageable on WhatsApp from the bot's own WABA number).
+  await notifyOwnerOnWhatsApp(client, order, 'menu_link');
 
   // DPDPA 2023 §6/§6(10) evidence: the customer just entered their
   // phone on the /m page and submitted an order — this is "free,

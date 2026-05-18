@@ -11,7 +11,7 @@ import { getClientById } from '@/lib/db/clients';
 import { getSessionById, getTable, createOrder, type DineInOrderItem } from '@/lib/db/restaurant-dine-in';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { isDineInEnabledForClient } from '@/lib/restaurant/dine-in-handler';
-import { notifyOwnerOfNewOrder } from '@/lib/restaurant/notify-order';
+import { notifyOwnerOfNewOrder, notifyOwnerOnWhatsApp } from '@/lib/restaurant/notify-order';
 
 interface SubmitBody {
   clientId?: string;
@@ -117,6 +117,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Session has no customer phone — please re-scan QR.' }, { status: 400 });
   }
 
+  // Match the menu-link path's manual-approve handling so the dashboard
+  // reflects the per-bot setting consistently across order entry points.
+  const approvalMode = client.order_approval_mode === 'manual' ? 'manual' : 'auto';
+  const initialStatus = approvalMode === 'manual' ? 'pending_approval' : 'placed';
+
   const order = await createOrder({
     client_id: clientId,
     session_id: sessionId,
@@ -126,6 +131,7 @@ export async function POST(request: NextRequest) {
     order_type: 'dine_in',
     items: cleanItems,
     special_notes: String(body.notes || '').trim(),
+    status: initialStatus,
   });
 
   if (client.phone_number_id) {
@@ -147,6 +153,12 @@ export async function POST(request: NextRequest) {
   // Email the owner so they have a permanent record + a one-click CTA
   // into /client/restaurant/orders. Best-effort.
   await notifyOwnerOfNewOrder(client, order, 'qr_dine_in');
+
+  // Live WhatsApp ping to the owner — previously this QR path was
+  // email-only. Best-effort; respects notify_whatsapp toggle and skips
+  // silently when contact_number isn't set (owner can't be messaged
+  // from the bot's own WABA number).
+  await notifyOwnerOnWhatsApp(client, order, 'qr_dine_in');
 
   return NextResponse.json({ ok: true, orderId: order.id, total: order.total });
 }

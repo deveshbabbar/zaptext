@@ -43,23 +43,42 @@ interface NameCandidate {
   at: number; // epoch ms
 }
 
+// Normalise whatever the Drizzle / neon-http driver hands back for a
+// timestamp column or a SQL aggregate (MIN/MAX). Despite the
+// `sql<Date>\`MIN(...)\`` type annotation, those raw-SQL aggregates
+// often come back as ISO strings from neon-http (the type tag is
+// compile-time only — it does NOT trigger runtime conversion). Calling
+// `.getTime()` on a string was the cause of the 1583028433 error on
+// /client/customers. Always go through this normaliser.
+function toDate(v: unknown): Date | null {
+  if (v == null) return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+  if (typeof v === 'string' || typeof v === 'number') {
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 function bumpName(
   best: NameCandidate | null,
   name: string,
-  at: Date | null
+  at: unknown
 ): NameCandidate | null {
   const trimmed = (name || '').trim();
   if (!trimmed) return best;
-  const ts = at ? at.getTime() : 0;
+  const d = toDate(at);
+  const ts = d ? d.getTime() : 0;
   if (!best || ts > best.at) return { name: trimmed, at: ts };
   return best;
 }
 
-function bumpDate(current: Date | null, candidate: Date | null, mode: 'min' | 'max'): Date | null {
-  if (!candidate) return current;
-  if (!current) return candidate;
-  if (mode === 'max') return candidate.getTime() > current.getTime() ? candidate : current;
-  return candidate.getTime() < current.getTime() ? candidate : current;
+function bumpDate(current: Date | null, candidate: unknown, mode: 'min' | 'max'): Date | null {
+  const c = toDate(candidate);
+  if (!c) return current;
+  if (!current) return c;
+  if (mode === 'max') return c.getTime() > current.getTime() ? c : current;
+  return c.getTime() < current.getTime() ? c : current;
 }
 
 interface Acc {

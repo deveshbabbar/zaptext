@@ -71,13 +71,34 @@ async function verifySvixSignature(input: {
   // svix-signature header is space-separated; each token is "v1,<base64sig>".
   // We accept the request if ANY token matches our expected — supports key
   // rotation (Clerk emits multiple v1 sigs during a rotation window).
+  //
+  // Compare in constant time. Plain `sig === expected` short-circuits at
+  // the first differing byte, leaking a timing oracle that lets an
+  // attacker brute-force the HMAC byte-by-byte over many calibrated
+  // requests. The other webhook verifiers in this codebase
+  // (Razorpay / Meta WhatsApp) already use timing-safe compares.
   const tokens = input.svixSignature.split(/\s+/);
   for (const tok of tokens) {
     const [scheme, sig] = tok.split(',');
     if (scheme !== 'v1' || !sig) continue;
-    if (sig === expected) return true;
+    if (constantTimeEquals(sig, expected)) return true;
   }
   return false;
+}
+
+// Length-checked XOR-fold compare. Pure JS so it works on both edge
+// and node runtimes (this route uses Web Crypto, not node:crypto).
+// Constant-time over equal-length inputs; an early length mismatch
+// only leaks the expected length, which is fixed per algorithm
+// (HMAC-SHA-256 → 32 bytes → 44-char base64) and therefore not a
+// secret.
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 interface ClerkEmailAddress { email_address?: string; verification?: { status?: string } }

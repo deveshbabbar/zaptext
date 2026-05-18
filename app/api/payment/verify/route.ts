@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRole } from '@/lib/auth';
-import { verifyPaymentSignature } from '@/lib/razorpay';
+import { verifyPaymentSignature, fetchOrder } from '@/lib/razorpay';
 import { createSubscription, getSubscriptionByPaymentId, PLANS, PlanKey, DURATIONS, isDurationKey, computePlanPrice } from '@/lib/subscription';
 import { getISTTimestamp } from '@/lib/utils';
 import { sendTemplate, tplSubscriptionStarted, tplAdminNewSubscription } from '@/lib/email';
@@ -65,6 +65,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Cross-check the order with Razorpay before trusting the body ──
+    //
+    // The HMAC signature only proves Razorpay signed `orderId|paymentId`.
+    // It does NOT cover `plan` or `months` — those come from the client
+    // body and an attacker can swap them. Without this check, a user
+    // who paid ₹599 for Starter could replay the same signature with
+    // `plan: "scale", months: 12` and get a Scale year for ₹599.
+    //
+    // We fetch the order back from Razorpay and assert:
+    //   1. order.amount matches the price for the requested plan+months
+    //   2. order.notes.plan matches the requested plan
+    //   3. order.notes.months matches the requested months
+    //   4. order.notes.userId matches the authenticated user
+    //      (defeats replay where attacker pastes someone else's
+    //      orderId+paymentId+signature into their own session)
+    let order;
+    try {
+      order = await fetchOrder(razorpay_order_id);
+    } catch (err) {
+      console.error('[verify] order fetch failed', { orderId: razorpay_order_id, err });
+      return NextResponse.json({ error: 'Could not verify order with Razorpay' }, { status: 502 });
+    }
+
+    const expectedAmount = computePlanPrice(validPlan, months);
+    const orderPlan = order.notes.plan;
+    const orderMonths = order.notes.months;
+    const orderUserId = order.notes.userId;
+
+    if (
+      order.amountInRupees !== expectedAmount ||
+      orderPlan !== validPlan ||
+      orderMonths !== String(months) ||
+      (orderUserId && orderUserId !== user.userId)
+    ) {
+      console.warn('[verify] order/body mismatch — possible plan-spoofing attempt', {
+        userId: user.userId,
+        orderId: razorpay_order_id,
+        bodyPlan: validPlan,
+        bodyMonths: months,
+        bodyExpectedAmount: expectedAmount,
+        orderPlan,
+        orderMonths,
+        orderUserId,
+        orderAmountInRupees: order.amountInRupees,
+      });
+      return NextResponse.json(
+        { error: 'Order does not match the requested plan' },
+        { status: 400 }
+      );
+    }
+
     // Idempotency: if this payment_id already produced a subscription,
     // return it instead of creating a second row (double-click / retry safe).
     const existing = await getSubscriptionByPaymentId(razorpay_payment_id);
@@ -107,13 +158,16 @@ export async function POST(req: NextRequest) {
       const ownerData = await cc.users.getUser(user.userId);
       const ownerEmail = ownerData.emailAddresses[0]?.emailAddress;
       const ownerName = `${ownerData.firstName || ''} ${ownerData.lastName || ''}`.trim() || 'there';
-      const nextBilling = new Date(); nextBilling.setDate(nextBilling.getDate() + 30);
+      // Was previously hardcoded `+30` regardless of plan duration —
+      // a 12-month buyer would be told "next billing in 30 days",
+      // generating false support tickets. Use the actual subscription
+      // end date computed above.
       if (ownerEmail) {
         await sendTemplate(ownerEmail, tplSubscriptionStarted({
           name: ownerName,
           plan: planLabel,
           amount: planAmount,
-          nextBilling: nextBilling.toISOString().slice(0, 10),
+          nextBilling: endDate.toISOString().slice(0, 10),
         }), ownerName);
       }
       const adminEmail = process.env.ADMIN_EMAIL || 'zaptextofficial@gmail.com';

@@ -36,6 +36,46 @@ export async function createOrder(
   return order;
 }
 
+// Fetch an order back from Razorpay to verify what was *actually* paid.
+// The local /api/payment/verify route MUST cross-check the order amount
+// and the `notes` payload (plan / months / userId) against the values
+// the client sends in the verify body — otherwise a paid Starter user
+// can replay the same signature with `plan: "scale", months: 12` and
+// get a Scale subscription for the price of Starter.
+export interface FetchedOrder {
+  id: string;
+  amountInPaise: number;
+  amountInRupees: number;
+  currency: string;
+  status: string;
+  notes: Record<string, string>;
+}
+
+export async function fetchOrder(orderId: string): Promise<FetchedOrder> {
+  // The Razorpay SDK's Orders.fetch returns `amount` either as a number
+  // or, in some lib versions, a string of paise. Normalise both.
+  const raw = (await getRazorpay().orders.fetch(orderId)) as {
+    id: string;
+    amount: number | string;
+    currency: string;
+    status: string;
+    notes?: Record<string, string | number>;
+  };
+  const paise = typeof raw.amount === 'string' ? Number.parseInt(raw.amount, 10) : raw.amount;
+  const notes: Record<string, string> = {};
+  if (raw.notes && typeof raw.notes === 'object') {
+    for (const [k, v] of Object.entries(raw.notes)) notes[k] = String(v);
+  }
+  return {
+    id: raw.id,
+    amountInPaise: paise,
+    amountInRupees: Math.round(paise / 100),
+    currency: raw.currency,
+    status: raw.status,
+    notes,
+  };
+}
+
 export function verifyPaymentSignature(
   orderId: string,
   paymentId: string,

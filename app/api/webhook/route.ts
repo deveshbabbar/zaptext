@@ -74,21 +74,29 @@ export async function POST(request: NextRequest) {
 
     // Verify Meta signed this request.
     //
-    // Production enforces strictly: if WHATSAPP_APP_SECRET is unset, reject
-    // EVERY incoming webhook. Previously we logged a warning and accepted —
-    // that meant a misconfigured deploy silently allowed anyone to inject
-    // fake "customer" messages, trigger AI replies, or burn Groq quota.
-    // In non-production (dev/preview) we keep the soft-warn so local
-    // tunnelled testing without a secret still works.
+    // CRITICAL: never trust NODE_ENV to gate this. Vercel sets
+    // NODE_ENV=production on **preview** deployments too (branch /
+    // PR previews), so an `NODE_ENV !== 'production'` bypass leaves
+    // every preview wide open to fake "customer" injection — fake
+    // orders, fake bookings, Groq quota burn, fabricated leads.
+    //
+    // Default behavior on every deployment (preview + prod) is now:
+    // require WHATSAPP_APP_SECRET and reject any request whose HMAC
+    // doesn't match. The ONLY escape hatch is an explicit
+    // per-deployment env flag `WEBHOOK_HMAC_OPTIONAL=1` — set this
+    // on a local dev/ngrok tunnel where you don't have the secret.
+    // Setting it on a production or preview deploy is a deliberate
+    // operator decision that shows up in env config (NODE_ENV does
+    // not).
     {
       const appSecret = process.env.WHATSAPP_APP_SECRET;
-      const isProd = process.env.NODE_ENV === 'production';
+      const hmacOptional = process.env.WEBHOOK_HMAC_OPTIONAL === '1';
       if (!appSecret) {
-        if (isProd) {
-          console.error('[webhook] WHATSAPP_APP_SECRET is not set — refusing to process webhook in production. Set this env var.');
+        if (!hmacOptional) {
+          console.error('[webhook] WHATSAPP_APP_SECRET is not set and WEBHOOK_HMAC_OPTIONAL is not "1" — refusing to process webhook. Set WHATSAPP_APP_SECRET in env (or WEBHOOK_HMAC_OPTIONAL=1 for explicit dev-tunnel mode).');
           return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
         }
-        console.warn('[webhook] WHATSAPP_APP_SECRET not set — skipping HMAC verify (dev/preview only).');
+        console.warn('[webhook] WHATSAPP_APP_SECRET not set but WEBHOOK_HMAC_OPTIONAL=1 — skipping HMAC verify (dev-tunnel mode only; do NOT set this flag in production or preview).');
       } else {
         const sig = request.headers.get('x-hub-signature-256');
         if (!verifyWebhookSignature(rawBody, sig)) {

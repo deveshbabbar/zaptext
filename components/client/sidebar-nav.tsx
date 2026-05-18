@@ -34,6 +34,12 @@ interface NavSection {
 const COMMON_WORKSPACE_ITEMS: NavItem[] = [
   { href: '/client/dashboard', icon: '📊', label: 'Dashboard' },
   { href: '/client/conversations', icon: '💬', label: 'Conversations' },
+  // Customers = unified directory of every phone that has chatted,
+  // booked, or placed an order with this bot (WhatsApp chat, /m
+  // menu-page orders, dine-in / takeaway, bookings, grocery).
+  // Conversations only surfaces people who messaged — Customers
+  // also catches /m-page orderers who never DMed the bot.
+  { href: '/client/customers', icon: '👥', label: 'Customers' },
   { href: '/client/settings', icon: '⚙️', label: 'Bot Settings' },
   { href: '/client/welcome-menu', icon: '👋', label: 'Welcome menu' },
 ];

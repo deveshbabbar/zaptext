@@ -19,7 +19,7 @@ export function Navbar() {
   ];
   return (
     <nav className="sticky top-0 z-50 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--background)_80%,transparent)] backdrop-blur-md">
-      <div className="max-w-[1280px] mx-auto px-4 sm:px-7 h-[60px] sm:h-[68px] flex items-center justify-between gap-2">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-7 h-[140px] sm:h-[160px] flex items-center justify-between gap-2">
         <Link href="/" className="flex items-center font-bold tracking-tight" aria-label="Zaptext.shop home">
           {/* Logo image already contains the full "Zaptext.shop" wordmark —
               don't double up with a text label next to it. */}

@@ -826,9 +826,10 @@ function Footer() {
       <div className="max-w-[1280px] mx-auto px-4 sm:px-7">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10 mb-14">
           <div>
-            <Link href="/" className="flex items-center gap-2.5 font-bold text-[18px] mb-3.5">
-              <Mark />
-              <span>ZapText</span>
+            <Link href="/" className="flex items-center font-bold text-[18px] mb-3.5" aria-label="Zaptext.shop home">
+              {/* Logo image already contains the "Zaptext.shop" wordmark —
+                  no separate text label. */}
+              <Mark compact />
             </Link>
             <p className="text-[var(--ink-2)] max-w-[340px] text-[14px] leading-[1.55]">
               The WhatsApp bot built for Indian restaurants. Dine-in QR ordering, multi-outlet routing, UPI payments — in every Indian language.

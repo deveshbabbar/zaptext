@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 type Mode = "signin" | "signup";
 
@@ -16,14 +17,19 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
             opacity: 0.05,
           }}
         />
-        <Link href="/" className="relative flex items-center gap-2.5 font-bold text-[18px]">
-          <span className="w-8 h-8 rounded-[8px] bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center zt-mono font-extrabold text-[18px]">
-            Z
-          </span>
-          <span>
-            ZapText
-            <sup className="opacity-50 font-normal text-[10px] ml-1">.shop</sup>
-          </span>
+        <Link href="/" className="relative flex items-center gap-3 font-bold text-[18px]" aria-label="Zaptext.shop home">
+          {/* Standalone Z-bolt mark from /public/favicon.png — the
+              transparent-background version is used on the dark ink
+              panel so we don't need a white pill. The dark-green
+              wordmark from /public/logo.png would be invisible here. */}
+          <Image
+            src="/favicon.png"
+            alt="Zaptext.shop"
+            width={160}
+            height={160}
+            priority
+            style={{ width: 160, height: 160, objectFit: 'contain', marginLeft: -16 }}
+          />
         </Link>
 
         <div className="relative">
@@ -73,11 +79,15 @@ export default function AuthShell({ mode, children }: { mode: Mode; children: Re
       <section className="flex flex-col justify-center items-center p-6 sm:p-10">
         <div className="w-full max-w-[440px]">
           <div className="lg:hidden mb-8">
-            <Link href="/" className="inline-flex items-center gap-2.5 font-bold text-[18px]">
-              <span className="w-8 h-8 rounded-[8px] bg-[var(--ink)] text-[var(--accent)] grid place-items-center zt-mono font-extrabold text-[18px]">
-                Z
-              </span>
-              ZapText
+            <Link href="/" className="inline-flex items-center font-bold text-[18px]" aria-label="Zaptext.shop home">
+              <Image
+                src="/logo.png"
+                alt="Zaptext.shop"
+                width={320}
+                height={84}
+                priority
+                style={{ width: 'auto', height: 80, maxHeight: 84, objectFit: 'contain' }}
+              />
             </Link>
           </div>
           <div className="zt-mono text-[11px] uppercase tracking-[.08em] text-[var(--mute)]">

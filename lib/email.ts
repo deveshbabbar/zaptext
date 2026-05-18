@@ -233,7 +233,7 @@ function wrap(title: string, body: string, ctaUrl?: string, ctaLabel?: string): 
         <tr>
           <td style="padding:0 4px 18px;">
             <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://www.zaptext.shop'}" style="text-decoration:none;display:inline-block;">
-              <img src="${process.env.NEXT_PUBLIC_APP_URL || 'https://www.zaptext.shop'}/logo.png" alt="ZapText" width="120" height="32" style="display:block;border:0;outline:none;width:120px;height:auto;max-width:140px;" />
+              <img src="${process.env.NEXT_PUBLIC_APP_URL || 'https://www.zaptext.shop'}/logo.png" alt="Zaptext.shop" width="200" height="52" style="display:block;border:0;outline:none;width:200px;height:auto;max-width:220px;" />
             </a>
           </td>
         </tr>

@@ -27,11 +27,26 @@ export default function AdminSidebar({ name, email, initials }: AdminSidebarProp
         {/* Full Zaptext.shop wordmark from /public/logo.png. Wrapped in
             a white pill so the logo's dark-green text stays legible on
             the dark sidebar background. */}
-        <div className="flex flex-col gap-1.5">
-          <span style={{ background: '#fff', borderRadius: 8, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start' }}>
-            <Image src="/logo.png" alt="Zaptext.shop" width={120} height={28} priority style={{ width: 'auto', height: 26, objectFit: 'contain' }} />
-          </span>
-          <div className="text-[10.5px] text-white/55 zt-mono uppercase tracking-[.08em]">
+        <div className="flex flex-col gap-1.5 w-full">
+          {/* Balanced brand row: Z-bolt favicon (transparent PNG) on
+              the left, light-on-dark wordmark on the right. The image
+              wordmark from /logo.png isn't used here because its text
+              is dark green and would be invisible on the sidebar. */}
+          <div className="flex items-center w-full">
+            <Image
+              src="/favicon.png"
+              alt=""
+              width={88}
+              height={88}
+              priority
+              style={{ width: 72, height: 72, objectFit: 'contain', marginLeft: -10, marginRight: -4, flexShrink: 0 }}
+            />
+            <span className="text-white font-bold text-[22px] tracking-[-0.02em] leading-none">
+              Zaptext
+              <span className="text-white/55 font-normal text-[13px] ml-0.5">.shop</span>
+            </span>
+          </div>
+          <div className="text-[10.5px] text-white/55 zt-mono uppercase tracking-[.08em] pl-1">
             Admin workspace
           </div>
         </div>

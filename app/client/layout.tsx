@@ -115,11 +115,28 @@ export default async function ClientLayout({ children }: { children: React.React
               the dark sidebar background. The wordmark replaces the
               previous "Z" icon + separate "ZapText" text, so we only
               keep the workspace-context subtitle below. */}
-          <div className="flex flex-col gap-1.5">
-            <span style={{ background: '#fff', borderRadius: 8, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start' }}>
-              <Image src="/logo.png" alt="Zaptext.shop" width={120} height={28} priority style={{ width: 'auto', height: 26, objectFit: 'contain' }} />
-            </span>
-            <div className="text-[10.5px] text-white/55 zt-mono uppercase tracking-[.08em]">Client workspace</div>
+          <div className="flex flex-col gap-1.5 w-full">
+            {/* Balanced brand row: standalone Z-bolt (transparent PNG)
+                on the left, custom light-on-dark wordmark on the right.
+                We can't use the /logo.png wordmark here because its
+                text is dark green and would vanish on the sidebar
+                background. Negative left margin crops the favicon's
+                transparent canvas so the bolt aligns with the row. */}
+            <div className="flex items-center w-full">
+              <Image
+                src="/favicon.png"
+                alt=""
+                width={88}
+                height={88}
+                priority
+                style={{ width: 72, height: 72, objectFit: 'contain', marginLeft: -10, marginRight: -4, flexShrink: 0 }}
+              />
+              <span className="text-white font-bold text-[22px] tracking-[-0.02em] leading-none">
+                Zaptext
+                <span className="text-white/55 font-normal text-[13px] ml-0.5">.shop</span>
+              </span>
+            </div>
+            <div className="text-[10.5px] text-white/55 zt-mono uppercase tracking-[.08em] pl-1">Client workspace</div>
           </div>
         </Link>
 

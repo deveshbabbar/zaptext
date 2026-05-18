@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 
 interface Props {
   aside: ReactNode;
@@ -35,7 +36,7 @@ export function AppShell({ aside, children, brandSub = 'Workspace' }: Props) {
   return (
     <div className="flex h-[100dvh] relative overflow-hidden">
       {/* Mobile topbar */}
-      <header className="md:hidden fixed top-0 inset-x-0 z-40 h-14 flex items-center justify-between px-2 bg-[var(--sidebar)] text-[var(--sidebar-foreground)] border-b border-white/10">
+      <header className="md:hidden fixed top-0 inset-x-0 z-40 h-16 flex items-center justify-between px-2 bg-[var(--sidebar)] text-[var(--sidebar-foreground)] border-b border-white/10">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -53,15 +54,21 @@ export function AppShell({ aside, children, brandSub = 'Workspace' }: Props) {
             </span>
           )}
         </button>
-        <span className="flex items-center gap-2 font-bold text-[15px] tracking-[-0.01em]">
-          <span className="w-7 h-7 rounded-[6px] bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center zt-mono font-extrabold text-[14px]">
-            Z
-          </span>
-          <span>
-            ZapText
-            <span className="text-white/55 zt-mono uppercase tracking-[.08em] ml-1.5 text-[10px]">
-              {brandSub}
-            </span>
+        <span className="flex items-center gap-1 font-bold text-[15px] tracking-[-0.01em]">
+          {/* Standalone Z-bolt mark (transparent bg) — no white pill
+              needed on the dark mobile topbar. Negative margins crop
+              the source PNG's transparent padding so the bolt fills
+              the topbar vertically. */}
+          <Image
+            src="/favicon.png"
+            alt="Zaptext.shop"
+            width={84}
+            height={84}
+            priority
+            style={{ width: 84, height: 84, objectFit: 'contain', marginLeft: -10, marginTop: -10, marginBottom: -10 }}
+          />
+          <span className="text-white/55 zt-mono uppercase tracking-[.08em] text-[10px]">
+            {brandSub}
           </span>
         </span>
         <span className="w-10" aria-hidden />
@@ -88,7 +95,7 @@ export function AppShell({ aside, children, brandSub = 'Workspace' }: Props) {
         {aside}
       </div>
 
-      <main className="flex-1 overflow-auto bg-background min-w-0 pt-14 md:pt-0">
+      <main className="flex-1 overflow-auto bg-background min-w-0 pt-16 md:pt-0">
         {children}
       </main>
     </div>

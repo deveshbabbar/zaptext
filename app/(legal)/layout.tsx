@@ -5,10 +5,18 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-background text-foreground">
       <nav className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-bold">
-            <Image src="/logo.png" alt="ZapText" width={32} height={32} className="rounded-lg" />
-            <span>ZapText</span>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <Link href="/" className="flex items-center font-bold" aria-label="Zaptext.shop home">
+            {/* Logo image already contains the "Zaptext.shop" wordmark —
+                no separate text label. */}
+            <Image
+              src="/logo.png"
+              alt="Zaptext.shop"
+              width={280}
+              height={72}
+              priority
+              style={{ width: 'auto', height: 64, objectFit: 'contain' }}
+            />
           </Link>
           <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
             &larr; Back to home

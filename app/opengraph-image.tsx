@@ -1,14 +1,23 @@
 // Next.js App Router auto-generates the site's Open Graph image from this
 // file at build time. Output is served at /opengraph-image-<hash>.png and
-// auto-injected as `og:image` into every page's metadata, replacing the
-// previous broken pointer to `/og-image.png` (file did not exist).
+// auto-injected as `og:image` into every page's metadata.
+//
+// Brand mark is the real `public/logo.png` wordmark, loaded once from
+// disk and embedded as a data URL — Satori inside ImageResponse can't
+// fetch local /public assets at build time, so we hand it the bytes.
 
 import { ImageResponse } from 'next/og';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
-export const runtime = 'edge';
 export const alt = 'ZapText — AI WhatsApp Bots for Indian SMBs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
+
+const LOGO_DATA_URL = (() => {
+  const buf = readFileSync(join(process.cwd(), 'public', 'logo.png'));
+  return `data:image/png;base64,${buf.toString('base64')}`;
+})();
 
 export default async function OpengraphImage() {
   return new ImageResponse(
@@ -26,25 +35,25 @@ export default async function OpengraphImage() {
           justifyContent: 'space-between',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <div
             style={{
-              width: 72,
-              height: 72,
-              borderRadius: 16,
-              background: '#C8FF6E',
-              color: '#14130F',
-              fontSize: 56,
-              fontWeight: 900,
+              background: '#FFFDF7',
+              borderRadius: 18,
+              padding: '14px 22px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'monospace',
             }}
           >
-            Z
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={LOGO_DATA_URL}
+              alt=""
+              width={260}
+              height={72}
+              style={{ width: 260, height: 72, objectFit: 'contain' }}
+            />
           </div>
-          <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: '-0.02em', display: 'flex' }}>ZapText</div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

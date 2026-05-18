@@ -12,6 +12,7 @@
 
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import type { Metadata } from 'next';
 import { BUSINESS_TYPES } from '@/lib/constants';
 import type { BusinessType } from '@/lib/types';
@@ -77,11 +78,18 @@ export default async function VerticalLandingPage(
       {/* ─── Top bar ─── */}
       <header className="border-b border-[var(--line)]" style={{ padding: '18px 24px' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 no-underline text-[var(--ink)]">
-            <span className="w-8 h-8 rounded-[8px] bg-[var(--accent)] text-[var(--accent-2)] grid place-items-center zt-mono font-extrabold text-[18px]">
-              Z
-            </span>
-            <span className="font-bold tracking-[-0.01em]">ZapText</span>
+          <Link href="/" className="flex items-center no-underline text-[var(--ink)]" aria-label="Zaptext.shop home">
+            {/* Real brand wordmark from /public/logo.png — logo image
+                already contains the "Zaptext.shop" wordmark, so don't
+                stack a text label next to it. */}
+            <Image
+              src="/logo.png"
+              alt="Zaptext.shop"
+              width={360}
+              height={96}
+              priority
+              style={{ width: 'auto', height: 88, objectFit: 'contain' }}
+            />
           </Link>
           <Link
             href="/sign-up"

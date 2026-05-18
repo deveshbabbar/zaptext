@@ -40,13 +40,28 @@ const nextConfig: NextConfig = {
       // (Referrer-Policy), aggressive prefetch (X-DNS-Prefetch-Control),
       // and forces HTTPS for return visits (HSTS).
       //
-      // The CSP is intentionally permissive on script-src because the
-      // app uses Razorpay's checkout SDK and Clerk's frontend SDK,
-      // both of which inject scripts at runtime — we whitelist their
-      // hosts instead of blocking them outright. 'unsafe-inline' is
-      // required by Next.js hydration bootstrap; 'unsafe-eval' is
-      // required by Clerk's runtime. If you tighten further, test
-      // sign-in, payment flow, and Razorpay's checkout iframe.
+      // NOTE on Content-Security-Policy: an earlier version of this
+      // file shipped a `default-src 'self'` CSP with a Clerk + Razorpay
+      // host allowlist. In production the Clerk sign-in / sign-up
+      // widgets disappeared because:
+      //   1) Custom Clerk domains (e.g. clerk.zaptext.shop) weren't
+      //      on the allowlist — only the `*.clerk.accounts.dev` dev
+      //      hosts.
+      //   2) Clerk uses web workers spawned from blob: URLs, which
+      //      need `worker-src 'self' blob:` to load.
+      //   3) Clerk's CAPTCHA challenge and a few inline-style fragments
+      //      need additional `connect-src` / `frame-src` hosts.
+      //
+      // Until a CSP can be tested end-to-end against the real Clerk
+      // production deployment + Razorpay checkout, we ship without
+      // one. The other six headers below cover the OWASP defense-in-
+      // depth basics; CSP is the only one that can break UI by
+      // mis-allowlisting a host. Add CSP back once you can verify:
+      //   - Sign-in + sign-up forms render and submit
+      //   - Razorpay checkout opens and completes
+      //   - Clerk session sync (long-poll over wss:) doesn't get blocked
+      //   - The Clerk publishable key's actual frontend-API host is
+      //     in the allowlist (it's encoded in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
       {
         source: "/(.*)",
         headers: [
@@ -56,23 +71,6 @@ const nextConfig: NextConfig = {
           { key: "X-DNS-Prefetch-Control", value: "off" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.clerk.accounts.dev https://*.clerk.dev https://clerk.com https://challenges.cloudflare.com https://www.googletagmanager.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "img-src 'self' data: blob: https:",
-              "font-src 'self' data: https://fonts.gstatic.com",
-              "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.clerk.accounts.dev https://*.clerk.dev https://clerk.com https://vitals.vercel-insights.com wss:",
-              "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "object-src 'none'",
-              "upgrade-insecure-requests",
-            ].join("; "),
-          },
         ],
       },
     ];
